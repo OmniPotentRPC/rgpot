@@ -2,14 +2,26 @@ project(
     'rgpot',
     'cpp',
     # [[[cog import rgpot_version as v; cog.outl(f"    version: '{v.VERSION}',")]]]
-    version: '3.7.0',
+    version: '3.8.0',
     # [[[end]]]
+    # array.slice(), used for registry command arguments.
+    meson_version: '>=1.10',
     default_options: ['warning_level=2', 'cpp_std=c++20'],
 )
 # IMPORTANT!! warning_level=3 passes -fimplicit-none
 # Many of the older Fortran codes need implicit typing
 
 host_system = host_machine.system()
+
+# A test whose command is python3 gets no exe_wrapper from meson, so a
+# script that runs a cross-built program puts this in front of it.
+exe_wrapper_args = []
+if meson.is_cross_build()
+    _exe_wrapper = find_program('exe_wrapper', required: false)
+    if _exe_wrapper.found()
+        exe_wrapper_args = [_exe_wrapper]
+    endif
+endif
 
 # Add C++ compiler options
 _cppc_early = meson.get_compiler('cpp')
@@ -30,6 +42,7 @@ _deps = []  # Dependencies
 _linkto = []  # All the sub-libraries (potentials)
 _incdirs = []  # All the includes
 _rgpot_srcs = []
+_args += ['-DRGPOT_TEAM_MIN_ATOMS=' + get_option('team_min_atoms').to_string()]
 
 # Add conditionals
 if host_system == 'darwin'
@@ -92,7 +105,44 @@ if has_eam_table
     _args += ['-DRGPOT_HAS_EAM_TABLE=TRUE']
 endif
 
+# ORCAPot runs the orca executable as a child process. POSIX only; off unless
+# asked for. The executable is looked up at run time, never at configure time.
+has_orca = get_option('with_orca')
+if has_orca
+    if host_system == 'windows'
+        error(
+            'with_orca runs ORCA through fork and exec and cannot be enabled on Windows',
+        )
+    endif
+    _args += ['-DRGPOT_HAS_ORCA=TRUE']
+endif
+
+potlibc_dep = dependency('potlibc', required: get_option('with_cbe'))
+has_cbe = potlibc_dep.found()
+if has_cbe
+    _args += ['-DRGPOT_HAS_CBE=TRUE']
+endif
+
 rpc_enabled = get_option('with_rpc') or get_option('with_rpc_client_only')
+mdi_enabled = get_option('with_mdi')
+
+if mdi_enabled and not get_option('with_rust_core')
+    error('with_mdi=true needs with_rust_core=true')
+endif
+
+# The MDI TCP test needs pymdi, the driver side of the protocol.
+has_pymdi = false
+if mdi_enabled
+    _pymdi_python = find_program('python3', required: false)
+    if _pymdi_python.found()
+        has_pymdi = run_command(
+            _pymdi_python,
+            '-c',
+            'import mdi',
+            check: false,
+        ).returncode() == 0
+    endif
+endif
 
 if get_option('with_rpc_client_only')
     _args += ['-DRGPOT_RPC_CLIENT_ONLY=TRUE']
@@ -101,13 +151,179 @@ endif
 cc = meson.get_compiler('c')
 cppc = meson.get_compiler('cpp')
 
+# LeakSanitizer suppressions name ___kmp_allocate_align in the libomp this
+# clang linked. A pixi environment puts another llvm-openmp on
+# LD_LIBRARY_PATH, and that library is what the loader opens when the
+# binary only has a RUNPATH. DT_RPATH is searched first, so the suppression
+# is resolved against the libomp next to this compiler.
+if host_system == 'linux' and 'address' in get_option('b_sanitize')
+    _compiler_id = cppc.get_id()
+    if _compiler_id == 'clang' or _compiler_id == 'clang-cl'
+        _llvm_res = run_command(
+            cppc.cmd_array(),
+            '-print-resource-dir',
+            check: false,
+        )
+        if _llvm_res.returncode() != 0 or _llvm_res.stdout().strip() == ''
+            error(
+                'address sanitizer: ' + ' '.join(cppc.cmd_array()) + ' -print-resource-dir failed',
+            )
+        endif
+        _fs_omp = import('fs')
+        _omp_libdir = _fs_omp.parent(
+            _fs_omp.parent(_llvm_res.stdout().strip()),
+        )
+        if not (
+            _fs_omp.exists(_omp_libdir / 'libomp.so')
+            or _fs_omp.exists(_omp_libdir / 'libomp.so.5')
+        )
+            warning(
+                'address sanitizer: no libomp in ' + _omp_libdir + ' (the compiler resource directory)',
+            )
+        else
+            add_project_link_arguments(
+                '-Wl,--disable-new-dtags',
+                '-Wl,-rpath,' + _omp_libdir,
+                language: ['c', 'cpp'],
+            )
+        endif
+    endif
+endif
+
+# Non-atomic gcov counters go negative when OpenMP threads share an arc.
+# lcov 2 treats that as an error. Atomic updates are the counter fix.
+if get_option('b_coverage')
+    _atomic_profile_cpp = cppc.get_supported_arguments(
+        ['-fprofile-update=atomic'],
+    )
+    _atomic_profile_c = cc.get_supported_arguments(['-fprofile-update=atomic'])
+    if _atomic_profile_cpp.length() == 0 or _atomic_profile_c.length() == 0
+        error(
+            'b_coverage requires -fprofile-update=atomic; ' + cppc.get_id() + ' did not accept it',
+        )
+    endif
+    add_project_arguments(_atomic_profile_c, language: 'c')
+    add_project_arguments(_atomic_profile_cpp, language: 'cpp')
+    # Fortran kernels are called from those same OpenMP regions.
+    # Pass -fprofile-update=atomic when the Fortran compiler accepts it.
+    # gcc must accept it. Other compilers get an explicit message that
+    # atomic profile updates are unavailable.
+    if has_fortran
+        if fc.has_argument('-fprofile-update=atomic')
+            add_project_arguments('-fprofile-update=atomic', language: 'fortran')
+        elif fc.get_id() == 'gcc'
+            error(
+                'b_coverage requires -fprofile-update=atomic; ' + fc.get_id() + ' did not accept it',
+            )
+        else
+            message(
+                'atomic profile updates are unavailable for Fortran compiler ' + fc.get_id(),
+            )
+        endif
+    endif
+endif
+
 # Dependencies
 # libm for Unix systems
 m_dep = cppc.find_library('m', required: false)
 _deps += m_dep
-# libstdc++ only on Linux/GCC; Darwin/clang uses libc++ via the driver.
-if host_system == 'linux'
-    _deps += [declare_dependency(link_args: '-lstdc++')]
+# Identify the active C++ standard library before reading its version macro.
+# get_define() returns '' for a macro that is not defined (Meson 0.40 and
+# later) and only errors when preprocessing fails, so an empty result cannot
+# separate libstdc++ from a libc++ whose macro has no value. Test the symbol
+# first: absent means libstdc++, present with an empty value is an error.
+#
+# Every non-Windows host is probed. On Windows only clang and clang-cl are
+# probed, because they can be configured with libc++ (clang-cl with
+# -stdlib=libc++, llvm-mingw, MSYS2 CLANG64). MSVC proper (cl.exe, id 'msvc')
+# and the other Windows toolchains use their own runtime and are skipped.
+_libcpp_ver = ''
+_probe_libcpp = (
+    host_system != 'windows'
+    or cppc.get_id() in ['clang', 'clang-cl']
+)
+_libcpp_probe_args = cppc.get_supported_arguments(['-std=c++20', '/std:c++20'])
+if _probe_libcpp
+    if not cppc.has_header('version', args: _libcpp_probe_args)
+        error(
+            'cannot identify the C++ standard library: <version> is unavailable',
+        )
+    endif
+    if cppc.has_header_symbol(
+        'version',
+        '_LIBCPP_VERSION',
+        args: _libcpp_probe_args,
+    )
+        _libcpp_ver = cppc.get_define(
+            '_LIBCPP_VERSION',
+            prefix: '#include <version>',
+            args: _libcpp_probe_args,
+        ).strip()
+        if _libcpp_ver == ''
+            error(
+                'cannot identify the C++ standard library: _LIBCPP_VERSION was found but its value is empty',
+            )
+        endif
+    else
+        message('_LIBCPP_VERSION is absent from <version>; using libstdc++')
+    endif
+endif
+
+# Match the active C++ standard library (libc++ or libstdc++) on Unix hosts.
+_cxx_rt_flag = ''
+if host_system != 'windows'
+    if _libcpp_ver != ''
+        _cxx_rt_dep = cppc.find_library('c++', required: false)
+        if _cxx_rt_dep.found()
+            _cxx_rt_flag = '-lc++'
+        endif
+    else
+        _cxx_rt_dep = cppc.find_library('stdc++', required: false)
+        if _cxx_rt_dep.found()
+            _cxx_rt_flag = '-lstdc++'
+        endif
+    endif
+    if _cxx_rt_dep.found()
+        _deps += [_cxx_rt_dep]
+    endif
+endif
+
+if not get_option('with_rpc_client_only')
+    if _libcpp_ver != '' and _libcpp_ver.to_int() < 190000
+        # compiles() never links. On targets where __atomic_fetch_or is a
+        # libcall, the builtin needs libatomic or the library fails at link.
+        _atomic_or_src = '''#include <stdint.h>
+int main(void) {
+    uint64_t word = 0;
+    uint64_t previous = __atomic_fetch_or(&word, (uint64_t)1, __ATOMIC_RELAXED);
+    return (int)(previous ^ word);
+}
+'''
+        if cc.links(_atomic_or_src, name: '__atomic_fetch_or')
+            message(
+                'libc++ ' + _libcpp_ver + ' (< 19): std::atomic_ref unavailable, using __atomic_fetch_or fallback',
+            )
+        else
+            _libatomic_dep = cc.find_library('atomic', required: false)
+            if (
+                _libatomic_dep.found()
+                and cc.links(
+                _atomic_or_src,
+                    dependencies: _libatomic_dep,
+                    name: '__atomic_fetch_or with libatomic',
+                            )
+            )
+                _deps += _libatomic_dep
+                message(
+                    'libc++ ' + _libcpp_ver + ' (< 19): std::atomic_ref unavailable, using __atomic_fetch_or with libatomic',
+                )
+            else
+                error(
+                    'libc++ ' + _libcpp_ver + ' (< 190000) lacks std::atomic_ref and __atomic_fetch_or does not link, with or without libatomic; upgrade to libc++ 19 or newer',
+                )
+            endif
+        endif
+    endif
 endif
 
 # ------------------------ vesin (neighbour lists)
@@ -115,6 +331,24 @@ endif
 # Fortran pots all consume this dependency. Prefer an installed vesin
 # >= 0.6; fall back to the vendored single-TU build, which carries the
 # local patches maintained as vesin upstream candidates.
+fs = import('fs')
+vesin_version_lines = []
+foreach line : fs.read('third_party/vesin/VERSION').strip().split('\n')
+    line = line.strip()
+    if line != '' and not line.startswith('#')
+        vesin_version_lines += line
+    endif
+endforeach
+if vesin_version_lines.length() != 1
+    error('third_party/vesin/VERSION must contain exactly one version')
+endif
+vesin_version = vesin_version_lines[0]
+vesin_version_marker = '// vesin version: ' + vesin_version
+if not fs.read('third_party/vesin/vesin-single-build.cpp').contains(
+    vesin_version_marker,
+)
+    error('vendored vesin source does not match VERSION ' + vesin_version)
+endif
 vesin_threads_dep = dependency('threads')
 vesin_dep = dependency('vesin', version: '>=0.6', required: false)
 # vesin_hdr_dep carries compile information only. Meson copies the objects
@@ -239,8 +473,49 @@ if has_fortran
                 if _rt_path != _cand and _fs_rt.is_absolute(_rt_path) and _fs_rt.exists(
                     _rt_path,
                 )
-                    fortran_rt_deps += declare_dependency(link_args: [_rt_path])
-                    message('fortran runtime (compiler file): ' + _rt_path)
+                    _rt_link = [_rt_path]
+                    # MinGW has no libgfortran.so, so the search above
+                    # selects the static archive. libgfortran.a(write.o)
+                    # calls quadmath_snprintf, and ld resolves that only
+                    # when libquadmath follows libgfortran. The shared
+                    # runtime used on Linux and macOS is unchanged.
+                    _want_quad = host_system == 'windows' and _cand == 'libgfortran.a'
+                    if _want_quad
+                        _pq = run_command(
+                            _fc.cmd_array() + ['-print-file-name=libquadmath.a'],
+                            check: false,
+                        )
+                        if _pq.returncode() == 0
+                            _qp = _pq.stdout().strip()
+                            if (
+                                _qp != 'libquadmath.a'
+                                and _fs_rt.is_absolute(_qp)
+                                and _fs_rt.exists(_qp)
+                            )
+                                _rt_link += [_qp]
+                                _want_quad = false
+                            endif
+                        endif
+                    endif
+                    fortran_rt_deps += declare_dependency(link_args: _rt_link)
+                    foreach _shown : _rt_link
+                        message('fortran runtime (compiler file): ' + _shown)
+                    endforeach
+                    if _want_quad
+                        _quad = cc.find_library(
+                            'quadmath',
+                            static: true,
+                            required: false,
+                        )
+                        if _quad.found()
+                            fortran_rt_deps += _quad
+                            message('fortran runtime: quadmath')
+                        else
+                            warning(
+                                'static libgfortran on MinGW needs libquadmath after it',
+                            )
+                        endif
+                    endif
                     break
                 endif
             endif
@@ -296,9 +571,7 @@ endif
 has_eigen = false
 if get_option('with_eigen') or (
     get_option('with_examples')
-    and not get_option(
-    'with_rpc_client_only',
-    )
+    and not get_option('with_rpc_client_only')
 )
     eigen_dep = dependency('eigen3', required: false)
     if not eigen_dep.found()
@@ -325,9 +598,7 @@ endif
 has_fmt = false
 if not get_option('pure_lib') or (
     get_option('with_examples')
-    and not get_option(
-    'with_rpc_client_only',
-    )
+    and not get_option('with_rpc_client_only')
 )
     _args += ['-DNOT_PURE_LIB=TRUE']
     fmt_dep = dependency('fmt', required: true)
@@ -470,11 +741,17 @@ if get_option('with_tblite')
 endif
 
 has_metatomic = false
+has_uma = false
 _mta_engine_deps = []
-if get_option('with_metatomic')
+# The UMA engine needs torch alone; the metatomic engine needs torch and the
+# metatensor and metatomic packages. with_uma builds the first without the
+# second: torch may then be a plain libtorch tree with no Python package.
+if get_option('with_metatomic') or get_option('with_uma')
     # Discover torch without importing it (import can load NumPy C extensions
     # during meson configure). Supports multi-ABI builds via:
     #   RGPOT_TORCH_ROOT=/path/to/site-packages/torch  (isolated major)
+    #   RGPOT_TORCH_ROOT=/path/to/libtorch  (the C++ distribution: lib,
+    #     include and a build-version file; no Python package)
     #   or first torch/version.py on sys.path (PYTHONPATH prefixes).
     # Prefer manual -isystem/-L over cmake Torch: old/CUDA wheels break cmake
     # with missing nvcc; libtorch_cpu.so is enough for the engine plugin.
@@ -499,7 +776,10 @@ def torch_root() -> Path:
             return p
         if (p / "torch" / "version.py").is_file():
             return p / "torch"
-        raise SystemExit(f"RGPOT_TORCH_ROOT has no version.py: {env}")
+        if (p / "build-version").is_file() and (p / "lib").is_dir():
+            return p
+        raise SystemExit(
+            f"RGPOT_TORCH_ROOT has neither version.py nor build-version: {env}")
     for entry in sys.path:
         cand = Path(entry) / "torch" / "version.py"
         if cand.is_file():
@@ -511,14 +791,21 @@ def torch_root() -> Path:
 
 troot = torch_root()
 version_file = troot / "version.py"
-match = re.search(
-    r"^__version__\s*=\s*['\"]([^'\"]+)",
-    version_file.read_text(),
-    re.MULTILINE,
-)
-if match is None:
-    raise SystemExit(f"torch version not found in {version_file}")
-version = ".".join(match.group(1).split("+")[0].split(".")[:2])
+if version_file.is_file():
+    match = re.search(
+        r"^__version__\s*=\s*['\"]([^'\"]+)",
+        version_file.read_text(),
+        re.MULTILINE,
+    )
+    if match is None:
+        raise SystemExit(f"torch version not found in {version_file}")
+    full_version = match.group(1)
+else:
+    # The C++ distribution names its version in one line, e.g. 2.8.0+cpu.
+    full_version = (troot / "build-version").read_text().strip()
+    if not re.fullmatch(r"\d+\.\d+(\.\d+)?([+.-].*)?", full_version):
+        raise SystemExit(f"torch version not found in {troot / 'build-version'}")
+version = ".".join(full_version.split("+")[0].split(".")[:2])
 libdir = troot / "lib"
 inc = troot / "include"
 api_inc = troot / "include" / "torch" / "csrc" / "api" / "include"
@@ -574,7 +861,11 @@ print(api_inc)
     )
     # Torch stays off the umbrella _deps list. Putting it there makes
     # librgpot NEEDED libtorch_cpu and `import rgpot` requires torch.
+    _args += ['-DRGPOT_HAS_UMA=TRUE']
+    has_uma = true
+endif
 
+if get_option('with_metatomic')
     # metatensor-torch / metatomic-torch headers live in the
     # python interpreter's site-packages under
     # <purelib>/metatensor/torch/torch-X.Y/include and
@@ -657,25 +948,24 @@ print(api_inc)
     # is unnecessary here.
 
     _args += ['-DRGPOT_HAS_METATOMIC=TRUE']
-    _args += ['-DRGPOT_HAS_UMA=TRUE']
     has_metatomic = true
 endif
 
 # --------------------- Rust Core (rgpot-core)
 #
 # Build the Rust crate via Cargo and link the resulting static library.
-# The crate also generates include/rgpot.h via cbindgen.
+# The crate also generates include/rgpot.h via cbindgen. The cargo options
+# are set here; the pair list block below builds the archive when both are
+# on, and the continuation after it builds it otherwise.
 
 if get_option('with_rust_core')
+    _args += ['-DRGPOT_HAS_RUST_CORE']
     cargo = find_program('cargo', required: true)
 
-    # Determine Cargo build profile and library name
+    # Cargo build profile; the script that runs cargo takes it by name.
+    _cargo_profile_dir = 'debug'
     if get_option('buildtype') == 'release'
         _cargo_profile_dir = 'release'
-        _cargo_args = ['build', '--release']
-    else
-        _cargo_profile_dir = 'debug'
-        _cargo_args = ['build']
     endif
 
     # Add feature flags for the Rust crate
@@ -689,67 +979,11 @@ if get_option('with_rust_core')
     if get_option('with_cache')
         _cargo_features += ['cache']
     endif
-
-    if _cargo_features.length() > 0
-        _cargo_args += ['--features', ','.join(_cargo_features)]
+    if mdi_enabled
+        _cargo_features += ['mdi']
     endif
 
     _rgpot_core_dir = meson.current_source_dir() / 'rgpot-core'
-
-    # Build the Rust crate; produces librgpot_core.a and include/rgpot.h
-    rgpot_rust_target = custom_target(
-        'rgpot_rust_core',
-        command: [
-            cargo,
-            _cargo_args,
-            '--manifest-path',
-            _rgpot_core_dir / 'Cargo.toml',
-            '--target-dir',
-            meson.current_build_dir() / 'cargo-target',
-        ],
-        output: ['librgpot_core.a'],
-        build_by_default: true,
-        console: true,
-    )
-
-    # Link the Rust static library
-    _rust_target_dir = meson.current_build_dir() / 'cargo-target' / _cargo_profile_dir
-    rgpot_rust_lib = cppc.find_library(
-        'rgpot_core',
-        dirs: [_rust_target_dir],
-        required: true,
-        static: true,
-    )
-
-    # Thread and dl libraries needed by the Rust runtime
-    thread_dep = dependency('threads')
-    dl_dep = cppc.find_library('dl', required: false)
-
-    _deps += [rgpot_rust_lib, thread_dep, dl_dep]
-
-    # librgpot links the archive and keeps only the members it references,
-    # so the C ABI of rgpot-core is checked on the cdylib cargo builds
-    # next to it.
-    if host_machine.system() == 'linux'
-        test(
-            'abi_core_symbols',
-            find_program('scripts/abi_symbols.sh'),
-            args: [
-                '-p',
-                '^rgpot_',
-                _rust_target_dir / 'librgpot_core.so',
-                files('scripts/abi_core_baseline.txt'),
-            ],
-            depends: rgpot_rust_target,
-            timeout: 30,
-        )
-    endif
-
-    # Include paths: generated C header + C++ RAII wrappers
-    _incdirs += [
-        include_directories('rgpot-core' / 'include'),  # rgpot.h (cbindgen)
-        include_directories('include'),  # rgpot/*.hpp (C++ RAII)
-    ]
 endif
 
 # --------------------- linkcell / minimage pair list
@@ -758,6 +992,31 @@ endif
 # MSVC cargo writes rgpot_fastnlist.lib; Unix and MinGW write
 # librgpot_fastnlist.a. Link arguments are the system libraries rustc
 # printed for this toolchain, not a fixed -pthread -ldl -lm list.
+# Rust target for a GNU-toolchain Windows build: the cross file's
+# rust_target property, else the MinGW triple. Empty keeps rustc's
+# default. The linker is the C++ compiler from the native or cross file.
+rust_target = meson.get_external_property('rust_target', '')
+if (
+    rust_target == ''
+    and host_system == 'windows'
+    and host_machine.cpu_family() == 'x86_64'
+    and cppc.get_argument_syntax() != 'msvc'
+)
+    rust_target = 'x86_64-pc-windows-gnu'
+endif
+rust_linker = ''
+if rust_target != ''
+    foreach _word : cppc.cmd_array()
+        if rust_linker == '' and not _word.endswith('ccache')
+            rust_linker = _word
+        endif
+    endforeach
+endif
+_fast_target_args = []
+if rust_target != ''
+    _fast_target_args = ['--target', rust_target, '--linker', rust_linker]
+endif
+
 _fast_opt = get_option('with_fast_nlist')
 _fast_cargo = find_program('cargo', required: _fast_opt.enabled())
 _fast_rustc = find_program('rustc', required: false)
@@ -819,14 +1078,35 @@ if has_fast_nlist
         get_option('default_library') == 'static'
         and host_system != 'windows'
     )
-    _fast_lib_name = 'librgpot_fastnlist.a'
-    if _fast_as_object
-        _fast_lib_name = 'rgpot_fastnlist.o'
-    elif host_system == 'windows' and (
+    # A partial link is not safe for PE objects, so a static MinGW build
+    # keeps the rust archive beside librgpot and installs it with it.
+    # Meson then propagates it to the final link instead of handing it
+    # to ar.
+    _fast_beside = (
+        get_option('default_library') == 'static'
+        and host_system == 'windows'
+        and cppc.get_argument_syntax() != 'msvc'
+    )
+    # With with_rust_core, rgpot-core is linked too. Each is a Rust
+    # staticlib that embeds its own std, so two archives define the runtime
+    # twice. rgpot-bundle links both into one staticlib instead, and that
+    # archive takes the pair list's place below.
+    _fast_bundled = get_option('with_rust_core')
+    _fast_lib_stem = 'rgpot_fastnlist'
+    if _fast_bundled
+        _fast_lib_stem = 'rgpot_bundle'
+    endif
+    # The name cargo gives the archive, and the name meson gives the output.
+    _fast_artifact = 'lib' + _fast_lib_stem + '.a'
+    if host_system == 'windows' and (
         cppc.get_id() == 'msvc'
         or cppc.get_id() == 'clang-cl'
     )
-        _fast_lib_name = 'rgpot_fastnlist.lib'
+        _fast_artifact = _fast_lib_stem + '.lib'
+    endif
+    _fast_lib_name = _fast_artifact
+    if _fast_as_object
+        _fast_lib_name = _fast_lib_stem + '.o'
     endif
     _fastnlist_src = meson.current_source_dir() / 'CppCore/rgpot/nlist/fastnlist'
     _fast_target_dir = meson.current_build_dir() / 'fastnlist-cargo'
@@ -834,6 +1114,7 @@ if has_fast_nlist
     _fast_probe = run_command(
         _fast_py,
         files('scripts/build_fastnlist.py'),
+        _fast_target_args,
         '--native-libs',
         _fast_cargo.full_path(),
         _fastnlist_src / 'Cargo.toml',
@@ -854,27 +1135,63 @@ if has_fast_nlist
     if _fast_native.length() == 0
         error('fast pair list: rustc printed no native-static-libs')
     endif
-    _fastnlist_tgt = custom_target(
-        'rgpot_fastnlist',
-        command: [
-            _fast_py,
-            files('scripts/build_fastnlist.py'),
-            '--copy',
-            _fast_cargo.full_path(),
-            _fastnlist_src / 'Cargo.toml',
-            _fast_target_dir,
-            '@OUTPUT@',
-        ],
-        input: files(
-            'CppCore/rgpot/nlist/fastnlist/Cargo.lock',
-            'CppCore/rgpot/nlist/fastnlist/Cargo.toml',
-            'CppCore/rgpot/nlist/fastnlist/src/lib.rs',
-        ),
-        output: _fast_lib_name,
-        build_by_default: true,
-        console: true,
-    )
+    if _fast_bundled
+        _fastnlist_tgt = custom_target(
+            'rgpot_rust_core',
+            command: [
+                _fast_py,
+                files('scripts/build_rust_core.py'),
+                '--cargo',
+                _fast_cargo.full_path(),
+                '--manifest',
+                meson.current_source_dir() / 'rgpot-bundle/Cargo.toml',
+                '--target-dir',
+                meson.current_build_dir() / 'cargo-target',
+                '--profile',
+                _cargo_profile_dir,
+                '--artifact',
+                _fast_artifact,
+                '--features',
+                ','.join(_cargo_features),
+                '--fast-toolchain',
+                '@OUTPUT0@',
+                '@OUTPUT1@',
+            ],
+            output: [_fast_lib_name, 'rgpot_rust_built.h'],
+            build_always_stale: true,
+            build_by_default: true,
+            console: true,
+            install: _fast_beside and not meson.is_subproject(),
+            install_dir: [get_option('libdir'), false],
+        )
+    else
+        _fastnlist_tgt = custom_target(
+            'rgpot_fastnlist',
+            command: [
+                _fast_py,
+                files('scripts/build_fastnlist.py'),
+                _fast_target_args,
+                '--copy',
+                _fast_cargo.full_path(),
+                _fastnlist_src / 'Cargo.toml',
+                _fast_target_dir,
+                '@OUTPUT@',
+            ],
+            input: files(
+                'CppCore/rgpot/nlist/fastnlist/Cargo.lock',
+                'CppCore/rgpot/nlist/fastnlist/Cargo.toml',
+                'CppCore/rgpot/nlist/fastnlist/src/lib.rs',
+            ),
+            output: _fast_lib_name,
+            build_by_default: true,
+            console: true,
+            install: _fast_beside and not meson.is_subproject(),
+            install_dir: get_option('libdir'),
+        )
+    endif
     _args += ['-DRGPOT_HAS_FAST_NLIST']
+    fastnlist_pc_libs = []
+    fastnlist_beside_lib = []
     # Archive first, then the system libraries rustc named. The generated
     # source is what ninja builds; repeating its path here keeps that
     # order on a single-pass link. A response file is not used: gcc leaves
@@ -885,18 +1202,62 @@ if has_fast_nlist
     # without linking the object a second time.
     if _fast_as_object
         fastnlist_dep = declare_dependency(
-            sources: [_fastnlist_tgt],
+            sources: _fast_bundled ? [_fastnlist_tgt[0], _fastnlist_tgt[1]] : [
+                _fastnlist_tgt[0],
+            ],
             link_args: _fast_native,
         )
         fastnlist_native_dep = declare_dependency(
             link_args: _fast_native,
         )
-    else
+    elif _fast_beside
         fastnlist_dep = declare_dependency(
-            sources: [_fastnlist_tgt],
-            link_args: [_fastnlist_tgt.full_path()] + _fast_native,
+            sources: _fast_bundled ? [_fastnlist_tgt[1]] : [],
+            link_with: _fastnlist_tgt[0],
+            link_args: _fast_native,
         )
         fastnlist_native_dep = fastnlist_dep
+        # Meson would list the archive after the system libraries it needs;
+        # naming it first keeps the order a single-pass link wants.
+        fastnlist_pc_libs = [_fastnlist_tgt[0]] + _fast_native
+        fastnlist_beside_lib = [_fastnlist_tgt[0]]
+    else
+        fastnlist_dep = declare_dependency(
+            sources: [_fast_bundled ? _fastnlist_tgt[1] : _fastnlist_tgt],
+            link_args: [_fastnlist_tgt[0].full_path()] + _fast_native,
+        )
+        fastnlist_native_dep = fastnlist_dep
+    endif
+    # A shared librgpot on ELF and Mach-O takes the whole rust archive
+    # (CppCore/meson.build). A DLL links it normally, so the linker takes
+    # its object only for a symbol something inside librgpot calls. Naming
+    # the entry points as undefined pulls that object in. The names are
+    # the fast-list ABI baseline the abi_symbols test checks.
+    _fast_names = []
+    foreach _name : import('fs').read(
+        'scripts/abi_baseline_fast.txt',
+    ).strip().split('\n')
+        _fast_names += [_name.strip()]
+    endforeach
+    fastnlist_export_args = []
+    # rustc writes no export directive into a staticlib, so a DLL exports
+    # the fast names only when a module definition file lists them.
+    fastnlist_umbrella_kwargs = {}
+    if host_system == 'windows' and get_option('default_library') != 'static'
+        foreach _name : _fast_names
+            if cppc.get_argument_syntax() == 'msvc'
+                fastnlist_export_args += ['/INCLUDE:' + _name]
+            else
+                fastnlist_export_args += ['-Wl,-u,' + _name]
+            endif
+        endforeach
+        fastnlist_umbrella_kwargs = {
+            'vs_module_defs': configure_file(
+                input: 'CppCore/rgpot/nlist/fastnlist/rgpot_fastnlist.def.in',
+                output: 'rgpot_fastnlist.def',
+                configuration: {'FAST_EXPORTS': '\n'.join(_fast_names)},
+            ),
+        }
     endif
     message(
         'fast pair list: enabled (rustc minor ' + _fast_minor.to_string() + ')',
@@ -904,7 +1265,138 @@ if has_fast_nlist
 else
     fastnlist_dep = declare_dependency()
     fastnlist_native_dep = fastnlist_dep
+    fastnlist_export_args = []
+    fastnlist_umbrella_kwargs = {}
+    fastnlist_pc_libs = []
+    fastnlist_beside_lib = []
     message('fast pair list: disabled, classical pots use the C++ scan')
+endif
+
+# --------------------- Rust Core (rgpot-core), continued
+#
+# The crate's static library, linked into librgpot. The pair list block
+# above has already built rgpot-bundle when both are on; this block takes
+# that archive instead of building a second one.
+if get_option('with_rust_core')
+    # The header is a stamp. A dependency that lists it as a source makes
+    # every target that uses the dependency wait for cargo, and meson does
+    # not hand it to ar, as it would the archive: a static library takes
+    # the archive's path on its ar command line when the archive is a
+    # source. Only the link arguments name the archive.
+    if has_fast_nlist
+        rgpot_rust_target = _fastnlist_tgt
+        _rust_archive = _fast_artifact
+        _rust_link = []
+        if not _fast_as_object
+            _rust_link += [_fastnlist_tgt[0].full_path()]
+        endif
+        _rust_link += _fast_native
+    else
+        _rust_archive = 'librgpot_core.a'
+        if host_system == 'windows' and (
+            cppc.get_id() == 'msvc'
+            or cppc.get_id() == 'clang-cl'
+        )
+            _rust_archive = 'rgpot_core.lib'
+        endif
+        # The library is a generated file, so ninja runs cargo before
+        # anything links it. A find_library on the cargo output fails on a
+        # fresh setup: nothing has built the file when meson configures.
+        # Without the pair list the crate needs only the workspace
+        # rust-version, so the script keeps the cargo it is given.
+        rgpot_rust_target = custom_target(
+            'rgpot_rust_core',
+            command: [
+                find_program('python3'),
+                files('scripts/build_rust_core.py'),
+                '--cargo',
+                cargo.full_path(),
+                '--manifest',
+                _rgpot_core_dir / 'Cargo.toml',
+                '--target-dir',
+                meson.current_build_dir() / 'cargo-target',
+                '--profile',
+                _cargo_profile_dir,
+                '--artifact',
+                _rust_archive,
+                '--features',
+                ','.join(_cargo_features),
+                '@OUTPUT0@',
+                '@OUTPUT1@',
+            ],
+            output: [_rust_archive, 'rgpot_rust_built.h'],
+            build_always_stale: true,
+            build_by_default: true,
+            console: true,
+        )
+        _rust_link = [rgpot_rust_target[0].full_path()]
+    endif
+    rgpot_rust_lib = declare_dependency(
+        sources: [rgpot_rust_target[1]],
+        link_args: _rust_link,
+    )
+    _rust_target_dir = meson.current_build_dir() / 'cargo-target' / _cargo_profile_dir
+
+    # Thread and dl libraries needed by the Rust runtime
+    thread_dep = dependency('threads')
+    dl_dep = cppc.find_library('dl', required: false)
+
+    _deps += [rgpot_rust_lib, thread_dep, dl_dep]
+
+    # The C ABI is checked on the archive cargo writes. A normal link keeps
+    # only members librgpot references, and it references none of these
+    # names. The bundle layout whole-archives that archive, so the shared
+    # library exports the names; rgpot_so_exports pins the count. The bundle
+    # re-exports rgpot-core, so one baseline covers both archives.
+    if host_machine.system() == 'linux'
+        test(
+            'abi_core_symbols',
+            find_program('python3', 'python'),
+            args: [
+                files('scripts/abi_symbols.py'),
+                '-p',
+                '^rgpot_',
+                _rust_target_dir / _rust_archive,
+                files('scripts/abi_core_baseline.txt'),
+            ],
+            depends: rgpot_rust_target,
+            timeout: 30,
+        )
+    endif
+
+    # The EAM table constructor as a C host calls it, on the archive itself.
+    if get_option('with_tests')
+        _eam_table_capi = executable(
+            'eam_table_capi_test',
+            'rgpot-core/tests/c/eam_table_capi.c',
+            include_directories: include_directories(
+                'rgpot-core' / 'include',
+                'include',
+            ),
+            dependencies: [
+                rgpot_rust_lib,
+                fastnlist_dep,
+                thread_dep,
+                dl_dep,
+                meson.get_compiler('c').find_library('m', required: false),
+            ],
+            link_language: 'c',
+            build_by_default: true,
+        )
+        test(
+            'EAMTableCAbiTest',
+            _eam_table_capi,
+            args: [meson.current_source_dir() / 'CppCore/tests/data/eam_table'],
+            depends: rgpot_rust_target,
+            timeout: 30,
+        )
+    endif
+
+    # Include paths: generated C header + C++ RAII wrappers
+    _incdirs += [
+        include_directories('rgpot-core' / 'include'),  # rgpot.h (cbindgen)
+        include_directories('include'),  # rgpot/*.hpp (C++ RAII)
+    ]
 endif
 
 # ------------------------ Highway (runtime ISA dispatch)
@@ -945,27 +1437,24 @@ endif
 
 # --------------------- Projects
 _incdirs += [include_directories('CppCore'), include_directories('include')]
+# One implementation of the generic engine ABI identity. Every engine plugin
+# adds this source through its target's source list.
+engine_abi_stamp_source = files('CppCore/rgpot/engine/EngineAbiStamp.cc')
 subdir('CppCore')
 rgpot_has_rpc = _rpc_stack
 if get_option('with_rpc_client_only')
     rgpot_dep = declare_dependency(
         include_directories: _incdirs,
         link_with: _linkto,
-        compile_args: _args,
+        compile_args: rgpot_consumer_args + ['-DRGPOT_STATIC'],
         dependencies: _deps + [ptlrpc_dep, fastnlist_dep],
     )
+    # The client-only archives take no OpenMP flags.
+    rgpot_dep_no_openmp = rgpot_dep
 endif
 
 # Engine drivers link the umbrella. A client-only build has no LJPot.
-# On Windows rgpot.dll exports only rgpot_library_version, so the drivers
-# have nothing to link against, and they load plugins with dlopen and run
-# pthreads; the CppCore engine plugins are left out there for the same
-# reason.
-if host_system == 'windows'
-    message(
-        'engines/ is not built on Windows: rgpot.dll does not export the C and C++ API the engine drivers link against',
-    )
-elif not get_option('with_rpc_client_only')
+if not get_option('with_rpc_client_only')
     subdir('engines')
 endif
 
@@ -985,15 +1474,102 @@ if not get_option('with_python')
     install_headers('bind/include/rgbind/rgbind.hpp', subdir: 'rgbind')
 endif
 
+if not meson.is_subproject() and get_option('with_tests')
+    _install_py = find_program('python3', required: false)
+    _install_meson = find_program('meson', required: false)
+    if _install_py.found() and _install_meson.found()
+        _installed_targets = []
+        foreach _tgt_name : [
+            'rgpot_mpi_lib',
+            'gen_rpc',
+            'pot_bridge',
+            'cp2kc_shim',
+            'rgpot_cuh2',
+            'xtb_engine',
+            'metatomic_engine',
+            'uma_engine',
+            'rgpot',
+            'librgpot_soname',
+            'classical_engine',
+            'mopac_engine',
+            'nwchem_engine',
+            'cpmd_engine',
+            'skala_engine',
+            'server',
+            'mpi_server',
+            'nwchem_mpi_force_host',
+            'rgpot_ipi_driver',
+            'rgpot_lj',
+            'lj_engine',
+            'plumed_lib',
+            'gmx_dropin',
+            'native_lj_engine',
+            'openmm_engine',
+            '_py_core',
+        ]
+            if is_variable(_tgt_name)
+                _tgt = get_variable(_tgt_name)
+                if not is_disabler(_tgt)
+                    _installed_targets += [_tgt]
+                endif
+            endif
+        endforeach
+        if get_option('with_rpc_client_only')
+            foreach _tgt_name : ['nwchempot', 'cpmdpot']
+                if is_variable(_tgt_name)
+                    _tgt = get_variable(_tgt_name)
+                    if not is_disabler(_tgt)
+                        _installed_targets += [_tgt]
+                    endif
+                endif
+            endforeach
+        endif
+        # A .py file is allowed only inside the rgpot package directory
+        # that the Python install uses.
+        _installed_args = [files('CppCore/tests/check_installed_sources.py')]
+        if get_option('with_python')
+            _installed_args += [
+                '--python-dir',
+                py.get_install_dir(pure: false, subdir: 'rgpot'),
+            ]
+        endif
+        test(
+            'installed_sources',
+            _install_py,
+            args: _installed_args + [
+                meson.project_build_root(),
+                _install_meson.full_path(),
+            ],
+            depends: _installed_targets,
+            kwargs: _rt_kw['installed_sources'],
+        )
+    endif
+endif
+
 # The documentation's run and compile blocks against this build;
 # doccheck_static checks the rest against the source.
 _doc_python = find_program('python3', required: false)
 if get_option('with_tests') and _doc_python.found()
     _doccheck = files('docs/doccheck.py')
     # The C and C++ blocks are built with a cc driver (-fsyntax-only, -l,
-    # -Wl,-rpath), and most run blocks link librgpot. Windows has cl.exe,
-    # and rgpot.dll exports only rgpot_library_version, as for engines/.
+    # -Wl,-rpath), and most run blocks link librgpot. Windows has cl.exe.
     if host_system != 'windows'
+        _doccheck_depends = []
+        foreach _tgt_name : [
+            'rgpot',
+            'gen_rpc',
+            'rgpot_rust_target',
+            'rgpot_eval',
+            'capi_threads',
+            '_py_core',
+        ]
+            if is_variable(_tgt_name)
+                _tgt = get_variable(_tgt_name)
+                if not is_disabler(_tgt)
+                    _doccheck_depends += [_tgt]
+                endif
+            endif
+        endforeach
         test(
             'doccheck_examples',
             _doc_python,
@@ -1005,6 +1581,7 @@ if get_option('with_tests') and _doc_python.found()
                 '--build-dir',
                 meson.project_build_root(),
             ],
+            depends: _doccheck_depends,
             suite: 'docs',
             timeout: 1200,
             priority: -10,
@@ -1046,11 +1623,9 @@ if get_option('with_tests') and _rt_atoms['python']
         'mpi': _mpi_dep.found(),
         'mpiexec': find_program('mpirun', 'mpiexec', required: false).found(),
         'linux': host_system == 'linux',
+        'so_exports': rgpot_registers_so_exports,
+        'fast_beside': fastnlist_beside_lib.length() > 0,
         'posix': host_system != 'windows',
-        'capnp': (
-            dependency('capnp', required: false).found()
-            and dependency('capnpc', required: false).found()
-        ),
         'capnp_tool': find_program('capnp', required: false).found(),
         'rustc': find_program('rustc', required: false).found(),
         'tsan': (
@@ -1067,6 +1642,9 @@ if get_option('with_tests') and _rt_atoms['python']
     _rt_args = []
     foreach _atom, _on : _rt_features
         _rt_args += _atom + '=' + (_on ? '1' : '0')
+    endforeach
+    foreach _word : exe_wrapper_args
+        _rt_args += ['--exe-wrapper', _word]
     endforeach
     test(
         'test_list_parity',

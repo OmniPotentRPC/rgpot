@@ -42,4 +42,8 @@ int32_t rgpot_cxx_layout_compatible(const rgpot_cxx_layout_stamp_t *caller) {
              : 0;
 }
 
+RGPOT_CXX_LAYOUT_API std::uint64_t rgpot_fixture_neighbours_generation(void) {
+  return rgpot::nlist::Neighbours{}.generation();
+}
+
 } // extern "C"

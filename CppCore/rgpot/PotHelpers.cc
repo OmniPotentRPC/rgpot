@@ -9,7 +9,16 @@
  */
 
 #include "PotHelpers.hpp"
+#include <rgpot/plugin.h>
 #include <stdexcept>
+#include <string>
+
+#ifdef RGPOT_HAS_RUST_CORE
+#include "rgpot/eindir_abi.hpp"
+extern "C" {
+#include <rgpot.h>
+}
+#endif
 
 namespace rgpot {
 
@@ -45,6 +54,87 @@ void checkParams(const ForceInput &params) {
   if (params.nAtoms <= 0) {
     throw std::runtime_error("Can't work with zero atoms in force call");
   }
+}
+
+namespace {
+thread_local std::string g_force_error;
+
+int fail(const char *reason) {
+  g_force_error = reason;
+  return kInvalidParameter;
+}
+} // namespace
+
+static_assert(kInvalidParameter ==
+              static_cast<int>(RGPOT_PLUGIN_INVALID_PARAM));
+#ifdef RGPOT_HAS_RUST_CORE
+static_assert(kInvalidParameter == static_cast<int>(RGPOT_INVALID_PARAMETER));
+#endif
+
+void setForceLastError(const char *reason) noexcept {
+  if (reason == nullptr || reason[0] == '\0') {
+    return;
+  }
+  g_force_error = reason;
+}
+
+const char *forceLastError() noexcept { return g_force_error.c_str(); }
+
+int rejectInputCall(const ForceInput &in, bool needsCell, bool needsSpecies) {
+  if (in.nAtoms == 0) {
+    return fail("invalid parameter: nAtoms must be positive");
+  }
+  if (in.pos == nullptr) {
+    return fail("invalid parameter: positions is null");
+  }
+  if (needsSpecies && in.atmnrs == nullptr) {
+    return fail("invalid parameter: atomic numbers are null");
+  }
+  if (needsCell && in.box == nullptr) {
+    return fail("invalid parameter: box is null");
+  }
+  return 0;
+}
+
+int rejectForceCall(const ForceInput &in, const ForceOut *out,
+                    bool needsCell, bool needsSpecies) {
+  // A zero-atom call often has no force allocation, and that null must not
+  // become the reported error, so the force pointer is read only for atoms.
+  if (in.nAtoms != 0 && (out == nullptr || out->F == nullptr)) {
+    return fail("invalid parameter: forces are null");
+  }
+  return rejectInputCall(in, needsCell, needsSpecies);
+}
+
+void guardInputCall(const ForceInput &in, bool needsCell, bool needsSpecies) {
+  if (rejectInputCall(in, needsCell, needsSpecies) != 0) {
+    throw std::invalid_argument(forceLastError());
+  }
+}
+
+void guardForceCall(const ForceInput &in, const ForceOut *out,
+                    bool needsCell, bool needsSpecies) {
+  if (rejectForceCall(in, out, needsCell, needsSpecies) != 0) {
+    throw std::invalid_argument(forceLastError());
+  }
+}
+
+int rejectInputCall(const ForceInput &in, bool needsCell) {
+  return rejectInputCall(in, needsCell, true);
+}
+
+int rejectForceCall(const ForceInput &in, const ForceOut *out,
+                    bool needsCell) {
+  return rejectForceCall(in, out, needsCell, true);
+}
+
+void guardInputCall(const ForceInput &in, bool needsCell) {
+  guardInputCall(in, needsCell, true);
+}
+
+void guardForceCall(const ForceInput &in, const ForceOut *out,
+                    bool needsCell) {
+  guardForceCall(in, out, needsCell, true);
 }
 
 } // namespace rgpot

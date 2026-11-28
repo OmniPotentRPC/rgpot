@@ -9,6 +9,7 @@
 #include <capnp/serialize.h>
 #include <kj/array.h>
 
+#include <cctype>
 #include <cstdlib>
 #include <string>
 #include <vector>
@@ -64,7 +65,88 @@ std::vector<unsigned char> make_force_input(double cell_zz) {
   return flat_bytes(msg);
 }
 
+void set_env(const char *name, const char *value) {
+#ifdef _WIN32
+  _putenv_s(name, value != nullptr ? value : "");
+#else
+  if (value != nullptr)
+    setenv(name, value, 1);
+  else
+    unsetenv(name);
+#endif
+}
+
+// Sets the two cpmdc hint variables for one scope and restores them after.
+class CpmdcHints {
+public:
+  CpmdcHints(const char *library, const char *engine) {
+    for (int i = 0; i < 2; ++i) {
+      const char *old = std::getenv(kNames[i]);
+      had_[i] = old != nullptr;
+      if (had_[i])
+        old_[i] = old;
+    }
+    set_env(kNames[0], library);
+    set_env(kNames[1], engine);
+  }
+  ~CpmdcHints() {
+    for (int i = 0; i < 2; ++i)
+      set_env(kNames[i], had_[i] ? old_[i].c_str() : nullptr);
+  }
+  CpmdcHints(const CpmdcHints &) = delete;
+  CpmdcHints &operator=(const CpmdcHints &) = delete;
+
+private:
+  static constexpr const char *kNames[2] = {"CPMDC_LIBRARY",
+                                            "RGPOT_CPMDC_ENGINE"};
+  bool had_[2] = {false, false};
+  std::string old_[2];
+};
+
 } // namespace
+
+TEST_CASE("ProfileLoader tries an explicit path alone", "[abi][profile]") {
+  CpmdcHints hints("/env/libcpmdc.so", "/engine/libcpmdc.so");
+  const auto names =
+      rgpot::abi::ProfileLoader::candidates("cpmdc", "/opt/libcpmdc.so");
+  REQUIRE(names == std::vector<std::string>{"/opt/libcpmdc.so"});
+}
+
+TEST_CASE("ProfileLoader tries set hints without the default names",
+          "[abi][profile]") {
+  {
+    CpmdcHints hints("/env/libcpmdc.so", "/engine/libcpmdc.so");
+    REQUIRE(
+        rgpot::abi::ProfileLoader::candidates("cpmdc", "") ==
+        std::vector<std::string>{"/env/libcpmdc.so", "/engine/libcpmdc.so"});
+  }
+  {
+    CpmdcHints hints(nullptr, nullptr);
+    const auto names = rgpot::abi::ProfileLoader::candidates("cpmdc", "");
+    REQUIRE(names.front() == "libcpmdc.so");
+    REQUIRE(names.size() == 5);
+  }
+}
+
+TEST_CASE("ProfileLoader does not pass a failed hint to the default names",
+          "[abi][profile]") {
+  const std::string missing = "./libcpmdc_missing_for_test.so";
+  CpmdcHints hints(missing.c_str(), nullptr);
+  rgpot::abi::ProfileLoader loader;
+  std::string why;
+  try {
+    loader.load("cpmdc");
+  } catch (const std::runtime_error &ex) {
+    why = ex.what();
+  }
+  REQUIRE(why.rfind("libcpmdc not loaded; " + missing + ": ", 0) == 0);
+  REQUIRE(why.find("; libcpmdc.so:") == std::string::npos);
+  REQUIRE_FALSE(loader.loaded());
+
+  CpmdcHints good(fake_engine_path().c_str(), nullptr);
+  loader.load("cpmdc");
+  REQUIRE(loader.loaded());
+}
 
 TEST_CASE("ProfileLoader resolves the full minimum profile from one prefix",
           "[abi][profile]") {
@@ -226,9 +308,41 @@ TEST_CASE("Capabilities handshake rejection matrix",
 
   rgpot::abi::Expectation strict;
   strict.protocol_minor_min = 2;
-  REQUIRE(verdict([](B) {}, strict).find("protocol minor") !=
-          std::string::npos);
+  REQUIRE(verdict([](B c) { c.setProtocolMinor(1); }, strict)
+              .find("protocol minor") != std::string::npos);
   REQUIRE(verdict([](B c) { c.setProtocolMinor(2); }, strict).empty());
+  REQUIRE(rgpot::abi::force_input_expectation(false).protocol_minor_min == 0);
+  REQUIRE(rgpot::abi::force_input_expectation(true).protocol_minor_min ==
+          rgpot::abi::kOrbitalKeyIntroducedMinor);
+}
+
+TEST_CASE("Capabilities handshake accepts a schema id with an optional 0x prefix",
+          "[abi][profile][compat]") {
+  const std::string stored = rgpot::abi::kSchemaId;
+  REQUIRE(stored.rfind("0x", 0) == 0);
+  const std::string bare = stored.substr(2);
+  REQUIRE(bare != stored);
+  REQUIRE(verdict([&](::Capabilities::Builder caps) { caps.setSchemaId(bare); })
+              .empty());
+
+  std::string upper = stored;
+  for (char &ch : upper)
+    ch = static_cast<char>(std::toupper(static_cast<unsigned char>(ch)));
+  REQUIRE(upper != stored);
+  REQUIRE(verdict([&](::Capabilities::Builder caps) { caps.setSchemaId(upper); })
+              .empty());
+
+  std::string prefixed = "0X";
+  for (char ch : bare)
+    prefixed.push_back(
+        static_cast<char>(std::toupper(static_cast<unsigned char>(ch))));
+  REQUIRE(verdict([&](::Capabilities::Builder caps) {
+            caps.setSchemaId(prefixed);
+          }).empty());
+
+  const auto mismatch =
+      verdict([](::Capabilities::Builder caps) { caps.setSchemaId("deadbeef"); });
+  REQUIRE(mismatch.find("schema id") != std::string::npos);
 }
 
 TEST_CASE("checked_load accepts the fake engine, whose capabilities are "
@@ -248,6 +362,7 @@ TEST_CASE("checked_load accepts the fake engine, whose capabilities are "
   REQUIRE(std::string(caps.getProtocolFamily().cStr()) ==
           rgpot::abi::kProtocolFamily);
   REQUIRE(caps.getProtocolMajor() == rgpot::abi::kProtocolMajor);
+  REQUIRE(caps.getProtocolMinor() == rgpot::abi::kProtocolMinor);
   REQUIRE(std::string(caps.getSchemaId().cStr()) == rgpot::abi::kSchemaId);
 #ifdef RGPOT_SCHEMA_HAS_BUILD_IDENTITY
   REQUIRE(std::string(caps.getBuildVersion().cStr()) == RGPOT_BUILD_VERSION);

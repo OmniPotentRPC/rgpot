@@ -21,14 +21,13 @@
 // clang-format on
 
 #ifdef RGPOT_HAS_CACHE
-#define XXH_INLINE_ALL
 #include "rgpot/CalculatorGroup.hpp"
 #include "rgpot/PotentialCache.hpp"
-#include <xxhash.h>
 #endif
 
 #include "rgpot/ForceStructs.hpp"
 #include "rgpot/PotHelpers.hpp"
+#include "rgpot/Slices.hpp"
 #include "rgpot/pot_caps.hpp"
 #include "rgpot/pot_types.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
@@ -59,8 +58,10 @@ public:
    * @param box The simulation cell vectors.
    * @return A pair containing the energy and the force matrix.
    */
-  /// Energy, forces, and optional uncertainty scale (eV). See derived
-  /// Potential::operator() for variance semantics.
+  /// Energy, forces, and an optional variance in the square of the energy
+  /// unit (eV^2) or of the force unit (eV^2/Angstrom^2); one square root gives
+  /// a scale in eV or eV/Angstrom. See derived Potential::operator() for what
+  /// each potential stores.
   virtual std::tuple<double, types::AtomMatrix, double>
   operator()(const types::AtomMatrix &positions,
              const std::vector<int> &atmtypes,
@@ -73,6 +74,40 @@ public:
    * sharing and cloning policy from this instead of hard-coded lists.
    */
   [[nodiscard]] virtual PotCaps caps() const noexcept { return {}; }
+
+  /// Exact energy-Hessian product. Implementations advertising
+  /// `caps().analyticHvp` override this hook; callers guarantee that the
+  /// direction and output buffers (`3 * in.nAtoms` doubles each) do not
+  /// overlap.
+  virtual void hessianVectorImpl(const ForceInput &, const double *,
+                                 double *) const {
+    throw std::runtime_error(
+        "potential has no analytic Hessian-vector product");
+  }
+
+  /// Dense energy Hessian from closed-form derivatives. Implementations
+  /// advertising `caps().analyticHessian` override this hook. The output
+  /// holds `3 * in.nAtoms` squared doubles, row-major, coordinate
+  /// `3 * i + k` for axis `k` of atom `i`, and is written symmetric.
+  virtual void hessianImpl(const ForceInput &, double *) const {
+    throw std::runtime_error("potential has no analytic Hessian");
+  }
+
+  /// Dense energy Hessian, laid out as for `hessianImpl`, from dual-number
+  /// evaluation of the energy kernel. Implementations advertising
+  /// `caps().adHessian` override this hook.
+  virtual void hessianAdImpl(const ForceInput &, double *) const {
+    throw std::runtime_error("potential has no dual-number Hessian");
+  }
+
+  /// Energy-Hessian product from dual-number evaluation of the energy
+  /// kernel. Implementations advertising `caps().adHvp` override this hook;
+  /// the buffers follow `hessianVectorImpl`.
+  virtual void hessianVectorAdImpl(const ForceInput &, const double *,
+                                   double *) const {
+    throw std::runtime_error(
+        "potential has no dual-number Hessian-vector product");
+  }
 
   /**
    * @brief Evaluate a batch of independent systems in one call.
@@ -162,9 +197,12 @@ public:
    * @param positions The atomic coordinates.
    * @param atmtypes The atomic numbers.
    * @param box The simulation cell vectors.
-   * @return Energy, force matrix, and optional model/orientation variance
-   *         (e.g. metatomic energy_uncertainty mean or multi-rotation energy
-   *         sample variance). Variance is 0 when unused.
+   * @return Energy, force matrix, and optional model/orientation variance.
+   *         Metatomic stores the square of the energy_uncertainty mean, or
+   *         the mean-square force residual over orientations. Variance is 0
+   *         when unused. Callers that want an RMS take one square root.
+   *         A weighted sum (ExprPot, SumPot) scales each term's variance by
+   *         the square of its weight.
    */
   std::tuple<double, types::AtomMatrix, double>
   operator()(const types::AtomMatrix &positions,
@@ -188,6 +226,7 @@ public:
                 .variance = 0.0,
                 .stress = {},
                 .has_stress = 0};
+    guardForceCall(fi, &fo, needsCell());
 
 #ifdef RGPOT_HAS_CACHE
     rgpot::cache::KeyHash key = cacheKey(fi);
@@ -246,12 +285,19 @@ public:
   /**
    * @brief Batched counterpart of @c forceImpl.
    *
-   * The default evaluates the systems one at a time, so every kernel
-   * answers a batch call correctly without writing anything. Override it
-   * where the kernel can do better than a loop -- one model forward pass
-   * over all systems, one device transfer, one neighbour-list build
-   * across a shared topology -- and set @c caps().batched so callers know
-   * the difference.
+   * The default evaluates each system whole. A shared instance spreads
+   * its systems across the thread team when @c teamSize, with the
+   * @c kTeamMinAtoms and @c kTeamFrom of that potential, would leave
+   * every system on one thread. A potential without those counts uses
+   * the neighbour-list threshold. A system that would open a team, a
+   * potential that is not a shared instance, and a call that is already
+   * inside a team stay on the serial loop, so in-system threading is
+   * not nested and a spread worker does not open a team. The bits match
+   * that loop.
+   * Override it where the kernel can do better than a loop of
+   * @c forceImpl calls, one model forward pass over all systems, one
+   * device transfer, one neighbour-list build across a shared topology,
+   * and set @c caps().batched so callers know the difference.
    *
    * An override must fill @c batch.out[i] for every i from @c batch.in[i]
    * and treat the systems as independent: no ordering, no shared state,
@@ -259,9 +305,20 @@ public:
    * @c batch.out[i] arrives zeroed, as for @c forceImpl.
    */
   virtual void forceBatchImpl(const ForceBatch &batch) const {
-    for (size_t i = 0; i < batch.nSystems; ++i) {
+    auto one = [&](std::size_t i) {
       static_cast<const Derived *>(this)->forceImpl(batch.in[i], &batch.out[i]);
+    };
+    const PotCaps advertised = caps();
+    if (advertised.reentrancy != Reentrancy::SharedInstance ||
+        advertised.perImageInstances || advertised.groupCollective) {
+      for (size_t i = 0; i < batch.nSystems; ++i) {
+        one(i);
+      }
+      return;
     }
+    forEachBatchSystem(
+        batch.nSystems, [&](std::size_t i) { return batch.in[i].nAtoms; }, one,
+        batchFrom<Derived>(0), batchTeam<Derived>(0));
   }
 
   /**
@@ -276,6 +333,15 @@ public:
   void forceBatch(const ForceBatch &batch) override {
     if (batch.nSystems == 0) {
       return;
+    }
+    // Before any element is read. A positive count with a null array
+    // used to crash in the zeroing loop below.
+    if (batch.in == nullptr || batch.out == nullptr) {
+      throw std::invalid_argument(
+          "invalid parameter: batch input or output is null");
+    }
+    for (size_t i = 0; i < batch.nSystems; ++i) {
+      guardForceCall(batch.in[i], &batch.out[i], needsCell());
     }
     for (size_t i = 0; i < batch.nSystems; ++i) {
       ForceOut &out = batch.out[i];
@@ -367,27 +433,39 @@ public:
   }
 
 private:
+  /// Atom count `teamSize` uses for a batch of this potential. A class
+  /// that publishes `kTeamMinAtoms` and `kTeamFrom` uses those. Any other
+  /// class keeps the neighbour-list threshold.
+  template <typename T, typename = decltype(T::kTeamMinAtoms), typename = decltype(T::kTeamFrom)>
+  static constexpr std::size_t batchFrom(int) {
+    return T::kTeamMinAtoms;
+  }
+  template <typename T> static constexpr std::size_t batchFrom(...) { return kTeamMinAtoms; }
+  template <typename T, typename = decltype(T::kTeamFrom)>
+  static constexpr TeamFrom batchTeam(int) {
+    return T::kTeamFrom;
+  }
+  template <typename T> static constexpr TeamFrom batchTeam(...) { return {}; }
+
+  /// Whether a call without a cell is an error for this kernel: it is
+  /// periodic and does not declare @c kCellOptional.
+  [[nodiscard]] bool needsCell() const noexcept {
+    return caps().periodic && !kernelCellOptional<Derived>();
+  }
+
 #ifdef RGPOT_HAS_CACHE
   /**
    * @brief Result-cache key for one system.
    *
    * Shared by the single and batched entry points so the two can never
    * disagree about what identifies a result. Mixes the geometry, the
-   * species, the cell, the potential type and the parameter fingerprint,
-   * so neither a different config nor a different kernel can collide.
+   * species, the cell (with a null box hashed as a non-periodic marker
+   * distinct from any 9-double box), the potential type and the parameter
+   * fingerprint, so neither a different config nor a different kernel can
+   * collide.
    */
   [[nodiscard]] rgpot::cache::KeyHash cacheKey(const ForceInput &fi) const {
-    size_t hash_val = 0;
-    hash_val ^= XXH3_64bits(fi.pos, fi.nAtoms * 3 * sizeof(double));
-    hash_val ^= XXH3_64bits(fi.atmnrs, fi.nAtoms * sizeof(int));
-    hash_val ^= XXH3_64bits(fi.box, 9 * sizeof(double));
-    size_t type_val = static_cast<size_t>(m_type);
-    hash_val ^= XXH3_64bits(&type_val, sizeof(size_t));
-    // Parameter fingerprint: two instances of one PotType with different
-    // configs must never share cache entries.
-    uint64_t params_val = paramsKey();
-    hash_val ^= XXH3_64bits(&params_val, sizeof(params_val));
-    return rgpot::cache::KeyHash(hash_val);
+    return rgpot::cache::result_key(fi, m_type, paramsKey());
   }
 
   rgpot::cache::PotentialCache *_cache =

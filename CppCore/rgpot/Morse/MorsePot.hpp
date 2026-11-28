@@ -15,6 +15,7 @@
 
 // clang-format off
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 // clang-format on
 #include "rgpot/Locality.hpp"
@@ -88,7 +89,10 @@ public:
   }
 
   [[nodiscard]] PotCaps caps() const noexcept override {
-    return {.reentrancy = Reentrancy::PerInstance, .stress = true};
+    return {.reentrancy = Reentrancy::PerInstance,
+            .stress = true,
+            .analyticHvp = true,
+            .analyticHessian = true};
   }
 
   [[nodiscard]] uint64_t paramsKey() const noexcept override {
@@ -118,7 +122,18 @@ public:
    * (HessianVector.hpp) uses it in place of finite differences.
    */
   void hessianVectorImpl(const ForceInput &in, const double *v,
-                         double *hv) const;
+                         double *hv) const override;
+
+  /**
+   * @brief Dense analytic Hessian.
+   *
+   * The pairs and pair derivatives of @c hessianVectorImpl, each pair adding
+   * its block @f$K@f$ (PairHessian.hpp) to the diagonal blocks of its atoms
+   * and @f$-K@f$ to the two off-diagonal ones. @a h holds @f$(3N)^2@f$
+   * doubles, row-major, and is written symmetric to the last bit. Like the
+   * product, it skips two atoms on one point, where Morse has no direction.
+   */
+  void hessianImpl(const ForceInput &in, double *h) const override;
 
   /// forceImpl plus each pair energy and virial split half to each atom.
   void forcePerAtom(const ForceInput &in, ForceOut *out, const PerAtomOut &atoms) const;
@@ -131,6 +146,15 @@ public:
                   StageTally *tally) const;
 
   void setNeighbourMode(nlist::Mode mode) noexcept { mode_ = mode; }
+
+  /// Atoms from which a call adds its terms atom by atom in index order,
+  /// on any thread count: the least in kTeamFrom.
+  static constexpr std::size_t kTeamMinAtoms = 24;
+  /// Atoms from which a team of two threads opens, of three, and of four
+  /// or more: the smallest clusters from which each took at most nine
+  /// tenths of the one-thread time in thread_count_bench. A team evaluates
+  /// each pair twice, and no team of two did.
+  static constexpr TeamFrom kTeamFrom{kNoTeam, 2048, kTeamMinAtoms};
 
   /// True when the last force call kept the Verlet list. Half the skin,
   /// the same predicate as `nlist::Builder::update`.

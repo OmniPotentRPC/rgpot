@@ -35,15 +35,28 @@ struct Stub {
   int (*force)(RgpotEnginePot *, long, const double *, const int *, double *,
                double *, double *, const double *,
                rgpot_engine_coord_transform, void *) = nullptr;
+  int (*hvp)(RgpotEnginePot *, long, const double *, const int *,
+             const double *, double *, const double *) = nullptr;
   int (*force_batch)(RgpotEnginePot *, long, long, const double *, const int *,
                      double *, double *, double *, const double *,
                      rgpot_engine_coord_transform, void *) = nullptr;
+  int (*taylor_jet)(RgpotEnginePot *, long, long, const double *, const int *,
+                    const double *, long, double *,
+                    RgpotEngineDerivativeReport *, const double *) = nullptr;
   RgpotEngineAbiStamp (*stamp)() = nullptr;
+  int (*compatible)(const RgpotEngineAbiStamp *) = nullptr;
   int (*caps)(const RgpotEnginePot *, RgpotEngineCaps *) = nullptr;
   size_t (*last_error)(const RgpotEnginePot *, char *, size_t) = nullptr;
   size_t (*digest)(const RgpotEnginePot *, char *, size_t) = nullptr;
   int (*set_num_threads)(RgpotEnginePot *, int, int) = nullptr;
   int (*set_charge_spin)(RgpotEnginePot *, int, int) = nullptr;
+  int (*select_orbitals)(RgpotEnginePot *, long long) = nullptr;
+  int (*copy_orbitals)(RgpotEnginePot *, long long, long long) = nullptr;
+  long (*last_components)(const RgpotEnginePot *, RgpotEngineComponent *,
+                          double *, long) = nullptr;
+  size_t (*component_name)(const RgpotEnginePot *, long, char *,
+                           size_t) = nullptr;
+  long long (*orbital_key)() = nullptr;
   int (*max_concurrent)() = nullptr;
   void (*reset)() = nullptr;
   int (*charge)() = nullptr;
@@ -70,8 +83,12 @@ Stub &stub() {
     out.create = sym<decltype(out.create)>(h, "rgpot_engine_create");
     out.destroy = sym<decltype(out.destroy)>(h, "rgpot_engine_destroy");
     out.force = sym<decltype(out.force)>(h, "rgpot_engine_force");
+    out.hvp = sym<decltype(out.hvp)>(h, "rgpot_engine_hvp");
     out.force_batch = sym<decltype(out.force_batch)>(h, "rgpot_engine_force_batch");
+    out.taylor_jet = sym<decltype(out.taylor_jet)>(h, "rgpot_engine_taylor_jet");
     out.stamp = sym<decltype(out.stamp)>(h, "rgpot_engine_abi_stamp");
+    out.compatible =
+        sym<decltype(out.compatible)>(h, "rgpot_engine_abi_compatible");
     out.caps = sym<decltype(out.caps)>(h, "rgpot_engine_caps");
     out.last_error = sym<decltype(out.last_error)>(h, "rgpot_engine_last_error");
     out.digest = sym<decltype(out.digest)>(h, "rgpot_engine_model_digest");
@@ -79,6 +96,15 @@ Stub &stub() {
         sym<decltype(out.set_num_threads)>(h, "rgpot_engine_set_num_threads");
     out.set_charge_spin =
         sym<decltype(out.set_charge_spin)>(h, "rgpot_engine_set_charge_spin");
+    out.select_orbitals =
+        sym<decltype(out.select_orbitals)>(h, "rgpot_engine_select_orbitals");
+    out.copy_orbitals =
+        sym<decltype(out.copy_orbitals)>(h, "rgpot_engine_copy_orbitals");
+    out.last_components = sym<decltype(out.last_components)>(
+        h, "rgpot_engine_last_components");
+    out.component_name =
+        sym<decltype(out.component_name)>(h, "rgpot_engine_component_name");
+    out.orbital_key = sym<long long (*)()>(h, "stub_orbital_key");
     out.max_concurrent = sym<int (*)()>(h, "stub_max_concurrent");
     out.reset = sym<void (*)()>(h, "stub_reset");
     out.charge = sym<int (*)()>(h, "stub_charge");
@@ -90,8 +116,11 @@ Stub &stub() {
 
 /// A word-aligned configuration: reentrancy, hooks cleared, model named.
 RgpotEnginePot *make(Stub &s, unsigned char reentrancy,
-                     unsigned char no_hooks = 0, unsigned char model = 0) {
-  alignas(8) unsigned char cfg[8] = {reentrancy, no_hooks, model, 0, 0, 0, 0, 0};
+                     unsigned char no_hooks = 0, unsigned char model = 0,
+                     unsigned char with_hvp = 1,
+                     unsigned char partial_jet = 0) {
+  alignas(8) unsigned char cfg[8] = {reentrancy, no_hooks, model, with_hvp,
+                                     partial_jet, 0,       0,     0};
   char err[256] = {0};
   RgpotEnginePot *pot = s.create(cfg, sizeof(cfg), err, sizeof(err));
   INFO(err);
@@ -145,7 +174,25 @@ TEST_CASE("the table identifies the engine", "[engine][adapter]") {
   const RgpotEngineAbiStamp stamp = s.stamp();
   REQUIRE(stamp.abi_major == RGPOT_ENGINE_ABI_VERSION);
   REQUIRE(stamp.abi_minor == RGPOT_ENGINE_ABI_MINOR);
-  REQUIRE(RGPOT_ENGINE_ABI_MINOR >= 2);
+  REQUIRE(stamp.layout_revision == RGPOT_ENGINE_ABI_LAYOUT_REVISION);
+  REQUIRE(RGPOT_ENGINE_ABI_MINOR >= 5);
+}
+
+TEST_CASE("the ABI check serves equal and older plugin minors",
+          "[engine][adapter][abi]") {
+  Stub &s = stub();
+  const RgpotEngineAbiStamp plugin = s.stamp();
+  RgpotEngineAbiStamp host = plugin;
+  REQUIRE(s.compatible(&host) == 1);
+
+  // The fixed plugin is one minor older than this host.
+  ++host.abi_minor;
+  REQUIRE(s.compatible(&host) == 1);
+
+  // The fixed plugin is one minor newer than this host.
+  host = plugin;
+  --host.abi_minor;
+  REQUIRE(s.compatible(&host) == 0);
 }
 
 TEST_CASE("create refuses a missing or ragged configuration",
@@ -219,6 +266,81 @@ TEST_CASE("force_batch evaluates strided systems", "[engine][adapter]") {
   s.destroy(pot);
 }
 
+TEST_CASE("analytic HVP passes through the engine ABI", "[engine][adapter]") {
+  Stub &s = stub();
+  RgpotEnginePot *pot = make(s, 0);
+  const double pos[6] = {1, 2, 3, 4, 5, 6};
+  const double direction[6] = {0.2, -0.3, 0.4, 0.1, -0.5, 0.7};
+  double product[6] = {};
+  REQUIRE(s.hvp(pot, 2, pos, kZ.data(), direction, product, kBox.data()) ==
+          RGPOT_ENGINE_OK);
+  for (std::size_t i = 0; i < std::size(direction); ++i)
+    REQUIRE(product[i] == Catch::Approx(direction[i]));
+  RgpotEngineCaps caps{};
+  caps.size = sizeof(caps);
+  REQUIRE(s.caps(pot, &caps) == 0);
+  REQUIRE(caps.analytic_hvp == 1);
+  s.destroy(pot);
+}
+
+TEST_CASE("analytic HVP rejects overlapping direction and output buffers",
+          "[engine][adapter]") {
+  Stub &s = stub();
+  RgpotEnginePot *pot = make(s, 0);
+  const double pos[6] = {1, 2, 3, 4, 5, 6};
+  const std::array<double, 7> initial = {0.2, -0.3, 0.4, 0.1, -0.5, 0.7, 0.9};
+  std::array<double, 7> buf = initial;
+
+  REQUIRE(s.hvp(pot, 2, pos, kZ.data(), buf.data(), buf.data(), kBox.data()) ==
+          RGPOT_ENGINE_ERR_INVALID);
+  REQUIRE(error_of(s, pot).find("overlap") != std::string::npos);
+  REQUIRE(buf == initial);
+
+  REQUIRE(s.hvp(pot, 2, pos, kZ.data(), buf.data(), buf.data() + 1,
+                kBox.data()) == RGPOT_ENGINE_ERR_INVALID);
+  REQUIRE(buf == initial);
+
+  REQUIRE(s.hvp(pot, 2, pos, kZ.data(), buf.data() + 1, buf.data(),
+                kBox.data()) == RGPOT_ENGINE_ERR_INVALID);
+  REQUIRE(buf == initial);
+
+  REQUIRE(s.hvp(pot, 2, pos, kZ.data(), buf.data(),
+                const_cast<double *>(pos), kBox.data()) ==
+          RGPOT_ENGINE_ERR_INVALID);
+  REQUIRE(s.hvp(pot, 2, pos, kZ.data(), buf.data(),
+                const_cast<double *>(kBox.data()),
+                kBox.data()) == RGPOT_ENGINE_ERR_INVALID);
+  REQUIRE(buf == initial);
+  s.destroy(pot);
+}
+
+TEST_CASE("analytic HVP accepts adjacent buffers", "[engine][adapter]") {
+  Stub &s = stub();
+  RgpotEnginePot *pot = make(s, 0);
+  const double pos[6] = {1, 2, 3, 4, 5, 6};
+  std::array<double, 12> buffers = {0.2, -0.3, 0.4, 0.1, -0.5, 0.7};
+  REQUIRE(s.hvp(pot, 2, pos, kZ.data(), buffers.data(), buffers.data() + 6,
+                kBox.data()) == RGPOT_ENGINE_OK);
+  s.destroy(pot);
+}
+
+TEST_CASE("analytic HVP is capability-gated", "[engine][adapter]") {
+  Stub &s = stub();
+  RgpotEnginePot *pot = make(s, 0, 0, 0, 0);
+  RgpotEngineCaps caps{};
+  caps.size = sizeof(caps);
+  REQUIRE(s.caps(pot, &caps) == RGPOT_ENGINE_OK);
+  REQUIRE(caps.analytic_hvp == 0);
+  const double pos[6] = {1, 2, 3, 4, 5, 6};
+  const double direction[6] = {0.2, -0.3, 0.4, 0.1, -0.5, 0.7};
+  double product[6] = {};
+  REQUIRE(s.hvp(pot, 2, pos, kZ.data(), direction, product, kBox.data()) ==
+          RGPOT_ENGINE_ERR_UNSUPPORTED);
+  REQUIRE(error_of(s, pot).find("analytic Hessian-vector") !=
+          std::string::npos);
+  s.destroy(pot);
+}
+
 TEST_CASE("the capabilities come from the backend", "[engine][adapter]") {
   Stub &s = stub();
   for (unsigned char r = 0; r < 3; ++r) {
@@ -228,6 +350,8 @@ TEST_CASE("the capabilities come from the backend", "[engine][adapter]") {
     REQUIRE(s.caps(pot, &caps) == 0);
     REQUIRE(caps.reentrancy == r);
     REQUIRE(caps.per_image_instances == 1);
+    REQUIRE(caps.orbital_selection == 1);
+    REQUIRE(caps.orbital_copy == 1);
     s.destroy(pot);
   }
 }
@@ -275,10 +399,17 @@ TEST_CASE("charge, spin and thread settings reach the backend",
   REQUIRE(s.set_charge_spin(pot, -1, 2) == 0);
   REQUIRE(s.charge() == -1);
   REQUIRE(s.spin() == 2);
-  REQUIRE(s.set_charge_spin(pot, 0, 0) == 1);
+  REQUIRE(s.set_charge_spin(pot, 0, -1) == 1);
+  REQUIRE(s.set_charge_spin(pot, 0, 0) == 0);
+  REQUIRE(s.charge() == 0);
+  REQUIRE(s.spin() == 0);
+  REQUIRE(s.set_charge_spin(pot, -1, 2) == 0);
   REQUIRE(s.set_charge_spin(pot, 99, 1) == 3);
   REQUIRE(error_of(s, pot).find("refused") != std::string::npos);
   REQUIRE(s.charge() == -1);
+  REQUIRE(s.set_charge_spin(pot, 0, 101) == 3);
+  REQUIRE(error_of(s, pot).find("refused") != std::string::npos);
+  REQUIRE(s.spin() == 2);
   REQUIRE(s.set_num_threads(pot, 2, 1) == 0);
   REQUIRE(s.set_num_threads(pot, 2, 99) == 2);
   REQUIRE(error_of(s, pot).find("refused") != std::string::npos);
@@ -288,10 +419,80 @@ TEST_CASE("charge, spin and thread settings reach the backend",
   REQUIRE(s.set_charge_spin(bare, 0, 1) == 3);
   REQUIRE(s.set_num_threads(bare, 1, 1) == 3);
   REQUIRE(!error_of(s, bare).empty());
+  REQUIRE(s.select_orbitals(bare, 1) == 3);
+  REQUIRE(error_of(s, bare) == "backend has no orbital selection");
+  REQUIRE(s.copy_orbitals(bare, 1, 2) == 3);
+  REQUIRE(error_of(s, bare) == "backend has no orbital copy");
   s.destroy(bare);
 }
 
-TEST_CASE("a shared instance runs calls concurrently", "[engine][adapter][threads]") {
+TEST_CASE("an orbital key reaches the backend that keeps one per call",
+          "[engine][adapter]") {
+  Stub &s = stub();
+  RgpotEnginePot *pot = make(s, 0);
+  REQUIRE(s.select_orbitals(pot, 17) == 0);
+  REQUIRE(s.orbital_key() == 17);
+  REQUIRE(s.select_orbitals(pot, -1) == 3);
+  REQUIRE(error_of(s, pot).find("refused") != std::string::npos);
+  REQUIRE(s.orbital_key() == 17);
+  s.destroy(pot);
+
+  RgpotEnginePot *bare = make(s, 0, 1);
+  REQUIRE(s.select_orbitals(bare, 4) == 3);
+  REQUIRE(error_of(s, bare) == "backend has no orbital selection");
+  s.destroy(bare);
+}
+
+TEST_CASE("orbital hooks report success and adapter errors",
+          "[engine][adapter]") {
+  Stub &s = stub();
+  RgpotEnginePot *pot = make(s, 0);
+
+  REQUIRE(s.select_orbitals(pot, 7) == 0);
+  REQUIRE(s.orbital_key() == 7);
+  REQUIRE(s.copy_orbitals(pot, 7, 8) == 0);
+  REQUIRE(s.select_orbitals(nullptr, 7) == 1);
+  REQUIRE(s.copy_orbitals(nullptr, 7, 8) == 1);
+
+  REQUIRE(s.select_orbitals(pot, -1) == 3);
+  REQUIRE(error_of(s, pot).find("refused") != std::string::npos);
+  REQUIRE(s.orbital_key() == 7);
+  REQUIRE(s.copy_orbitals(pot, -1, 8) == 3);
+  REQUIRE(error_of(s, pot).find("refused") != std::string::npos);
+
+  REQUIRE(s.select_orbitals(pot, -2) == 2);
+  REQUIRE(error_of(s, pot).find("failed") != std::string::npos);
+  REQUIRE(s.select_orbitals(pot, 7) == 0);
+  REQUIRE(error_of(s, pot).empty());
+  REQUIRE(s.copy_orbitals(pot, 7, -2) == 2);
+  REQUIRE(error_of(s, pot).find("failed") != std::string::npos);
+  REQUIRE(s.copy_orbitals(pot, 7, 8) == 0);
+  REQUIRE(error_of(s, pot).empty());
+  s.destroy(pot);
+}
+
+TEST_CASE("a backend that is not a sum has no components",
+          "[engine][adapter]") {
+  Stub &s = stub();
+  RgpotEnginePot *pot = make(s, 0);
+  const double pos[6] = {1, 2, 3, 4, 5, 6};
+  double forces[6], energy = 0.0;
+  REQUIRE(s.force(pot, 2, pos, kZ.data(), forces, &energy, nullptr,
+                  kBox.data(), nullptr, nullptr) == 0);
+  RgpotEngineComponent rec[2];
+  double term_forces[12];
+  REQUIRE(s.last_components(pot, nullptr, nullptr, 0) == 0);
+  REQUIRE(s.last_components(pot, rec, term_forces, 2) == 0);
+  REQUIRE(s.last_components(nullptr, rec, term_forces, 2) == -1);
+  char name[8] = {'x', 0};
+  REQUIRE(s.component_name(pot, 0, name, sizeof(name)) == 0);
+  REQUIRE(name[0] == '\0');
+  REQUIRE(s.component_name(nullptr, 0, name, sizeof(name)) == 0);
+  s.destroy(pot);
+}
+
+TEST_CASE("a shared instance runs calls concurrently",
+          "[engine][adapter][threads]") {
   Stub &s = stub();
   s.reset();
   RgpotEnginePot *pot = make(s, 0);
@@ -353,4 +554,38 @@ TEST_CASE("SHA-256 matches the published vectors", "[engine][sha256]") {
   REQUIRE(h.hex_digest() ==
           "cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0");
   REQUIRE(Sha256::of_file("/nonexistent/file").empty());
+}
+
+TEST_CASE("a failed jet leaves the caller buffers byte-identical",
+          "[engine][adapter][jet]") {
+  Stub &s = stub();
+  RgpotEnginePot *pot = make(s, 1, 0, 0, 0, 1);
+  RgpotEngineCaps caps{};
+  caps.size = sizeof(caps);
+  REQUIRE(s.caps(pot, &caps) == 0);
+  REQUIRE(caps.jet_order == 3);
+
+  const double positions[3] = {1.0, 2.0, 3.0};
+  const int z[1] = {1};
+  const double direction[3] = {0.2, -0.3, 0.4};
+  const double box[9] = {10, 0, 0, 0, 10, 0, 0, 0, 10};
+  // Order 2, one atom: 2 * 3 doubles. The backend writes every entry, then
+  // throws. The caller's jet and report must still match the bytes they had.
+  std::array<double, 6> jet{};
+  std::memset(jet.data(), 0xA5, sizeof(jet));
+  std::array<unsigned char, sizeof(jet)> jet_before{};
+  std::memcpy(jet_before.data(), jet.data(), sizeof(jet));
+  RgpotEngineDerivativeReport report{};
+  report.tracked = 4;
+  report.operations = 11;
+  report.scale = -2.5;
+  std::array<unsigned char, sizeof(report)> report_before{};
+  std::memcpy(report_before.data(), &report, sizeof(report));
+
+  REQUIRE(s.taylor_jet(pot, 1, 1, positions, z, direction, 2, jet.data(),
+                       &report, box) == RGPOT_ENGINE_ERR_EVAL);
+  REQUIRE(std::memcmp(jet.data(), jet_before.data(), sizeof(jet)) == 0);
+  REQUIRE(std::memcmp(&report, report_before.data(), sizeof(report)) == 0);
+  REQUIRE(error_of(s, pot).find("after writing") != std::string::npos);
+  s.destroy(pot);
 }

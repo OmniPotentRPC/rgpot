@@ -19,6 +19,7 @@
 #include <cstring>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include <capnp/message.h>
@@ -42,7 +43,9 @@ namespace abi {
 
 inline constexpr const char *kProtocolFamily = "rgpot.potentials";
 inline constexpr uint16_t kProtocolMajor = 1;
-inline constexpr uint16_t kProtocolMinor = 0;
+inline constexpr uint16_t kProtocolMinor = 2;
+/** Minor that introduced the orbital-key fields; not tied to kProtocolMinor. */
+inline constexpr uint16_t kOrbitalKeyIntroducedMinor = 2;
 inline constexpr const char *kSchemaId = "0xbd1f89fa17369103";
 
 /** What the host requires of a backend. */
@@ -61,6 +64,39 @@ struct Expectation {
       ::Capabilities::Operation::ENERGY, ::Capabilities::Operation::FORCES};
 };
 
+/** Expectation for a request that sets the orbital-key `ForceInput` fields. */
+inline Expectation force_input_expectation(bool uses_orbital_key) {
+  Expectation want;
+  if (uses_orbital_key)
+    want.protocol_minor_min = kOrbitalKeyIntroducedMinor;
+  return want;
+}
+
+/**
+ * Cap'n Proto file ids match after one optional `0x` prefix and ASCII case.
+ * The same rule is what `rgpot_core::compat` applies.
+ */
+inline bool schema_ids_match(std::string_view reported, std::string_view expected) {
+  auto bare = [](std::string_view id) -> std::string_view {
+    if (id.size() >= 2 && id[0] == '0' && (id[1] == 'x' || id[1] == 'X'))
+      return id.substr(2);
+    return id;
+  };
+  auto lower = [](unsigned char c) -> unsigned char {
+    return (c >= 'A' && c <= 'Z') ? static_cast<unsigned char>(c - 'A' + 'a') : c;
+  };
+  const std::string_view left = bare(reported);
+  const std::string_view right = bare(expected);
+  if (left.size() != right.size())
+    return false;
+  for (size_t i = 0; i < left.size(); ++i) {
+    if (lower(static_cast<unsigned char>(left[i])) !=
+        lower(static_cast<unsigned char>(right[i])))
+      return false;
+  }
+  return true;
+}
+
 /** Empty when @p caps is acceptable, else the first incompatibility. */
 inline std::string check_capabilities(::Capabilities::Reader caps,
                                       const Expectation &want = {}) {
@@ -77,7 +113,7 @@ inline std::string check_capabilities(::Capabilities::Reader caps,
              std::to_string(want.protocol_minor_min);
   }
   const std::string schema_id = caps.getSchemaId().cStr();
-  if (!schema_id.empty() && schema_id != want.schema_id)
+  if (!schema_id.empty() && !schema_ids_match(schema_id, want.schema_id))
     return "schema id " + schema_id + " is not " + want.schema_id;
   if (caps.getBridgeAbiMajor() != 0) {
     if (caps.getBridgeAbiMajor() != want.bridge_abi_major)

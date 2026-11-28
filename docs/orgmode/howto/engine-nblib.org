@@ -1,0 +1,240 @@
+#+TITLE: GROMACS nblib
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+#+STARTUP: content
+
+* GROMACS nblib
+
+GROMACS ships a small C++ library, nblib, that builds a topology and evaluates
+its nonbonded and listed forces without running =mdrun=. rgpot can load it in
+process.
+The optional backend builds as =libnblib_engine= with =-Dwith_nblib=enabled=.
+It provides an engine-generic MD session whose forces come from nblib.
+Langevin dynamics, the hyperplane, the walls, the constraint force and the
+random stream are the driver OpenMM runs, so the two engines differ only in
+their forces.
+
+GROMACS is linked into =libnblib_engine= only.
+=librgpot= loads that library with =dlopen=, so a program that links rgpot does
+not link GROMACS.
+
+** Build
+
+nblib is an optional part of GROMACS.
+It needs the installed nblib and legacy headers and shared libraries, and a
+double-precision build, because a consumer that does not define =GMX_DOUBLE=
+disagrees with the library about the size of =real=.
+=engines/nblib/build_gromacs.sh= builds the pinned release (2025.5, checked
+against the tarball's sha256) into a prefix:
+
+#+attr_rgpot: skip builds GROMACS, several minutes
+#+begin_src bash
+engines/nblib/build_gromacs.sh "$HOME/gmx/install"
+meson setup build -Dwith_nblib=enabled -Dnblib_prefix="$HOME/gmx/install"
+meson compile -C build
+#+end_src
+
+=nblib_prefix= is the GROMACS install prefix.
+The library found there is =libnblib_gmx=.
+
+The meson tests are
+=nblib_session= (argon forces and energy against the shifted 12-6 closed form and the rgpot Lennard-Jones, the box round trip, and the typed neighbour status), =nblib_analytic=
+(the harmonic chain below), =md_engine_agreement= and =md_engine_analytic=
+(nblib against OpenMM).
+The last two need the OpenMM engine as well.
+
+** Topology text
+
+A topology is a line-oriented text.
+Blank lines and everything after =#= are ignored.
+An error names the line.
+
+| Line | Meaning |
+|------+---------|
+| =nblib 1= | format version, first line |
+| =cutoff <nm>= | nonbonded cutoff |
+| =coulomb none= or =coulomb cutoff= | no Coulomb, or GROMACS' reaction field with \(\epsilon_{rf}=1\) |
+| =atomtype <name> <mass> <c6> <c12>= | amu; kJ mol^-1 nm^6 and nm^12 |
+| =pair <A> <B> <c6> <c12>= | explicit cross term; otherwise geometric combination |
+| =molecule <name> <count>= ... =end= | a molecule, repeated =count= times |
+
+Inside a molecule:
+
+| Line | Parameters |
+|------+------------|
+| =atom <name> <type> <charge>= | charge in e |
+| =exclude <a> <b>= | atom names or indices |
+| =bond harmonic= or =g96 <a> <b> <k> <r0>= | kJ mol^-1 nm^-2 (g96: nm^-4), nm |
+| =bond morse <a> <b> <depth> <beta> <r0>= | kJ/mol, nm^-1, nm |
+| =angle harmonic= or =g96 <a> <b> <c> <k> <theta0>= | kJ mol^-1 rad^-2, degrees |
+| =dihedral proper <a> <b> <c> <d> <phi0> <k> <mult>= | degrees, kJ/mol |
+| =dihedral improper <a> <b> <c> <d> <phi0> <k>= | degrees, kJ mol^-1 rad^-2 |
+| =dihedral rb <a> <b> <c> <d> <c0> ... <c5>= | kJ/mol |
+| =pair14 <a> <b> <c6> <c12>= | 1-4 Lennard-Jones |
+
+The argon box of the tests is
+
+#+attr_rgpot: skip topology text, not code
+#+begin_src text
+nblib 1
+cutoff 0.7
+coulomb none
+atomtype Ar 39.948 0.0061551187151104025 9.508454572106801e-06
+molecule argon 108
+  atom Ar Ar 0.0
+end
+#+end_src
+
+** MD session
+
+The session uses the canonical
+=rgpot_md_session_*= C ABI in =CppCore/rgpot/ExternalPot/external_potentials.h=.
+nblib and OpenMM export the same vtable ABI from separate engine libraries.
+Use =rgpot_md_session_create("nblib", ..., topology, ..., ...)=; its loader uses
+the generic engine environment-variable lookup before its default library name.
+
+| Call | Purpose |
+|------+---------|
+| =rgpot_md_session_create=, =destroy= | a session from the topology text |
+| =set_periodic_box=, =get_periodic_box=, =set_positions=, =set_velocities= | state in and the box back |
+| =rgpot_md_session_initialize= | evaluate the first forces |
+| =rgpot_md_session_get_state=, =get_positions=, =get_velocities=, =get_forces=, =get_energy= | state out |
+| =rgpot_md_session_step_nve= | plain NVE steps, nblib's leap-frog |
+| =rgpot_md_session_run_langevin= | Langevin steps on a hyperplane, reflecting or rejecting walls, and the constraint force of every step |
+| =rgpot_md_session_reseed_velocities= | Maxwell-Boltzmann velocities, drawn in rgpot from the masses |
+| =rgpot_md_session_get_source_indices= | 0-based source index of each packed site |
+
+The units at the boundary are Angstrom, eV, ps and amu.
+=get_state= reports the force of the potential at the positions.
+Positions are never folded into the box.
+The box is rectangular, because nblib takes no other; a box with off-diagonal
+entries is an error.
+Velocities are \(v(t)\) at the time of the positions; nblib's leap-frog
+integrator keeps them half a step away, and the session converts, so a plain
+step is the velocity Verlet map and =set_velocities= with \(-v\) reverses a
+trajectory.
+
+=run_langevin= restricts the dynamics to the plane \(n\cdot(x-p)=0\) with the
+projected BAOAB scheme of =rgpot/MDSession/ProjectedLangevin.hpp=.
+The step reports \(\lambda=-(n^T
+M^{-1}F)/(n^T M^{-1}n)\), whose mean on the plane is \(dF/dc\).
+A drift that ends outside a wall \(n_w\cdot x\le o_w\) is reflected in the
+mass-weighted metric, which conserves the kinetic energy, or rejected.
+The seed names a stream: the same seed continues it, a new seed starts one, and
+setting the positions or the velocities ends it, so the same seed after a new
+state replays.
+
+*** Neighbour lists and walls
+
+The OpenMM session serves =rgpot_md_session_get_neighbors= from the rgpot
+neighbour builder. nblib has no neighbour callbacks: it builds its own pair list
+inside the force calculator and does not expose it, and it has no wall map, so a
+caller cannot pass the same neighbour list or wall set to both engines through a
+callback.
+The session therefore reports =RGPOT_MD_NLIST_UNSUPPORTED= for =get_neighbors=
+and =set_neighbors=, with a message that names the slot; =nblib_session= asserts
+that status.
+The planar walls of =run_langevin= are the shared mechanism and are the same on
+both engines, because they travel in the request and not in a callback.
+
+** nblib behaviours the backend works around
+
+- nblib 2025.5 integrates with leap-frog only, in a rectangular box, without
+  constraints.
+  Water is therefore flexible: a bond and an angle replace SETTLE.
+- The nonbonded Lennard-Jones is potential-shifted and the Coulomb cut-off is
+  reaction field with
+  \(\epsilon_{rf}=1\). =grompp= warns that \(\epsilon_{rf}=\epsilon_r\); the
+  reference test passes =-maxwarn 1= for that warning only.
+- The CPU nonbonded calculator adds the energies of each call to those of the
+  last; the library takes the difference, and recreates the calculator every 256
+  calls so the running sum stays small.
+- The improper-dihedral forces of nblib have the wrong sign.
+  The library puts impropers in a separate calculator and subtracts its forces.
+- The listed virial assumes whole molecules; the library unwraps each molecule
+  sequentially, so a chain longer than half the box is right.
+
+** Checks
+
+=nblib_session= compares the forces and the energy of an argon pair with the
+closed form to a few thousand ulp, the Lennard-Jones evaluator of rgpot, and
+reads the box back.
+=nblib_analytic= and =md_engine_analytic= run a chain of three atoms with
+harmonic bonds of rest length zero on a hyperplane.
+The kinetic energy \(4kT\), the potential energy \(5kT/2+c^2/2s\) and the mean
+constraint force \(dF/dc=c/s\) are known in closed form; each sampled mean, with
+its batch-means standard error, must lie within five standard errors of the
+closed form, and the OpenMM and nblib means must agree within their pooled
+error.
+=md_engine_agreement= compares argon energies and forces between the engines,
+including a periodic image and a reseed, and a harmonic dimer's temperature and
+mean constraint force.
+
+* Run a GROMACS run input file
+
+A spec of one line, =tpr PATH=, opens a TPR instead of a topology text.
+The session evaluates the forces of the file in process: nbnxm, PME, listed
+terms, position restraints and the dispersion correction, in its triclinic cell.
+The correction is an energy of the density.
+It has no per-atom force, so =DispCorr= =Ener= or =EnerPres= does not change the
+forces the session returns.
+Both settings add that energy to the potential.
+The same calculation produces a scalar virial and a pressure.
+=Ener= leaves those two at zero.
+=EnerPres= computes both. mdrun adds the virial to the diagonal of the virial
+tensor and records the pressure apart from the potential.
+The session returns neither a virial nor a pressure, and does not apply them.
+Virtual sites are built from the atoms that carry mass and their forces are
+spread back, so the session exposes the massive atoms in TPR order.
+=rgpot_md_session_get_source_indices= writes one 0-based TPR atom index per
+packed site, in the same order as the positions and the masses.
+The first atom in the file is 0.
+A caller that selected atoms in that order detects a virtual site when the
+selected index is not among the values written.
+That site has no packed position and no mass.
+A text topology drops no sites, so its indices are 0, 1, 2, and so on.
+An engine with no separate index space leaves the callback null.
+The SETTLE and LINCS distances of the file hold in every run.
+
+The session builds the pair list itself.
+The buffer is =rlist= minus the cutoffs: =rlist= is the larger of =rcoulomb= and
+=rvdw=, plus a skin of 0.1 nm.
+=kSkin= is that skin, =engines/nblib/TprEngine.cc= line 63, and the assignment
+is line 144.
+=verletbuf_tol= is -1 at line 143, so the buffer does not depend on an estimate
+of how far atoms diffuse.
+The nonbonded kernel still cuts at =rcoulomb= and =rvdw=.
+
+The list is rebuilt when any atom has moved more than half the skin from the
+search that built the list.
+Half of 0.1 nm is 0.05 nm.
+=moved()= uses =limit2 = 0.25 * kSkin * kSkin= at line 378, which is that 0.05
+nm squared, and returns at line 388.
+Lines 217 to 221 drop the list when =moved()= is true and call =rebuild()=,
+which starts at line 391.
+
+The rule misses a pair of atoms that each move just under 0.05 nm toward each
+other.
+Each one stays inside the trigger, so the list is kept.
+The gap between them can close by almost the whole 0.1 nm skin.
+A pair that was just outside =rlist= can then lie just outside the cutoff, and
+the next motion toward each other puts inside the cutoff a pair the list does
+not hold.
+
+The option string =threads=N= sets the OpenMP threads.
+The thermostat, the time step and the integrator come from each call and not
+from the file.
+The cell is fixed to the cell of the file.
+Positions must keep the atoms of one constrained group in one periodic image.
+
+A file that uses free-energy perturbation, pulling, AWH, walls, freeze groups,
+pressure coupling, LJ-PME, an Ewald surface term, shells or NMR restraints is
+refused with a message naming the feature.
+
+The TPR session calls libgromacs directly and needs the headers of the trees
+that built =nblib_prefix=:
+
+#+attr_rgpot: skip needs the GROMACS source and build trees
+#+begin_src bash
+meson setup build -Dwith_nblib=enabled -Dnblib_prefix=$PREFIX \
+  -Dnblib_source=$GROMACS_SOURCE -Dnblib_build=$GROMACS_BUILD
+#+end_src

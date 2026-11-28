@@ -66,9 +66,10 @@ void rgpot_engine_destroy(RgpotEnginePot *pot) {
   delete reinterpret_cast<NativeLj *>(pot);
 }
 
-int rgpot_md_native_force(void *pot, long nAtoms, const double *positions,
-                          const int *atomicNrs, double *forces, double *energy,
-                          double *variance, const double *box) {
+RGPOT_ENGINE_API int
+rgpot_md_native_force(void *pot, long nAtoms, const double *positions,
+                      const int *atomicNrs, double *forces, double *energy,
+                      double *variance, const double *box) {
   if (pot == nullptr || energy == nullptr || nAtoms < 0 ||
       (nAtoms > 0 && (positions == nullptr || atomicNrs == nullptr ||
                       forces == nullptr || box == nullptr))) {

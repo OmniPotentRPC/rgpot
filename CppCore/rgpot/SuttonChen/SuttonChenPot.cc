@@ -15,17 +15,23 @@
  */
 
 // clang-format off
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <cstddef>
+#include <cstdint>
 #include <limits>
 #include <memory>
 #include <stdexcept>
+#include <type_traits>
 #include <vector>
 // clang-format on
 
 #include "rgpot/KeptPotential.hpp"
+#include "rgpot/PairEval.hpp"
+#include "rgpot/Slices.hpp"
 #include "rgpot/SuttonChen/SuttonChenPot.hpp"
+#include "rgpot/SuttonChen/detail/SuttonChenWorkspaceSnapshot.hpp"
 #include "rgpot/nlist/NeighbourList.hpp"
 #include "rgpot/stress.hpp"
 
@@ -78,6 +84,264 @@ rgpot::SuttonChenConfig config_from_c(const rgpot_sc_config &raw) {
   return c;
 }
 
+constexpr std::size_t kMinParallelHalfPairs = 4096;
+constexpr std::size_t kSliceAtomQuantum = 8;
+
+struct LoRef {
+  std::int32_t u;
+  std::int32_t i;
+};
+
+struct PairForceData {
+  double dx;
+  double dy;
+  double dz;
+  double inv_r2;
+  double rep_term;
+  double phi_term;
+};
+
+struct SuttonChenWorkspace {
+  // Neighbours::generation(), not the address of the list. A new
+  // potential constructed at a recycled address has a new generation.
+  std::uint64_t generation = 0;
+  std::uint64_t index_builds = 0;
+  std::size_t index_atoms = 0;
+  std::size_t slots = 0;
+
+  std::vector<std::int32_t> up_off;
+  std::vector<std::int32_t> lo_off;
+  std::vector<std::int32_t> lo_count;
+  std::vector<std::int32_t> up_j;
+  std::vector<LoRef> lo_refs;
+
+  std::vector<std::uint8_t> active;
+  std::vector<double> pair_phi;
+  std::vector<PairForceData> pair_force;
+  std::vector<double> pair_he;
+  std::vector<double> rho;
+  std::vector<double> weight;
+  std::vector<double> row_e;
+  std::vector<double> row_emb;
+  std::vector<double> row_s;
+  std::vector<std::size_t> p0_splits;
+  std::vector<std::size_t> p1_splits;
+
+  std::uint64_t split_generation = 0;
+  std::size_t split_atoms = 0;
+  int split_slices = 0;
+  std::size_t split_total_up = 0;
+  std::size_t split_total_inc = 0;
+
+  std::uint64_t scratch_generation = 0;
+  std::uint64_t scratch_avail = 0;
+
+  void releaseScratch() noexcept {
+    std::vector<std::uint8_t>().swap(active);
+    std::vector<double>().swap(pair_phi);
+    std::vector<PairForceData>().swap(pair_force);
+    std::vector<double>().swap(pair_he);
+    std::vector<double>().swap(rho);
+    std::vector<double>().swap(weight);
+    std::vector<double>().swap(row_e);
+    std::vector<double>().swap(row_emb);
+    std::vector<double>().swap(row_s);
+  }
+
+  void releaseAll() noexcept {
+    generation = 0;
+    index_builds = 0;
+    index_atoms = 0;
+    slots = 0;
+    std::vector<std::int32_t>().swap(up_off);
+    std::vector<std::int32_t>().swap(lo_off);
+    std::vector<std::int32_t>().swap(lo_count);
+    std::vector<std::int32_t>().swap(up_j);
+    std::vector<LoRef>().swap(lo_refs);
+    releaseScratch();
+    std::vector<std::size_t>().swap(p0_splits);
+    std::vector<std::size_t>().swap(p1_splits);
+    split_generation = 0;
+    split_atoms = 0;
+    split_slices = 0;
+    split_total_up = 0;
+    split_total_inc = 0;
+    scratch_generation = 0;
+    scratch_avail = 0;
+  }
+
+  [[nodiscard]] std::size_t indexCapacityBytes() const noexcept {
+    return up_off.capacity() * sizeof(std::int32_t) +
+           lo_off.capacity() * sizeof(std::int32_t) +
+           lo_count.capacity() * sizeof(std::int32_t) +
+           up_j.capacity() * sizeof(std::int32_t) +
+           lo_refs.capacity() * sizeof(LoRef);
+  }
+
+  [[nodiscard]] std::size_t scratchCapacityBytes() const noexcept {
+    return active.capacity() * sizeof(std::uint8_t) +
+           pair_phi.capacity() * sizeof(double) +
+           pair_force.capacity() * sizeof(PairForceData) +
+           pair_he.capacity() * sizeof(double) +
+           rho.capacity() * sizeof(double) +
+           weight.capacity() * sizeof(double) +
+           row_e.capacity() * sizeof(double) +
+           row_emb.capacity() * sizeof(double) +
+           row_s.capacity() * sizeof(double);
+  }
+};
+
+struct WorkspaceLease {
+  SuttonChenWorkspace *ws = nullptr;
+  std::unique_ptr<SuttonChenWorkspace> fallback;
+  bool *busy_flag = nullptr;
+
+  WorkspaceLease() {
+    thread_local SuttonChenWorkspace tls_ws;
+    thread_local bool tls_busy = false;
+    if (!tls_busy) {
+      tls_busy = true;
+      busy_flag = &tls_busy;
+      ws = &tls_ws;
+    } else {
+      fallback = std::make_unique<SuttonChenWorkspace>();
+      ws = fallback.get();
+    }
+  }
+
+  ~WorkspaceLease() {
+    if (busy_flag != nullptr) {
+      *busy_flag = false;
+    }
+  }
+
+  WorkspaceLease(const WorkspaceLease &) = delete;
+  WorkspaceLease &operator=(const WorkspaceLease &) = delete;
+};
+
+void buildStoredHalfIndex(SuttonChenWorkspace &ws, const rgpot::nlist::Neighbours &cells,
+                          std::size_t n) {
+  const auto &off = cells.offsets();
+  const auto &nbr = cells.neighbours();
+  ws.up_off.resize(n + 1);
+  ws.lo_count.assign(n, 0);
+  const auto row = nbr.begin();
+  std::int32_t total_up = 0;
+  for (std::size_t i = 0; i < n; ++i) {
+    ws.up_off[i] = total_up;
+    const auto self = static_cast<std::int32_t>(i);
+    const auto lo = off[i];
+    const auto hi = off[i + 1];
+    const auto mid = static_cast<std::int32_t>(std::upper_bound(row + lo, row + hi, self) - row);
+    total_up += (hi - mid);
+    for (std::int32_t p = mid; p < hi; ++p) {
+      const auto j = static_cast<std::size_t>(nbr[static_cast<std::size_t>(p)]);
+      ++ws.lo_count[j];
+    }
+  }
+  ws.up_off[n] = total_up;
+
+  ws.lo_off.resize(n + 1);
+  std::int32_t acc = 0;
+  for (std::size_t i = 0; i < n; ++i) {
+    ws.lo_off[i] = acc;
+    acc += ws.lo_count[i];
+    ws.lo_count[i] = ws.lo_off[i];
+  }
+  ws.lo_off[n] = acc;
+
+  ws.up_j.resize(static_cast<std::size_t>(total_up));
+  ws.lo_refs.resize(static_cast<std::size_t>(total_up));
+  for (std::size_t i = 0; i < n; ++i) {
+    const auto self = static_cast<std::int32_t>(i);
+    const auto hi = off[i + 1];
+    const auto count_i = ws.up_off[i + 1] - ws.up_off[i];
+    const auto mid = hi - count_i;
+    std::int32_t u = ws.up_off[i];
+    for (std::int32_t p = mid; p < hi; ++p) {
+      const auto j = nbr[static_cast<std::size_t>(p)];
+      ws.up_j[static_cast<std::size_t>(u)] = j;
+      ws.lo_refs[static_cast<std::size_t>(ws.lo_count[static_cast<std::size_t>(j)]++)] =
+          LoRef{u, self};
+      ++u;
+    }
+  }
+
+  ws.generation = cells.generation();
+  ++ws.index_builds;
+  ws.index_atoms = n;
+  ws.slots = cells.slots();
+  std::vector<std::int32_t>().swap(ws.lo_count);
+  ws.split_generation = 0;
+  ws.split_atoms = 0;
+  ws.split_slices = 0;
+  ws.split_total_up = 0;
+  ws.split_total_inc = 0;
+}
+
+template <typename WorkFn>
+void partitionAtomsByWork(std::size_t n, int slices, std::int64_t total_work, WorkFn &&work_at,
+                          std::vector<std::size_t> &splits) {
+  splits.resize(static_cast<std::size_t>(slices) + 1);
+  splits[0] = 0;
+  for (int s = 1; s < slices; ++s) {
+    const std::int64_t target =
+        (total_work * static_cast<std::int64_t>(s)) / static_cast<std::int64_t>(slices);
+    std::size_t lo = splits[static_cast<std::size_t>(s - 1)];
+    std::size_t hi = n;
+    while (lo < hi) {
+      const std::size_t mid = lo + (hi - lo) / 2;
+      if (work_at(mid) < target) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
+      }
+    }
+    std::size_t rounded =
+        ((lo + kSliceAtomQuantum / 2) / kSliceAtomQuantum) * kSliceAtomQuantum;
+    const std::size_t prev = splits[static_cast<std::size_t>(s - 1)];
+    if (rounded < prev) {
+      rounded = prev;
+    }
+    if (rounded > n) {
+      rounded = n;
+    }
+    splits[static_cast<std::size_t>(s)] = rounded;
+  }
+  splits[static_cast<std::size_t>(slices)] = n;
+}
+
+std::uint64_t cachedAvailableBytes(SuttonChenWorkspace &ws,
+                                   const rgpot::nlist::Neighbours &cells) {
+  if (ws.scratch_generation != cells.generation()) {
+    ws.scratch_generation = cells.generation();
+    ws.scratch_avail = rgpot::nlist::availableBytes();
+  }
+  return ws.scratch_avail;
+}
+
+/// True when the candidate upper-pair scratch of the three-phase stored path
+/// (`PairForceData`, `pair_phi`, `active`, `up_j`, `lo_refs`, and `pair_he`
+/// when `atoms != nullptr && atoms->energy != nullptr`) fits within half of
+/// `avail` (`nlist::availableBytes()`), or when `avail == 0` (`MemAvailable`
+/// not reported). Per-atom vectors (`up_off`, `lo_off`, `rho`, `weight`,
+/// `row_e`, `row_emb`, and `row_s` with stress) are `O(nAtoms)`, already
+/// bounded by `Neighbours::buildCells` and present as `rho_` and `weight_` on
+/// the two-pass fallback, so they are not counted against this pair-slot
+/// budget.
+bool pairScratchFits(std::size_t num_pairs, const rgpot::PerAtomOut *atoms,
+                     std::uint64_t avail) {
+  std::size_t bytes_per_pair = sizeof(PairForceData) + sizeof(double) + sizeof(std::uint8_t) +
+                               sizeof(std::int32_t) + sizeof(LoRef);
+  if (atoms != nullptr && atoms->energy != nullptr) {
+    bytes_per_pair += sizeof(double);
+  }
+  if (avail == 0) {
+    return true;
+  }
+  return static_cast<std::uint64_t>(num_pairs) <= (avail / 2) / bytes_per_pair;
+}
+
 } // namespace
 
 namespace rgpot {
@@ -117,6 +381,7 @@ void SuttonChenPot::forceImpl(const ForceInput &in, ForceOut *out) const {
 
 void SuttonChenPot::forcePerAtom(const ForceInput &in, ForceOut *out,
                                  const PerAtomOut &atoms) const {
+  guardForceCall(in, out, kernelNeedsCell(*this), false);
   clearPerAtom(atoms, in.nAtoms);
   compute(in, out, &atoms);
 }
@@ -124,38 +389,34 @@ void SuttonChenPot::forcePerAtom(const ForceInput &in, ForceOut *out,
 void SuttonChenPot::compute(const ForceInput &in, ForceOut *out,
                             const PerAtomOut *atoms) const {
   const auto n_atoms = static_cast<long>(in.nAtoms);
-  const double *R = in.pos;
   double *F = out->F;
   out->energy = 0.0;
   out->variance = 0.0;
-  for (long i = 0; i < n_atoms; ++i) {
-    F[3 * i] = 0.0;
-    F[3 * i + 1] = 0.0;
-    F[3 * i + 2] = 0.0;
-  }
   const SuttonChenConfig cfg = m_config;
   double strain[6] = {};
   if (n_atoms < 2) {
+    for (long i = 0; i < n_atoms; ++i) {
+      F[3 * i] = 0.0;
+      F[3 * i + 1] = 0.0;
+      F[3 * i + 2] = 0.0;
+    }
     if (cfg.stress) {
       publishCauchyStress(out, strain, cellVolume(in.box));
     }
     return;
   }
 
+  const double *R = in.pos;
   const double cutoff = searchCutoff(cfg);
   const double cutoff2 = cutoff * cutoff;
   const std::array<bool, 3> periodic =
       cfg.periodic ? std::array<bool, 3>{true, true, true}
                    : std::array<bool, 3>{false, false, false};
 
-  static constexpr double free_box[9] = {1.0e6, 0.0, 0.0, 0.0, 1.0e6,
-                                         0.0,   0.0, 0.0, 1.0e6};
-  const bool box_ok = in.box != nullptr && in.box[0] > 0.0 && in.box[4] > 0.0 &&
-                      in.box[8] > 0.0;
-  if (cfg.periodic && !box_ok) {
+  const double *box_use = freeBoxOrCell(in.box);
+  if (cfg.periodic && box_use != in.box) {
     throw std::invalid_argument("periodic Sutton-Chen needs a real cell");
   }
-  const double *box_use = box_ok ? in.box : free_box;
 
   const double epsilon = cfg.epsilon;
   const double c_coef = cfg.c;
@@ -165,23 +426,343 @@ void SuttonChenPot::compute(const ForceInput &in, ForceOut *out,
   const auto n_size = static_cast<std::size_t>(n_atoms);
   double *atom_e = atoms != nullptr ? atoms->energy : nullptr;
 
-  rho_.assign(n_size, 0.0);
-  double *rho = rho_.data();
-  double epair = 0.0;
   const double skin = mode_ == nlist::Mode::Stream ? 0.0 : cutoff / 5.0;
   nlist::updateCells(neighbours_, R, n_size, box_use, cutoff, skin, nlist::Image::Round,
                      mode_, periodic);
-  const int nt = nlist::threadsRequested();
   const bool stream = neighbours_.streaming();
+  const std::size_t from = teamThreshold(kTeamMinAtoms);
+  const bool rows = n_size >= from;
+  const int nt = nlist::teamSize(n_size, from, kTeamFrom);
+  const double a2 = lattice * lattice;
+  const bool unit_a = a2 == 1.0;
+  const double en = epsilon * static_cast<double>(n_exp);
+  const double em = static_cast<double>(m_exp);
+
+  bool sparse_stored = false;
+  if (rows && !stream && nt > 1 && term_limit_ > 0) {
+    WorkspaceLease lease;
+    SuttonChenWorkspace &ws = *lease.ws;
+    const std::size_t est_half_pairs = neighbours_.slots() / 2;
+    const std::uint64_t scratch_avail = cachedAvailableBytes(ws, neighbours_);
+    if (est_half_pairs < kMinParallelHalfPairs) {
+      sparse_stored = true;
+    } else if (est_half_pairs <= term_limit_ &&
+               pairScratchFits(est_half_pairs, atoms, scratch_avail)) {
+      if (ws.generation != neighbours_.generation()) {
+        buildStoredHalfIndex(ws, neighbours_, n_size);
+      }
+      const auto total_up = static_cast<std::size_t>(ws.up_off[n_size]);
+      if (total_up < kMinParallelHalfPairs) {
+        sparse_stored = true;
+      } else if (total_up <= term_limit_ &&
+                 pairScratchFits(total_up, atoms, scratch_avail)) {
+        ws.active.resize(total_up);
+        ws.pair_phi.resize(total_up);
+        ws.pair_force.resize(total_up);
+        const bool want_he = atom_e != nullptr;
+        const bool want_hv = atoms != nullptr && atoms->virial != nullptr;
+        if (want_he) {
+          ws.pair_he.resize(total_up);
+        }
+        ws.rho.resize(n_size);
+        ws.weight.resize(n_size);
+        ws.row_e.resize(n_size);
+        ws.row_emb.resize(n_size);
+        if (cfg.stress) {
+          ws.row_s.resize(6 * n_size);
+        }
+
+        const std::int64_t total_inc =
+            static_cast<std::int64_t>(ws.lo_off[n_size]) + static_cast<std::int64_t>(total_up);
+        if (ws.split_generation != ws.generation || ws.split_atoms != n_size ||
+            ws.split_slices != nt || ws.split_total_up != total_up ||
+            ws.split_total_inc != static_cast<std::size_t>(total_inc)) {
+          partitionAtomsByWork(
+              n_size, nt, static_cast<std::int64_t>(total_up),
+              [&](std::size_t idx) { return static_cast<std::int64_t>(ws.up_off[idx]); },
+              ws.p0_splits);
+          partitionAtomsByWork(
+              n_size, nt, total_inc,
+              [&](std::size_t idx) {
+                return static_cast<std::int64_t>(ws.lo_off[idx]) +
+                       static_cast<std::int64_t>(ws.up_off[idx]);
+              },
+              ws.p1_splits);
+          ws.split_generation = ws.generation;
+          ws.split_atoms = n_size;
+          ws.split_slices = nt;
+          ws.split_total_up = total_up;
+          ws.split_total_inc = static_cast<std::size_t>(total_inc);
+        }
+
+        const std::size_t *p0_splits = ws.p0_splits.data();
+        const std::size_t *p1_splits = ws.p1_splits.data();
+        const std::int32_t *up_off = ws.up_off.data();
+        const std::int32_t *lo_off = ws.lo_off.data();
+        const std::int32_t *up_j = ws.up_j.data();
+        const LoRef *lo_refs = ws.lo_refs.data();
+        std::uint8_t *active = ws.active.data();
+        double *pair_phi = ws.pair_phi.data();
+        PairForceData *pair_force = ws.pair_force.data();
+        double *pair_he = want_he ? ws.pair_he.data() : nullptr;
+        double *rho = ws.rho.data();
+        double *weight = ws.weight.data();
+        double *row_e = ws.row_e.data();
+        double *row_emb = ws.row_emb.data();
+        double *row_s = cfg.stress ? ws.row_s.data() : nullptr;
+        double *atom_v = want_hv ? atoms->virial : nullptr;
+        const bool stress_on = cfg.stress;
+
+        forEachSlicePhase(3, nt, [&](int phase, int slice) {
+          const auto s_idx = static_cast<std::size_t>(slice);
+          if (phase == 0) {
+            const std::size_t i0 = p0_splits[s_idx];
+            const std::size_t i1 = p0_splits[s_idx + 1];
+            if (i0 == i1) {
+              return;
+            }
+            std::fill(row_e + i0, row_e + i1, 0.0);
+            std::int32_t next_u = up_off[i0];
+            neighbours_.forHalf(
+                static_cast<std::int64_t>(i0), static_cast<std::int64_t>(i1),
+                [&](int32_t i, int32_t, double dx, double dy, double dz,
+                    double r2) RGPOT_SC_PAIR_INLINE {
+                  const auto u = static_cast<std::size_t>(next_u++);
+                  if (!(r2 > 0.0) || r2 > cutoff2) {
+                    active[u] = 0;
+                    return;
+                  }
+                  active[u] = 1;
+                  double phi = 0.0;
+                  double rep = 0.0;
+                  double rep_term = 0.0;
+                  double phi_term = 0.0;
+                  double inv_r2 = 0.0;
+                  if (unit_a) {
+                    inv_r2 = 1.0 / r2;
+                    phi = pow_ar(inv_r2, m_exp);
+                    rep = pow_ar(inv_r2, n_exp);
+                    rep_term = en * rep;
+                    phi_term = em * phi;
+                  } else {
+                    const double ar2 = a2 / r2;
+                    phi = pow_ar(ar2, m_exp);
+                    rep = pow_ar(ar2, n_exp);
+                    inv_r2 = 1.0 / r2;
+                    const double ar2_force = a2 * inv_r2;
+                    const bool same = ar2_force == ar2;
+                    rep_term = en * (same ? rep : pow_ar(ar2_force, n_exp));
+                    phi_term = em * (same ? phi : pow_ar(ar2_force, m_exp));
+                  }
+                  row_e[static_cast<std::size_t>(i)] += epsilon * rep;
+                  pair_phi[u] = phi;
+                  pair_force[u] = PairForceData{dx, dy, dz, inv_r2, rep_term, phi_term};
+                  if (want_he) {
+                    pair_he[u] = 0.5 * epsilon * rep;
+                  }
+                });
+            return;
+          }
+
+          const std::size_t a0 = p1_splits[s_idx];
+          const std::size_t a1 = p1_splits[s_idx + 1];
+          if (a0 == a1) {
+            return;
+          }
+          if (phase == 1) {
+            const double ec = epsilon * c_coef;
+            for (std::size_t a = a0; a < a1; ++a) {
+              double rho_a = 0.0;
+              double ae = 0.0;
+              const std::int32_t l0 = lo_off[a];
+              const std::int32_t l1 = lo_off[a + 1];
+              for (std::int32_t k = l0; k < l1; ++k) {
+                const auto u = static_cast<std::size_t>(lo_refs[k].u);
+                if (active[u] == 0) {
+                  continue;
+                }
+                rho_a += pair_phi[u];
+                if (want_he) {
+                  ae += pair_he[u];
+                }
+              }
+              const std::int32_t u0 = up_off[a];
+              const std::int32_t u1 = up_off[a + 1];
+              for (std::int32_t up = u0; up < u1; ++up) {
+                const auto u = static_cast<std::size_t>(up);
+                if (active[u] == 0) {
+                  continue;
+                }
+                rho_a += pair_phi[u];
+                if (want_he) {
+                  ae += pair_he[u];
+                }
+              }
+              rho[a] = rho_a;
+              if (rho_a > 0.0) {
+                const double root = std::sqrt(rho_a);
+                const double emb = ec * root;
+                row_emb[a] = emb;
+                weight[a] = ec / (2.0 * root);
+                if (want_he) {
+                  ae -= emb;
+                }
+              } else {
+                row_emb[a] = 0.0;
+                weight[a] = 0.0;
+              }
+              if (want_he) {
+                atom_e[a] = ae;
+              }
+            }
+            return;
+          }
+
+          for (std::size_t a = a0; a < a1; ++a) {
+            const double wa = weight[a];
+            double fx = 0.0;
+            double fy = 0.0;
+            double fz = 0.0;
+            double av[6] = {};
+            const std::int32_t l0 = lo_off[a];
+            const std::int32_t l1 = lo_off[a + 1];
+            for (std::int32_t k = l0; k < l1; ++k) {
+              const LoRef ref = lo_refs[k];
+              const auto u = static_cast<std::size_t>(ref.u);
+              if (active[u] == 0) {
+                continue;
+              }
+              const PairForceData &pd = pair_force[u];
+              const double wi = weight[static_cast<std::size_t>(ref.i)];
+              const double fscale = (pd.rep_term - pd.phi_term * (wi + wa)) * pd.inv_r2;
+              fx -= fscale * pd.dx;
+              fy -= fscale * pd.dy;
+              fz -= fscale * pd.dz;
+              if (want_hv) {
+                const double c = 0.5 * fscale;
+                av[0] += c * pd.dx * pd.dx;
+                av[1] += c * pd.dy * pd.dy;
+                av[2] += c * pd.dz * pd.dz;
+                av[3] += c * pd.dy * pd.dz;
+                av[4] += c * pd.dx * pd.dz;
+                av[5] += c * pd.dx * pd.dy;
+              }
+            }
+            double rs[6] = {};
+            const std::int32_t u0 = up_off[a];
+            const std::int32_t u1 = up_off[a + 1];
+            for (std::int32_t up = u0; up < u1; ++up) {
+              const auto u = static_cast<std::size_t>(up);
+              if (active[u] == 0) {
+                continue;
+              }
+              const PairForceData &pd = pair_force[u];
+              const double wj = weight[static_cast<std::size_t>(up_j[u])];
+              const double fscale = (pd.rep_term - pd.phi_term * (wa + wj)) * pd.inv_r2;
+              fx += fscale * pd.dx;
+              fy += fscale * pd.dy;
+              fz += fscale * pd.dz;
+              if (stress_on) {
+                accumulatePairStrain(rs, fscale, pd.dx, pd.dy, pd.dz);
+              }
+              if (want_hv) {
+                const double c = 0.5 * fscale;
+                av[0] += c * pd.dx * pd.dx;
+                av[1] += c * pd.dy * pd.dy;
+                av[2] += c * pd.dz * pd.dz;
+                av[3] += c * pd.dy * pd.dz;
+                av[4] += c * pd.dx * pd.dz;
+                av[5] += c * pd.dx * pd.dy;
+              }
+            }
+            F[3 * a] = fx;
+            F[3 * a + 1] = fy;
+            F[3 * a + 2] = fz;
+            if (stress_on) {
+              double *dst = row_s + 6 * a;
+              for (int c = 0; c < 6; ++c) {
+                dst[c] = rs[c];
+              }
+            }
+            if (want_hv) {
+              double *dst = atom_v + 6 * a;
+              for (int c = 0; c < 6; ++c) {
+                dst[c] = av[c];
+              }
+            }
+          }
+        });
+
+        double epair = 0.0;
+        double eemb = 0.0;
+        for (std::size_t i = 0; i < n_size; ++i) {
+          epair += row_e[i];
+          if (rho[i] > 0.0) {
+            eemb -= row_emb[i];
+          }
+        }
+        if (cfg.stress) {
+          for (std::size_t i = 0; i < n_size; ++i) {
+            for (std::size_t k = 0; k < 6; ++k) {
+              strain[k] += row_s[6 * i + k];
+            }
+          }
+        }
+        out->energy = epair + eemb;
+        if (cfg.stress) {
+          publishCauchyStress(out, strain, cellVolume(in.box));
+        }
+        ws.releaseScratch();
+        return;
+      }
+    }
+  }
+
+  for (long i = 0; i < n_atoms; ++i) {
+    F[3 * i] = 0.0;
+    F[3 * i + 1] = 0.0;
+    F[3 * i + 2] = 0.0;
+  }
+  rho_.assign(n_size, 0.0);
+  double *rho = rho_.data();
+  double epair = 0.0;
+
+  // From kTeamMinAtoms up, each atom keeps the pair energy and strain of
+  // its partners above it and the totals add them in atom order, as in
+  // nlist/PairSum.hpp. A team then walks the rows of the atoms; one
+  // thread walks each pair once, by forRowHalf, whose densities and forces
+  // the rows repeat bit for bit.
+  const bool by_row = !sparse_stored && rows && nt > 1;
+  std::vector<double> row_e(rows ? n_size : 0, 0.0);
+  std::vector<double> row_s(rows && cfg.stress ? 6 * n_size : 0, 0.0);
+  double *e_sum = rows ? row_e.data() : &epair;
+  double *s_sum = !cfg.stress ? nullptr : (rows ? row_s.data() : strain);
+  // The half walks take the stride of the sums as a type, so below
+  // kTeamMinAtoms every pair adds to the one total with no index.
+  auto by_stride = [rows](auto walk) {
+    if (rows) {
+      walk(std::integral_constant<std::size_t, 1>{});
+    } else {
+      walk(std::integral_constant<std::size_t, 0>{});
+    }
+  };
+  // With row sums one thread takes forRowHalf, in the order of the rows.
+  auto half_walk = [&](auto stride, auto &&body) {
+    if constexpr (decltype(stride)::value == 1) {
+      neighbours_.forRowHalf(body);
+    } else {
+      nlist::visitHalf(neighbours_, 0, n_atoms, body);
+    }
+  };
 
   // Each walk visits the same pairs in the same order, one lane per
-  // thread, so the force pass reads back what the density pass kept.
-  const auto lanes = static_cast<std::size_t>(nt);
+  // slice, so the force pass reads back what the density pass kept.
+  const auto lanes = static_cast<std::size_t>(by_row ? nt : 1);
   if (terms_.size() < lanes) {
     terms_.resize(lanes);
   }
   std::size_t expected = 0;
-  if (nt == 1) {
+  if (!by_row) {
     expected = neighbours_.allPairs() ? n_size * (n_size - 1) / 2
                : stream               ? 0
                                       : neighbours_.slots() / 2;
@@ -193,10 +774,6 @@ void SuttonChenPot::compute(const ForceInput &in, ForceOut *out,
   // The force takes the powers of a^2 * (1/r^2), the density those of
   // a^2 / r^2. With a^2 = 1 they are one number; otherwise the last bit
   // can differ, and the kept powers are the force's.
-  const double a2 = lattice * lattice;
-  const bool unit_a = a2 == 1.0;
-  const double en = epsilon * static_cast<double>(n_exp);
-  const double em = static_cast<double>(m_exp);
   // The pair lambdas copy their constants and arrays: a walk that copies
   // its callback then keeps them in registers. Only the sums and the
   // lanes are shared by reference.
@@ -225,44 +802,32 @@ void SuttonChenPot::compute(const ForceInput &in, ForceOut *out,
       kept[2] = inv_r2;
     }
   };
-  if (nt == 1) {
+  if (!by_row) {
     Terms &lane = terms_[0];
-    auto density = [=, &epair, &lane](int32_t i, int32_t j, double, double, double,
-                                      double r2) RGPOT_SC_PAIR_INLINE {
-      if (!(r2 > 0.0) || r2 > cutoff2) {
-        return;
-      }
-      double phi = 0.0;
-      double rep = 0.0;
-      pair_term(r2, phi, rep, lane);
-      rho[static_cast<std::size_t>(i)] += phi;
-      rho[static_cast<std::size_t>(j)] += phi;
-      epair += epsilon * rep;
-      if (atom_e != nullptr) {
-        atom_e[static_cast<std::size_t>(i)] += 0.5 * epsilon * rep;
-        atom_e[static_cast<std::size_t>(j)] += 0.5 * epsilon * rep;
-      }
-    };
-    if (stream) {
-      nlist::visitHalf(neighbours_, 0, n_atoms, density);
-    } else {
-      nlist::visitDirected(neighbours_,
-          0, n_atoms,
-          [density](int32_t i, int32_t j, double dx, double dy, double dz,
-                    double r2) RGPOT_SC_PAIR_INLINE {
-            if (!(j > i)) {
+    by_stride([&](auto stride) {
+      half_walk(stride,
+          [=, &lane](int32_t i, int32_t j, double, double, double,
+                     double r2) RGPOT_SC_PAIR_INLINE {
+            if (!(r2 > 0.0) || r2 > cutoff2) {
               return;
             }
-            density(i, j, dx, dy, dz, r2);
+            double phi = 0.0;
+            double rep = 0.0;
+            pair_term(r2, phi, rep, lane);
+            rho[static_cast<std::size_t>(i)] += phi;
+            rho[static_cast<std::size_t>(j)] += phi;
+            e_sum[static_cast<std::size_t>(i) * decltype(stride)::value] += epsilon * rep;
+            if (atom_e != nullptr) {
+              atom_e[static_cast<std::size_t>(i)] += 0.5 * epsilon * rep;
+              atom_e[static_cast<std::size_t>(j)] += 0.5 * epsilon * rep;
+            }
           });
-    }
+    });
   } else {
-    std::vector<double> partial(static_cast<std::size_t>(nt), 0.0);
-    double *thread_e = partial.data();
     Terms *lane_terms = terms_.data();
-    // One shared tile. A visit from each thread would build it again.
-    neighbours_.forCellTeam(
-        false, nt,
+    // Each row belongs to one slice, so only that thread writes its atom.
+    neighbours_.forRowTeam(
+        nt,
         [=](int t, int32_t i, int32_t j, double, double, double, double r2) RGPOT_SC_PAIR_INLINE {
           if (!(r2 > 0.0) || r2 > cutoff2) {
             return;
@@ -272,16 +837,12 @@ void SuttonChenPot::compute(const ForceInput &in, ForceOut *out,
           pair_term(r2, phi, rep, lane_terms[t]);
           rho[static_cast<std::size_t>(i)] += phi;
           if (j > i) {
-            thread_e[t] += epsilon * rep;
+            e_sum[static_cast<std::size_t>(i)] += epsilon * rep;
           }
-          // Each atom is central in one cell, so only that thread writes it.
           if (atom_e != nullptr) {
             atom_e[static_cast<std::size_t>(i)] += 0.5 * epsilon * rep;
           }
         });
-    for (double part : partial) {
-      epair += part;
-    }
   }
 
   weight_.assign(n_size, 0.0);
@@ -302,7 +863,7 @@ void SuttonChenPot::compute(const ForceInput &in, ForceOut *out,
   for (std::size_t t = 0; t < lanes; ++t) {
     terms_[t].replay();
   }
-  auto apply = [=](int32_t i, int32_t j, double dx, double dy, double dz, double r2,
+  auto apply = [=](auto stride, int32_t i, int32_t j, double dx, double dy, double dz, double r2,
                    double *force, double *virial, bool both, Terms &terms) RGPOT_SC_PAIR_INLINE {
     if (!(r2 > 0.0) || r2 > cutoff2) {
       return;
@@ -335,7 +896,8 @@ void SuttonChenPot::compute(const ForceInput &in, ForceOut *out,
       force[3 * j + 2] -= fz;
     }
     if (virial != nullptr && j > i) {
-      accumulatePairStrain(virial, fscale, dx, dy, dz);
+      accumulatePairStrain(virial + 6 * static_cast<std::size_t>(i) * decltype(stride)::value,
+                           fscale, dx, dy, dz);
     }
     if (atoms != nullptr) {
       tallyAtomVirial(*atoms, static_cast<std::size_t>(i), 0.5, fscale, dx, dy, dz);
@@ -344,44 +906,36 @@ void SuttonChenPot::compute(const ForceInput &in, ForceOut *out,
       }
     }
   };
-  if (nt == 1) {
+  if (!by_row) {
     Terms &lane = terms_[0];
-    double *virial = cfg.stress ? strain : nullptr;
-    if (stream) {
-      nlist::visitHalf(neighbours_,
-          0, n_atoms,
+    double *virial = s_sum;
+    by_stride([&](auto stride) {
+      half_walk(stride,
           [=, &lane](int32_t i, int32_t j, double dx, double dy, double dz,
                      double r2) RGPOT_SC_PAIR_INLINE {
-            apply(i, j, dx, dy, dz, r2, F, virial, true, lane);
+            apply(stride, i, j, dx, dy, dz, r2, F, virial, true, lane);
           });
-    } else {
-      nlist::visitDirected(neighbours_,
-          0, n_atoms,
-          [=, &lane](int32_t i, int32_t j, double dx, double dy, double dz,
-                     double r2) RGPOT_SC_PAIR_INLINE {
-            if (!(j > i)) {
-              return;
-            }
-            apply(i, j, dx, dy, dz, r2, F, virial, true, lane);
-          });
-    }
+    });
   } else {
-    std::vector<double> vir(static_cast<std::size_t>(nt) * 6, 0.0);
-    double *thread_vir = cfg.stress ? vir.data() : nullptr;
+    double *virial = s_sum;
     Terms *lane_terms = terms_.data();
-    // Each atom is central in one cell, so its force is written once.
-    neighbours_.forCellTeam(
-        false, nt,
+    // Each row belongs to one slice, so its atom's force is written once.
+    neighbours_.forRowTeam(
+        nt,
         [=](int t, int32_t i, int32_t j, double dx, double dy, double dz,
             double r2) RGPOT_SC_PAIR_INLINE {
-          double *virial =
-              thread_vir != nullptr ? thread_vir + static_cast<std::size_t>(t) * 6 : nullptr;
-          apply(i, j, dx, dy, dz, r2, F, virial, false, lane_terms[t]);
+          apply(std::integral_constant<std::size_t, 1>{}, i, j, dx, dy, dz, r2, F, virial, false,
+                lane_terms[t]);
         });
+  }
+  if (rows) {
+    for (std::size_t i = 0; i < n_size; ++i) {
+      epair += row_e[i];
+    }
     if (cfg.stress) {
-      for (int t = 0; t < nt; ++t) {
-        for (int k = 0; k < 6; ++k) {
-          strain[k] += vir[static_cast<std::size_t>(t) * 6 + static_cast<std::size_t>(k)];
+      for (std::size_t i = 0; i < n_size; ++i) {
+        for (std::size_t k = 0; k < 6; ++k) {
+          strain[k] += row_s[6 * i + k];
         }
       }
     }
@@ -451,6 +1005,47 @@ void SuttonChenPot::forceStage(const HalfList &list, const double *densities, do
         });
   });
 }
+
+template <>
+RGPOT_SC_API KeptCounts Kept<SuttonChenPot>::counts() noexcept {
+  return retired() ? KeptCounts{} : local().counts;
+}
+
+template <>
+RGPOT_SC_API void Kept<SuttonChenPot>::release() noexcept {
+  if (retired()) {
+    return;
+  }
+  for (Slot &slot : local().slots) {
+    slot.clear();
+  }
+}
+
+namespace detail {
+
+SuttonChenWorkspaceSnapshot suttonChenWorkspaceSnapshot() {
+  WorkspaceLease lease;
+  const SuttonChenWorkspace &ws = *lease.ws;
+  const std::size_t total_up =
+      ws.index_atoms < ws.up_off.size()
+          ? static_cast<std::size_t>(ws.up_off[ws.index_atoms])
+          : 0;
+  return SuttonChenWorkspaceSnapshot{
+      .generation = ws.generation,
+      .index_builds = ws.index_builds,
+      .atoms = ws.index_atoms,
+      .total_up = total_up,
+      .index_capacity_bytes = ws.indexCapacityBytes(),
+      .scratch_capacity_bytes = ws.scratchCapacityBytes(),
+  };
+}
+
+void releaseSuttonChenWorkspace() noexcept {
+  WorkspaceLease lease;
+  lease.ws->releaseAll();
+}
+
+} // namespace detail
 
 } // namespace rgpot
 

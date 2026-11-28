@@ -248,6 +248,7 @@ FullResult run_force(Pot &pot, const Geom &g) {
                 .pos = g.pos.data(),
                 .atmnrs = g.types.data(),
                 .box = flat.data()};
+  guardForceCall(in, &fo, kernelNeedsCell(pot));
   pot.forceImpl(in, &fo);
   if (!std::isfinite(fo.energy)) {
     throw rgbind::NumericalError("energy is not finite");
@@ -285,8 +286,8 @@ PerAtomResult run_force_per_atom(Pot &pot, const Geom &g) {
                 .pos = g.pos.data(),
                 .atmnrs = g.types.data(),
                 .box = flat.data()};
-  pot.forcePerAtom(in, &fo,
-                   PerAtomOut{result.energies.data(), result.virials.data()});
+  invokeForcePerAtom(pot, in, &fo,
+                     PerAtomOut{result.energies.data(), result.virials.data()});
   if (!std::isfinite(fo.energy)) {
     throw rgbind::NumericalError("energy is not finite");
   }
@@ -388,6 +389,11 @@ public:
   /// so a centre computed on one thread's instance serves the others.
   HessianVectorCache &hvp() { return hvp_; }
 
+  /// Radius in Angstrom the kernel needs a periodic cell wider than twice,
+  /// for a composite whose children set it. NaN until set_cutoff.
+  [[nodiscard]] double cutoff() const noexcept { return cutoff_; }
+  void set_cutoff(double value) noexcept { cutoff_ = value; }
+
 private:
   void clear() noexcept {
     std::lock_guard<std::mutex> lock(mu_);
@@ -402,6 +408,7 @@ private:
   std::mutex mu_;
   std::unordered_map<std::thread::id, std::unique_ptr<Pot>> extra_;
   HessianVectorCache hvp_;
+  double cutoff_ = std::numeric_limits<double>::quiet_NaN();
 };
 
 inline HvpScheme parse_hvp_scheme(const std::string &name) {
@@ -417,14 +424,73 @@ inline HvpScheme parse_hvp_scheme(const std::string &name) {
   if (name == "analytic") {
     return HvpScheme::Analytic;
   }
-  const std::string msg = "scheme: expected 'auto', 'forward', 'central' or "
-                          "'analytic', got '" + name + "'";
+  if (name == "ad") {
+    return HvpScheme::Ad;
+  }
+  if (name == "exact") {
+    return HvpScheme::Exact;
+  }
+  const std::string msg = "scheme: expected 'auto', 'forward', 'central', "
+                          "'analytic', 'ad' or 'exact', got '" +
+                          name + "'";
   throw nb::value_error(msg.c_str());
 }
 
-/// HessianVectorCache::apply or centre while the caller is detached (F4).
-/// A non-finite kernel value is a NumericalError, as for evaluate().
-template <typename Fn> auto detached_hvp(Fn &&fn) {
+inline const char *hvp_scheme_name(HvpScheme scheme) {
+  switch (scheme) {
+  case HvpScheme::Auto:
+    return "auto";
+  case HvpScheme::Forward:
+    return "forward";
+  case HvpScheme::Central:
+    return "central";
+  case HvpScheme::Analytic:
+    return "analytic";
+  case HvpScheme::Ad:
+    return "ad";
+  case HvpScheme::Exact:
+    return "exact";
+  }
+  throw std::logic_error("hvp_scheme_name: unknown scheme");
+}
+
+inline HessianScheme parse_hessian_scheme(const std::string &name) {
+  if (name == "analytic") {
+    return HessianScheme::Analytic;
+  }
+  if (name == "ad") {
+    return HessianScheme::Ad;
+  }
+  if (name == "exact") {
+    return HessianScheme::Exact;
+  }
+  if (name == "central") {
+    return HessianScheme::Central;
+  }
+  const std::string msg = "scheme: expected 'analytic', 'ad', 'exact' or "
+                          "'central', got '" +
+                          name + "'";
+  throw nb::value_error(msg.c_str());
+}
+
+inline const char *hessian_scheme_name(HessianScheme scheme) {
+  switch (scheme) {
+  case HessianScheme::Central:
+    return "central";
+  case HessianScheme::Analytic:
+    return "analytic";
+  case HessianScheme::Ad:
+    return "ad";
+  case HessianScheme::Exact:
+    return "exact";
+  }
+  throw std::logic_error("hessian_scheme_name: unknown scheme");
+}
+
+/// Run a potential call while the caller is detached (F4). A domain_error
+/// from the kernel or HessianVectorCache is a NumericalError, as for an
+/// energy that is not finite.
+template <typename Fn> auto run_detached(Fn &&fn) {
   nb::gil_scoped_release release;
   try {
     return fn();
@@ -437,17 +503,35 @@ template <typename Fn> auto detached_hvp(Fn &&fn) {
 /// detached (F4). A non-finite energy is a NumericalError, as for the
 /// PotHolder __call__.
 template <typename Pot> nb::tuple call_detached(Pot &pot, const Geom &geom) {
-  double energy = 0.0;
-  double variance = 0.0;
-  AtomMatrix forces;
-  {
-    nb::gil_scoped_release release;
-    std::tie(energy, forces, variance) = pot(geom.pos, geom.types, geom.box);
-  }
+  auto [energy, forces, variance] =
+      run_detached([&] { return pot(geom.pos, geom.types, geom.box); });
   if (!std::isfinite(energy)) {
     throw rgbind::NumericalError("energy is not finite");
   }
   return nb::make_tuple(energy, matrix_to_numpy(forces), variance);
+}
+
+/// H @ direction at the geometry, shape (N, 3), and the scheme that ran.
+template <typename Pot>
+std::pair<AtomMatrix, HvpScheme>
+hvp_detached(PotHolder<Pot> &self, const F64 &positions, nb::handle atom_types,
+             const F64 &box, const F64 &direction, double step,
+             const std::string &scheme) {
+  Geom geom = read_geom(positions, atom_types, box);
+  const size_t n = static_cast<size_t>(geom.pos.rows());
+  rgbind::check_f64_2d(direction, n, 3, "direction");
+  const HvpScheme parsed = parse_hvp_scheme(scheme);
+  std::vector<double> v(direction.data(), direction.data() + 3 * n);
+  AtomMatrix hv = AtomMatrix::Zero(geom.pos.rows(), 3);
+  const HvpScheme ran = run_detached([&] {
+    const std::array<double, 9> flat = flat_box(geom);
+    const ForceInput in{.nAtoms = n,
+                        .pos = geom.pos.data(),
+                        .atmnrs = geom.types.data(),
+                        .box = flat.data()};
+    return self.hvp().apply(self.slot(), in, v.data(), hv.data(), step, parsed);
+  });
+  return {std::move(hv), ran};
 }
 
 template <typename Pot>
@@ -460,15 +544,10 @@ void bind_calls(nb::class_<PotHolder<Pot>> &cls) {
       [](PotHolder<Pot> &self, const F64 &positions, nb::handle atom_types,
          const F64 &box) {
         Geom geom = read_geom(positions, atom_types, box);
-        double energy = 0.0;
-        double variance = 0.0;
-        AtomMatrix forces;
-        {
-          nb::gil_scoped_release release;
+        auto [energy, forces, variance] = run_detached([&] {
           Pot &pot = self.slot();
-          std::tie(energy, forces, variance) =
-              pot(geom.pos, geom.types, geom.box);
-        }
+          return pot(geom.pos, geom.types, geom.box);
+        });
         if (!std::isfinite(energy)) {
           throw rgbind::NumericalError("energy is not finite");
         }
@@ -481,11 +560,8 @@ void bind_calls(nb::class_<PotHolder<Pot>> &cls) {
       [](PotHolder<Pot> &self, const F64 &positions, nb::handle atom_types,
          const F64 &box) {
         Geom geom = read_geom(positions, atom_types, box);
-        FullResult result;
-        {
-          nb::gil_scoped_release release;
-          result = run_force(self.slot(), geom);
-        }
+        FullResult result =
+            run_detached([&] { return run_force(self.slot(), geom); });
         return result_dict(result);
       },
       nb::arg("positions").noconvert(), nb::arg("atom_types"),
@@ -498,11 +574,8 @@ void bind_calls(nb::class_<PotHolder<Pot>> &cls) {
         [](PotHolder<Pot> &self, const F64 &positions, nb::handle atom_types,
            const F64 &box) {
           Geom geom = read_geom(positions, atom_types, box);
-          PerAtomResult result;
-          {
-            nb::gil_scoped_release release;
-            result = run_force_per_atom(self.slot(), geom);
-          }
+          PerAtomResult result = run_detached(
+              [&] { return run_force_per_atom(self.slot(), geom); });
           const auto n = static_cast<size_t>(geom.pos.rows());
           nb::dict out = result_dict(result.total);
           out["energies"] = vector_to_numpy(result.energies, {n});
@@ -553,8 +626,7 @@ void bind_calls(nb::class_<PotHolder<Pot>> &cls) {
           item.box = geom.box;
           inputs.push_back(std::move(item));
         }
-        std::vector<BatchResult> results;
-        {
+        std::vector<BatchResult> results = run_detached([&] {
           // F4. One BatchEvaluator call. Each worker owns one instance.
           // Do not construct more instances than there are configurations:
           // a single large cell would otherwise pay for unused workspaces.
@@ -564,10 +636,9 @@ void bind_calls(nb::class_<PotHolder<Pot>> &cls) {
           if (width > inputs.size()) {
             width = static_cast<unsigned>(inputs.size());
           }
-          nb::gil_scoped_release release;
           BatchEvaluator eval([&] { return self.make(); }, width);
-          results = eval.evaluate(inputs);
-        }
+          return eval.evaluate(inputs);
+        });
         nb::list out;
         for (const BatchResult &item : results) {
           if (!std::isfinite(item.energy)) {
@@ -591,22 +662,9 @@ void bind_calls(nb::class_<PotHolder<Pot>> &cls) {
       [](PotHolder<Pot> &self, const F64 &positions, nb::handle atom_types,
          const F64 &box, const F64 &direction, double step,
          const std::string &scheme) {
-        Geom geom = read_geom(positions, atom_types, box);
-        const size_t n = static_cast<size_t>(geom.pos.rows());
-        rgbind::check_f64_2d(direction, n, 3, "direction");
-        const HvpScheme parsed = parse_hvp_scheme(scheme);
-        std::vector<double> v(direction.data(), direction.data() + 3 * n);
-        AtomMatrix hv = AtomMatrix::Zero(geom.pos.rows(), 3);
-        detached_hvp([&] {
-          const std::array<double, 9> flat = flat_box(geom);
-          const ForceInput in{.nAtoms = n,
-                              .pos = geom.pos.data(),
-                              .atmnrs = geom.types.data(),
-                              .box = flat.data()};
-          self.hvp().apply(self.slot(), in, v.data(), hv.data(), step, parsed);
-          return 0;
-        });
-        return matrix_to_numpy(hv);
+        return matrix_to_numpy(hvp_detached(self, positions, atom_types, box,
+                                            direction, step, scheme)
+                                   .first);
       },
       nb::arg("positions").noconvert(), nb::arg("atom_types"),
       nb::arg("box").noconvert(), nb::arg("direction").noconvert(),
@@ -615,15 +673,60 @@ void bind_calls(nb::class_<PotHolder<Pot>> &cls) {
       "reuses the forces of the last geometry this object evaluated, so k "
       "products at one geometry cost k + 1 force calls; 'central' costs 2 "
       "a product and is second order in step; 'analytic' uses the "
-      "kernel's own product; 'auto' is analytic where the kernel has one, "
-      "otherwise forward. step 0 is 1e-3 Angstrom. The kernel runs with the "
+      "kernel's own product and 'ad' its dual-number product; 'exact' is "
+      "analytic, else ad, and never differences; 'auto' is analytic where "
+      "the kernel has one, otherwise forward. hvp_resolved() also returns "
+      "the scheme that ran. step 0 is 1e-3 Angstrom. The kernel runs with "
+      "the interpreter released.");
+  cls.def(
+      "hvp_resolved",
+      [](PotHolder<Pot> &self, const F64 &positions, nb::handle atom_types,
+         const F64 &box, const F64 &direction, double step,
+         const std::string &scheme) {
+        auto [hv, ran] = hvp_detached(self, positions, atom_types, box,
+                                      direction, step, scheme);
+        return nb::make_tuple(matrix_to_numpy(hv), hvp_scheme_name(ran));
+      },
+      nb::arg("positions").noconvert(), nb::arg("atom_types"),
+      nb::arg("box").noconvert(), nb::arg("direction").noconvert(),
+      nb::arg("step") = 0.0, nb::arg("scheme") = "auto",
+      "hvp() as (product, scheme): scheme is the one that ran, so 'auto' "
+      "reports 'analytic' or 'forward' and 'exact' reports 'analytic' or "
+      "'ad'.");
+  cls.def(
+      "hessian",
+      [](PotHolder<Pot> &self, const F64 &positions, nb::handle atom_types,
+         const F64 &box, const std::string &scheme, double step) {
+        Geom geom = read_geom(positions, atom_types, box);
+        const size_t n = static_cast<size_t>(geom.pos.rows());
+        const HessianScheme parsed = parse_hessian_scheme(scheme);
+        std::vector<double> h(9 * n * n);
+        const HessianScheme ran = run_detached([&] {
+          const std::array<double, 9> flat = flat_box(geom);
+          const ForceInput in{.nAtoms = n,
+                              .pos = geom.pos.data(),
+                              .atmnrs = geom.types.data(),
+                              .box = flat.data()};
+          return self.hvp().hessian(self.slot(), in, h.data(), parsed, step);
+        });
+        return nb::make_tuple(vector_to_numpy(h, {3 * n, 3 * n}),
+                              hessian_scheme_name(ran));
+      },
+      nb::arg("positions").noconvert(), nb::arg("atom_types"),
+      nb::arg("box").noconvert(), nb::arg("scheme"), nb::arg("step") = 0.0,
+      "(hessian, scheme): the dense Hessian, shape (3N, 3N), coordinate "
+      "3 i + k for axis k of atom i, and the scheme that ran. scheme has no "
+      "default: 'analytic' and 'ad' use the kernel's closed-form and "
+      "dual-number Hessians, 'exact' is analytic, else ad, and each is "
+      "refused when the kernel lacks it; 'central' differences the forces "
+      "with 6N calls. step 0 is 1e-3 Angstrom. The kernel runs with the "
       "interpreter released.");
   cls.def(
       "hvp_centre",
       [](PotHolder<Pot> &self, const F64 &positions, nb::handle atom_types,
          const F64 &box) {
         Geom geom = read_geom(positions, atom_types, box);
-        const HvpCentre centre = detached_hvp([&] {
+        const HvpCentre centre = run_detached([&] {
           const std::array<double, 9> flat = flat_box(geom);
           const ForceInput in{.nAtoms = static_cast<size_t>(geom.pos.rows()),
                               .pos = geom.pos.data(),
@@ -663,8 +766,46 @@ void bind_calls(nb::class_<PotHolder<Pot>> &cls) {
       "Zero hvp_counts(). The centre stays.");
   cls.def(
       "has_analytic_hvp",
-      [](const PotHolder<Pot> &) { return AnalyticHessianVector<Pot>; },
+      [](const PotHolder<Pot> &self) {
+        return self.primary().caps().analyticHvp;
+      },
       "Whether hvp(scheme='auto') uses the kernel's own product.");
+  cls.def(
+      "derivative_caps",
+      [](const PotHolder<Pot> &self) {
+        const DerivativeCaps c = derivativeCaps(self.primary());
+        nb::dict out;
+        out["hvp_analytic"] = c.hvpAnalytic;
+        out["hvp_ad"] = c.hvpAd;
+        out["hvp_fd"] = c.hvpFd;
+        out["hessian_analytic"] = c.hessianAnalytic;
+        out["hessian_ad"] = c.hessianAd;
+        out["hessian_fd"] = c.hessianFd;
+        out["hvp_forward_force_calls"] = c.hvpForwardForceCalls;
+        out["hvp_central_force_calls"] = c.hvpCentralForceCalls;
+        out["hessian_central_force_calls_per_atom"] =
+            c.hessianCentralForceCallsPerAtom;
+        return out;
+      },
+      "Which analytic, dual-number and finite-difference schemes hvp() and "
+      "hessian() have here, with the force calls of the differenced ones.");
+  cls.def(
+      "derivative_counts",
+      [](PotHolder<Pot> &self) {
+        const DerivativeCounts c = self.hvp().derivativeCounts();
+        nb::dict out;
+        out["hvp_forward"] = c.hvpForward;
+        out["hvp_central"] = c.hvpCentral;
+        out["hvp_analytic"] = c.hvpAnalytic;
+        out["hvp_ad"] = c.hvpAd;
+        out["hessian_central"] = c.hessianCentral;
+        out["hessian_analytic"] = c.hessianAnalytic;
+        out["hessian_ad"] = c.hessianAd;
+        out["hessian_force_calls"] = c.hessianForceCalls;
+        return out;
+      },
+      "Products and Hessians by the scheme that ran, and the force calls of "
+      "central Hessians, so far. reset_hvp_counts() zeros them.");
 }
 
 } // namespace rgpot::pybind

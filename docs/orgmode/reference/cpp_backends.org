@@ -34,7 +34,7 @@ and try the next name.
 | =CP2KPot=    | =libcp2kc_rgpot=        | =enginePath=, =CP2KC_LIBRARY=, =RGPOT_CP2K_ENGINE=, =libcp2kc_rgpot.so=, =./libcp2kc_rgpot.so= |
 | =CPMDPot=    | =libcpmdc=              | =enginePath=, =CPMDC_LIBRARY=, =RGPOT_CPMDC_ENGINE=, =RGPOT_CPMD_ENGINE=, =libcpmdc.so=, =./libcpmdc.so= |
 | =MOPACPot=   | =libmopacc=             | =Config::engine_path=, =MOPACC_LIBRARY=, =RGPOT_MOPACC_ENGINE=, =libmopacc.so=, =./libmopacc.so= |
-| =NWChemPot=  | =libnwchemc=            | =enginePath=, =NWCHEMC_LIBRARY=, =RGPOT_NWCHEMC_ENGINE=, =RGPOT_NWCHEM_ENGINE=, =libnwchemc.so=, =./libnwchemc.so= |
+| =NWChemPot=  | =libnwchemc=            | =enginePath= alone when set; else the variables that are set among =NWCHEMC_LIBRARY=, =RGPOT_NWCHEMC_ENGINE= and =RGPOT_NWCHEM_ENGINE=, in that order, with no default names after them; else =libnwchemc.so=, =./libnwchemc.so= |
 | =SkalaPot=   | =libnwchemc=            | as =NWChemPot=                                                                                |
 | =LammpsPot=  | engine plugin           | =engine_path= alone when set; else =RGPOT_LAMMPS_ENGINE=, =LAMMPS_ENGINE=, =liblammps_engine.so=, =liblj_engine.so= |
 | =GromacsPot= | =rgpot_md_native_force= | =engine_path= alone; empty means the in-process Lennard-Jones                                 |
@@ -57,6 +57,7 @@ name.
 their engine libraries carry the C ABIs in
 [[file:engine_abi.org][Engine C ABI]].
 =IPIPot= opens a socket and waits for a driver.
+=ORCAPot= starts the =orca= program for every force and needs no library.
 
 None of the dlopen constructors throw when the library is missing.
 They record the reason, =available()= returns false, and the first force throws
@@ -68,6 +69,15 @@ opens.
 =available()= is true for every object they construct.
 
 ** CP2K
+
+The Quickstep method is VandeVondele and coauthors, Computer Physics
+Communications 167, 103-128 (2005), doi:10.1016/j.cpc.2004.12.014.
+CP2KPotFakeEngineTest does not run Quickstep.
+Its surface is a spring, half k times the sum of squared displacements, in
+Hartree and Bohr with k = 0.5.
+On the water geometry in that test the spring is 1.8600113677425840 Hartree, so
+the host energy is 50.613487749571874 eV, and the test requires a relative
+agreement of 1e-12.
 
 *** =rgpot::CP2KPot=
 
@@ -181,6 +191,14 @@ It is removed when the session ends unless =keepWorkDir= is set.
 
 ** CPMD
 
+The method is Car and Parrinello, Phys.
+Rev. Lett. 55, 2471 (1985), doi:10.1103/PhysRevLett.55.2471.
+=CPMDPot= loads =libcpmdc= and does not carry a plane-wave energy of its own.
+Positions are Angstrom and the energy is eV.
+The parameters are the =CPMDParams= arm.
+The tutorial's 0.77 eV is the stand-in engine on a 20 Angstrom cell (0.75 plus
+0.001 times the cell's z length), not a published water energy.
+
 *** =rgpot::CPMDPot=
 
 #+attr_rgpot: signature
@@ -231,6 +249,8 @@ bool setParams(const ::CPMDParams::Reader &params);
 The engine is loaded again when it was not loaded or =enginePath= changed.
 A live session is kept when the engine path and the serialized params are
 unchanged.
+A refused orbital key drops the session just created, so the same params are
+applied again on the next call.
 
 *** =rgpot::CPMDPot::getParams=
 
@@ -260,6 +280,13 @@ bool available() const;
 
 ** MOPAC
 
+The default model is AM1: Dewar, Zoebisch, Healy and Stewart, Journal of the
+American Chemical Society 107, 3902-3909 (1985),
+doi:10.1021/ja00299a024. PM6 is Stewart, Journal of Molecular Modeling 13, 1173-1213 (2007), doi:10.1007/s00894-007-0233-4.
+MOPACPotTest does not pin an AM1 energy.
+The fake engine returns 0.25 Hartree, and the test requires the host energy to
+equal that times =HARTREE_TO_EV= (27.211386245988), which is 6.802846561497 eV.
+
 *** =rgpot::MOPACPot=
 
 #+attr_rgpot: signature
@@ -280,12 +307,19 @@ explicit MOPACPot(const Config &cfg);
   A force throws =std::runtime_error= when the engine is not loaded, =nAtoms= is
   zero, a buffer is null, or the engine reports failure.
 
-The library must export =mopacc_energy_gradient=.
-When it exports
-=mopacc_c_abi_version=, the version must equal =RGPOT_MOPACC_C_ABI_VERSION=, and when it exports =mopacc_available=,
-that must be nonzero.
-The constructor passes the params once through =mopacc_set_params= when present
-and ignores its status.
+The library must export =mopacc_energy_gradient=,
+=mopacc_c_abi_version=, =mopacc_abi_version=, =mopacc_result_size= and =mopacc_params_size=.
+Both versions must equal 2 (=RGPOT_MOPACC_C_ABI_VERSION= and
+=MOPACC_ABI_VERSION=), =mopacc_result_size= must equal =sizeof(MopacCResult)=,
+and =mopacc_params_size= must equal =sizeof(MopacCParams)=.
+A later ABI may change the layout without changing the sizes, so a library
+reporting version 3 is refused even when its sizes match.
+These checks run before any call that returns a =MopacCResult=; a library that
+fails one stays unloaded, and the load error names the missing symbol or the
+expected and found values.
+When the library exports =mopacc_available=, that must be nonzero.
+The constructor passes the params once through =mopacc_set_params= when present;
+a nonzero status leaves the engine unloaded.
 
 *** =rgpot::MOPACPot::available=
 
@@ -296,11 +330,17 @@ bool available() const;
 
 - Inputs :: none.
 - Units :: none.
-- Outputs :: true when =libmopacc= is loaded and exports
-  =mopacc_energy_gradient=.
+- Outputs :: true when =libmopacc= passed the load check above and
+  =mopacc_set_params=, when exported, returned 0.
 - Errors :: none.
 
 ** NWChem
+
+The engine is NWChem: Valiev and coauthors, Computer Physics Communications 181,
+1477-1489 (2010),
+doi:10.1016/j.cpc.2010.04.018, and Aprà and coauthors, Journal of Chemical Physics 152, 184102 (2020), doi:10.1063/5.0004997.
+NWChemPotTest requires a water B3LYP/6-31G* energy below -2070.0 eV and a second
+SCF within 1e-3 eV of the first.
 
 *** =rgpot::NWChemPot=
 
@@ -343,8 +383,10 @@ bool setParams(const ::NWChemParams::Reader &params);
 - Errors :: no exception of its own; a false return covers a missing engine and
   a refusal.
 
-A library that is already loaded is kept, so a changed =enginePath= has no
-effect after the first successful load.
+A library that is already loaded is kept while =enginePath= is empty or names
+that same library.
+A non-empty =enginePath= that differs from the loaded library is loaded in its
+place, and a failed load leaves no engine loaded, so the call returns false.
 
 *** =rgpot::NWChemPot::getParams=
 
@@ -403,7 +445,392 @@ int main() {
 }
 #+end_src
 
+** ORCA
+
+=ORCAPot= runs the =orca= executable as a child process and reads the energy and
+gradient from the =.engrad= file it writes.
+ORCA is not linked or loaded.
+It is described in Neese, WIREs Computational Molecular Science 2, 73-78 (2012),
+doi:10.1002/wcms.81, and in Neese, Wennmohs, Becker and Riplinger, J. Chem. Phys. 152, 224108 (2020), doi:10.1063/5.0004608.
+Version 5 is Neese, WIREs Computational Molecular Science 12, e1606 (2022),
+doi:10.1002/wcms.1606, and version 6 is Neese, WIREs Computational Molecular Science 15, e70019 (2025), doi:10.1002/wcms.70019.
+The how-to is [[file:../howto/orca.org][ORCA single points]].
+The tests use a fake =orca= script that returns a Hartree energy of -1.25 and a
+gradient of 0.01 Hartree/bohr times the component number, and require the host
+energy and forces to equal those times the =units.hpp= factors.
+They do not pin an ORCA energy.
+
+*** =rgpot::ORCAConfig=
+
+- Inputs :: =executable= (a path, or a bare name looked up on PATH; empty looks
+  up =orca=), =method= (an ORCA method keyword, required), =basis= (a basis set
+  keyword, empty for a composite method), =keywords= (further simple-input
+  keywords, empty for none), =charge= (default 0), =multiplicity= (default 1),
+  =nprocs= (default 1),
+  =maxcore_mb= (default 1024), =restart= (default true), =scratch_dir= (empty
+  for the system temporary directory),
+  =keep_files= (default false) and =timeout_s= (default
+  =ORCAConfig::kDefaultTimeout=, 3600 seconds; 0 waits with no limit).
+- Units ::
+  =maxcore_mb= in MB per process; =charge= in elementary charges; =timeout_s= in
+  seconds; the other fields have no unit.
+- Outputs :: a plain struct read by =rgpot::ORCAPot=.
+  =method=, =basis= and =keywords= become the =!= line, =nprocs= above 1 becomes
+  =%pal nprocs=, =maxcore_mb= becomes =%maxcore=, and =charge= and
+  =multiplicity= go on the =* xyz= line.
+  =restart= turns the =%moinp= and =MORead= reuse of the previous =.gbw= on and
+  off.
+  =timeout_s= is the time to wait for the =orca= process.
+  The process is the leader of a new process group.
+  Past the limit that group is sent SIGTERM and, if any process in the group is
+  still alive two seconds later, SIGKILL even if the leader has exited, and the
+  child is reaped.
+- Errors :: =rgpot::ORCAPot= throws
+  =std::invalid_argument= for an empty =method=, for =multiplicity=, =nprocs= or =maxcore_mb=
+  below 1, for a =timeout_s= that is negative or not finite, and for a =method=,
+  =basis= or =keywords= that holds a line break.
+
+*** =rgpot::ORCAPot=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+explicit ORCAPot(const ORCAConfig &config);
+#+end_src
+
+- Inputs :: =config=, an =rgpot::ORCAConfig=.
+- Units :: positions in Angstrom, energy in eV, forces in
+  eV/Angstrom. ORCA takes Angstrom in a =* xyz= block, so the positions are written as they are. The =.engrad= energy in Hartree is multiplied by =units::HARTREE_TO_EV= and its Hartree/bohr
+  gradient by =units::NEG_GRAD_TO_FORCE=.
+  The box must be absent or all zero, in Angstrom.
+- Outputs :: a potential that runs one ORCA energy and gradient per force call.
+  =caps()= reports =Reentrancy::PerInstance=, =periodic = false= and no stress.
+  The constructor resolves the executable and makes a directory of its own under
+  =scratch_dir=; the destructor removes it unless =keep_files= is set.
+  Each call writes
+  =rgpot_orca.inp= there, closes extra file descriptors above 2 before =exec=, runs =orca rgpot_orca.inp=
+  with the standard output in
+  =rgpot_orca.out= and the standard error in =rgpot_orca.err=, and reads
+  =rgpot_orca.engrad= in the C locale (as when writing coordinates).
+  An =.engrad= and a =.gbw= left by an earlier call are removed first, and any
+  removal failure other than a missing file throws =rgpot::ORCAError=.
+  The orbitals of a successful call are copied to =rgpot_orca_guess.gbw=, and
+  the next call with the same atomic numbers reads them through =%moinp= and
+  =! MORead=.
+  A call without a =.gbw=, after a failure, after =reset()=, or with other
+  atomic numbers starts from ORCA's own guess.
+- Errors :: the constructor throws =std::invalid_argument= in the cases of
+  =rgpot::ORCAConfig=, and =rgpot::ORCAError= when no executable is found or the
+  directory cannot be made.
+  A force call throws =std::invalid_argument= for a box with a non-zero entry
+  (ORCA has no periodic boundary conditions), for an atomic number outside 1 to
+  118, and for a charge and multiplicity that the electron count cannot hold.
+  It throws =rgpot::ORCAError=, a
+  =std::runtime_error=, when a stale =.engrad= or =.gbw= cannot be removed, the input cannot be written, ORCA cannot be started or is ended by a signal, the run passes =timeout_s=
+  (the process group is then stopped and the child reaped), ORCA exits with a
+  non-zero status, no =.engrad= appears, the =.engrad= is malformed or lists
+  other atoms, or the energy or a gradient component is not finite.
+  The message holds the last 2048 bytes of the standard error and of the output
+  file.
+
+*** =rgpot::ORCAPot::reset=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+void reset();
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: none; the stored =.gbw= copy is removed, so the next force starts
+  from ORCA's own guess.
+- Errors :: none.
+
+*** =rgpot::ORCAPot::config=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] const ORCAConfig &config() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: as =rgpot::ORCAConfig=.
+- Outputs :: the config the instance was built with.
+- Errors :: none.
+
+*** =rgpot::ORCAPot::executablePath=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] const std::string &executablePath() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the absolute path of the executable the instance runs.
+  A name with a directory part is made absolute; a bare name is the first
+  executable of that name in the directories of =PATH=.
+- Errors :: none.
+
+*** =rgpot::ORCAPot::runDirectory=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] const std::string &runDirectory() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the directory that holds the input, the output files and the =.gbw=
+  files of the instance.
+  Two instances never share one.
+- Errors :: none.
+
+*** =rgpot::ORCAPot::reusedWavefunction=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] bool reusedWavefunction() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: true when the last successful force read the orbitals of the call
+  before it.
+- Errors :: none.
+
+*** =rgpot::ORCAPot::probeAvailable=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] static bool probeAvailable(const std::string &executable = {});
+#+end_src
+
+- Inputs :: =executable=, as in =rgpot::ORCAConfig= (empty looks up =orca= on
+  PATH).
+- Units :: none.
+- Outputs :: true when that name resolves to an executable regular file
+  (including through a symlink).
+  A test that needs ORCA calls this and skips when it is false.
+- Errors :: none.
+
+*** =rgpot::ORCAError=
+
+- Inputs :: a message; the class inherits the constructors of
+  =std::runtime_error=.
+- Units :: none.
+- Outputs :: the exception =rgpot::ORCAPot= throws when a run fails: no
+  executable, a working directory that cannot be made, a stale =.engrad= or
+  =.gbw= that cannot be removed, an input that cannot be written, a process that
+  cannot start, is ended by a signal, passes =timeout_s= or exits with a
+  non-zero status, and a missing, malformed or non-finite =.engrad=.
+  The message names the input file and ends with the last 2048 bytes of the
+  standard error and of the ORCA output file.
+  Input the caller got wrong throws =std::invalid_argument= instead.
+- Errors :: none.
+
+*** =rgpot::orca::Engrad=
+
+- Inputs :: none; a struct that =rgpot::orca::parseEngrad= fills from the text
+  of a =.engrad= file (=CppCore/rgpot/ORCAPot/ORCAFiles.hpp=).
+- Units :: ORCA's own:
+  =energy_hartree= in Hartree and =gradient_hartree_per_bohr= in Hartree/bohr.
+- Outputs :: =energy_hartree=, =gradient_hartree_per_bohr= (3 * =nAtoms= entries
+  of dE/dR, atom-major) and =atomic_numbers= (one per atom).
+  The Bohr coordinates of the file are read past and not kept.
+  The parser does not check that the numbers are finite; =rgpot::ORCAPot= does.
+- Errors :: none on the struct.
+  =parseEngrad= throws =std::runtime_error= naming the first value that does not
+  fit, including an atom count other than the one asked for.
+
+*** =rgpot::orca::InputSpec=
+
+- Inputs :: none; a struct that =rgpot::ORCAPot= fills from its
+  =rgpot::ORCAConfig= for =rgpot::orca::renderInput=.
+- Units :: =maxcore_mb= in MB per process; =charge= in elementary charges; the
+  other fields have no unit.
+- Outputs :: everything the input of one single point depends on: =method=,
+  =basis= and =keywords= (joined on the =!= line, followed by =EnGrad=),
+  =charge= and =multiplicity= (the =* xyz= line), =nprocs= (=%pal nprocs= above
+  1), =maxcore_mb= (=%maxcore=) and =moinp=, the =.gbw= the orbitals are read
+  from relative to the run directory.
+  A non-empty =moinp= adds =%moinp= and =MORead=; an empty one starts from
+  ORCA's own guess.
+- Errors :: none on the struct.
+  =renderInput= throws =std::invalid_argument= when =method=, =basis=,
+  =keywords= or =moinp= holds a line break, or an atomic number is outside 1 to 118.
+
+** ORCA through liborcac
+
+=ORCACPot= (=CppCore/rgpot/ORCACPot/=) is the frontend of the split orcac shim
+(=liborcac=), on the pattern of =MOPACPot=: it dlopens the library and keeps one
+orcac session, which owns one run directory and one set of stored orbitals.
+=liborcac= writes the ORCA input, runs ORCA and reads the =.engrad=; see the
+rgpot integration guide in the orcac repository.
+It is in every =librgpot= and needs neither ORCA nor =liborcac= to build.
+=rgpot::makePotential= builds it for the =orca= arm.
+=ORCAPot= is the separate in-process frontend.
+
+=ORCACPot= speaks C ABI 1 of =liborcac=: plain C structs (=OrcaCConfig= and
+=OrcaCResult=, each with a
+=struct_size=), integer status codes, and thirteen exported functions, from =orcac_config_init= to =orcac_probe_executable=.
+The header it builds against,
+=CppCore/rgpot/ORCACPot/orcac.h=, is a vendored copy of the public =orcac.h= of the orcac repository, pinned with its orcac commit and SHA-256 in =CppCore/rgpot/ORCACPot/orcac.h.pin=.
+The =OrcacHeaderPin= test checks the copy against the pin and checks that
+=subprojects/orcac.wrap= fetches the pinned commit.
+=CppCore/tests/orcac_abi1_exports.txt= lists the thirteen functions.
+
+*** =rgpot::ORCACConfig=
+
+- Inputs :: one field for each =OrcaCConfig= field: =method= (one simple-input
+  token, required), =basis= (one token; empty for a composite method),
+  =keywords= (further simple-input words on one line), =blocks= (verbatim =%=
+  blocks), =executable= (empty lets =liborcac= search
+  =$ORCAC_ORCA=, then =PATH=), =scratch_dir= (empty uses =$TMPDIR=), =charge=,
+  =multiplicity=, =nprocs=, =maxcore_mb=, =timeout_s= and =restart= (true
+  selects =ORCAC_GUESS_CHAIN=, false =ORCAC_GUESS_FRESH=); =engine_path=, the
+  library to open.
+- Units :: =maxcore_mb= in MB per process, =timeout_s= in seconds per ORCA run
+  (0 waits with no limit).
+- Outputs :: a plain struct read by =rgpot::ORCACPot=.
+- Errors :: none; =liborcac= checks the fields when the session is created.
+
+The =orca= arm of =rgpot::makePotential= fills it from =ORCAParams= alone; the
+shared fields of =PotentialConfig=, such as =common=, are not read. orcac takes
+the method as one token, so the first word of =ORCAParams.method= is the method
+and the others join =keywords= (=UKS PBE0= gives the method =UKS= and the
+keyword =PBE0=, the same =!= line for ORCA).
+=ORCAParams.keywords= on one line that does not start with =%= stays =keywords=,
+without a leading =!=; otherwise each line that starts with =!= joins =keywords=
+and the other lines are =blocks=.
+=keepFiles= is refused with =std::invalid_argument=, since ABI 1 always removes
+the run directory.
+
+*** =rgpot::ORCACPot=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+explicit ORCACPot(ORCACConfig config);
+#+end_src
+
+- Inputs :: =config=, an =rgpot::ORCACConfig=.
+  A non-empty =engine_path= is the only library tried.
+  Otherwise the search is =ORCAC_LIBRARY= and =RGPOT_ORCAC_ENGINE= when set,
+  then =liborcac.so.1= (Linux), =liborcac.so=, =./liborcac.so=, the =.dylib=
+  names and =orcac.dll=.
+- Units :: positions in Angstrom, energy in eV, forces in
+  eV/Angstrom. =liborcac= returns the energy in Hartree and the gradient =dE/dx=
+  in Hartree/Bohr; the force is the negative gradient, converted with
+  =units::HARTREE_TO_EV= and =units::HARTREE_BOHR_TO_EV_ANGSTROM=.
+  ORCA has no periodic cell, and the box is not used.
+- Outputs :: a potential that runs one ORCA energy and gradient per force call
+  through =orcac_energy_gradient=.
+  =caps()= reports =Reentrancy::PerInstance= and =periodic = false=; calls on
+  one instance are serialised.
+  The destructor calls =orcac_destroy=.
+- Errors :: the constructor does not throw when =liborcac= is missing, lacks any
+  of the thirteen ABI 1 functions, reports another
+  =orcac_c_abi_version= or =orcac_abi_version= than 1, or refuses the session in =orcac_create=;
+  it records the reason in =loadError()= and the first force throws
+  =std::runtime_error= with it.
+  A force throws =std::invalid_argument= for no atoms and =std::runtime_error=
+  with the status name and =orcac_last_error= when the evaluation fails.
+
+*** =rgpot::ORCACPot::available=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] bool available() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: true when =liborcac= loaded, speaks ABI 1 and the session was
+  created.
+- Errors :: none.
+
+*** =rgpot::ORCACPot::loadError=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] const std::string &loadError() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: why =available()= is false, naming every library tried or the first
+  missing function; empty when it is true.
+- Errors :: none.
+
+*** =rgpot::ORCACPot::libraryPath=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] const std::string &libraryPath() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the candidate =liborcac= was opened from; empty when none opened.
+- Errors :: none.
+
+*** =rgpot::ORCACPot::engineVersion=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] std::string engineVersion() const;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: =orcac_version()= of the loaded library; empty when none loaded.
+- Errors :: none.
+
+*** =rgpot::ORCACPot::config=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] const ORCACConfig &config() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: as =rgpot::ORCACConfig=.
+- Outputs :: the configuration the instance was built with.
+- Errors :: none.
+
+*** =rgpot::ORCACPot::paramsKey=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] uint64_t paramsKey() const noexcept override;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: a hash of the ABI generation, the library path, the method, basis,
+  keywords, blocks and executable, the charge, the multiplicity and =restart=.
+- Errors :: none.
+
+*** Testing against orcac main
+
+=PotentialFactoryTest= runs the =orca= arm against
+=CppCore/tests/orcac_fake_engine.c=, a stand-in that exports exactly the
+thirteen ABI 1 functions; =OrcacFakeExports= checks that list.
+With =-Dorcac_main=enabled= the test build also compiles =liborcac= at the orcac
+commit of =subprojects/orcac.wrap=.
+=OrcacMainExports= checks its exports.
+=PotentialFactoryTest= then runs the =orca= arm against it, with the
+=fake_orca.sh= replay of the orcac test data as the ORCA executable.
+That replay gives -75.5 Hartree for a water molecule, and the test requires the
+energy and forces to within 1e-9 in Hartree units on two calls.
+
 ** Skala
+
+skala-1.1 is the exchange-correlation keyword this class writes into NWChem, not
+a separate energy surface.
+The functional is Luise and coauthors, arXiv:2506.14665,
+doi:10.48550/arXiv.2506.14665. The abstract reports an error of 2.8 kcal/mol on
+GMTKN55.
+SkalaPotTest checks that the keyword is written; it does not pin an energy.
 
 *** =rgpot::SkalaConfig=
 
@@ -439,8 +866,9 @@ explicit SkalaPot(const SkalaConfig &config);
   from =NWChemPot=.
 
 The owned =NWChemPot= is default-constructed first, so a library found by the
-environment search is kept and =engine_path= is used only when that search
-fails.
+environment search is kept while =engine_path= is empty.
+A non-empty =engine_path= is passed on as =enginePath=, and that library is
+loaded in place of the one the search found.
 The build option is =-Dwith_skala=true= and it needs =-Dwith_rpc=true=.
 
 *** =rgpot::SkalaPot::config=
@@ -496,6 +924,15 @@ void getParams(::NWChemParams::Builder out) const;
 
 ** tblite
 
+The library is the extended tight-binding implementation of Bannwarth and
+coauthors, WIREs Computational Molecular Science 11, e1493,
+doi:10.1002/wcms.1493. GFN1-xTB is the 2017 GFN-xTB method of Grimme, Bannwarth and Shushkov, Journal of Chemical Theory and Computation 13, 1989-2009 (2017), doi:10.1021/acs.jctc.7b00118.
+IPEA1-xTB is the IPEA parametrization of Ásgeirsson, Bauer and Grimme, Chemical
+Science 8, 4879-4895 (2017), doi:10.1039/c7sc00601b.
+GFN2-xTB, the default, is cited under xtb.
+TBLitePotTest requires the GFN2 energy of its three-atom water geometry to lie
+within 1 eV of -137.9 eV.
+
 *** =rgpot::TBLiteConfig=
 
 - Inputs :: =method= (=TBLiteMethod::GFN1=, =GFN2= or =IPEA1=; default =GFN2=),
@@ -536,6 +973,12 @@ Later forces only update the geometry.
 The build option is =-Dwith_tblite=true=.
 
 ** xtb
+
+The default method is GFN2-xTB: Bannwarth, Ehlert and Grimme, J. Chem.
+Theory Comput. 15, 1652 (2019),
+doi:10.1021/acs.jctc.8b01176. Host positions are Angstrom and the host energy is eV. =XTBConfig= holds the parameters: the method, accuracy 1, an electronic temperature of 300 K, 250 iterations, charge 0 and no unpaired electrons. A numerical GFN2 energy needs libxtb, which the default build does not link, so this tree does not pin one. GFN1-xTB is the 2017 GFN-xTB method of Grimme, Bannwarth and Shushkov, Journal of Chemical Theory and Computation 13, 1989-2009 (2017), doi:10.1021/acs.jctc.7b00118.
+GFN0-xTB is Pracht, Caldeweyher, Ehlert and Grimme, ChemRxiv (2019),
+doi:10.26434/chemrxiv.8326202.v1. GFN-FF is Spicher and Grimme, Angewandte Chemie International Edition 59, 15665-15673 (2020), doi:10.1002/anie.202004239.
 
 *** =rgpot::XTBConfig=
 
@@ -590,9 +1033,10 @@ explicit XTBPot(const XTBConfig &config);
 - Outputs :: a potential that calls the linked libxtb C API.
 - Errors :: =std::runtime_error= from the constructor when the xtb environment,
   calculator or results cannot be created.
-  A force throws
-  =std::runtime_error= when the handles are missing, =xtb_newMolecule= fails,
-  the single point fails, or the energy or gradient is not finite.
+  A force throws =rgpot::SccNotConverged=, a
+  =std::runtime_error=, when the SCC does not converge and the rescue below does not help, and =std::runtime_error=
+  when the handles are missing, =xtb_newMolecule= fails, another single point
+  failure occurs, or the energy or gradient is not finite.
   After such a failure the handles are replaced.
 
 A new composition rebuilds the molecule.
@@ -675,6 +1119,73 @@ void setWarmMinGap(double ev);
 - Outputs :: the current gap guard.
 - Errors :: none.
 
+*** =rgpot::XTBPot::setAccuracy=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+void setAccuracy(double accuracy);
+#+end_src
+
+- Inputs :: =accuracy=, the xtb numerical accuracy level.
+- Units :: none.
+- Outputs :: none; the next force applies it.
+- Errors :: none.
+  The accuracy is part of =fusedSettings()=, so a handle made by
+  =PotentialHandle::from_impl= needs =sync_fused_settings= after the change to
+  evaluate a stored failure again.
+
+*** =rgpot::XTBPot::setElectronicTemperature=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+void setElectronicTemperature(double kelvin);
+#+end_src
+
+- Inputs :: =kelvin=, the electronic temperature.
+- Units :: kelvin.
+- Outputs :: none; the next force applies it.
+- Errors :: none; part of =fusedSettings()= like =setAccuracy=.
+
+*** =rgpot::XTBPot::setMaxIterations=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+void setMaxIterations(int iterations);
+#+end_src
+
+- Inputs :: =iterations=, the SCC iteration budget.
+- Units :: iterations.
+- Outputs :: none; the next force applies it.
+- Errors :: none; part of =fusedSettings()= like =setAccuracy=.
+
+*** =rgpot::XTBPot::config=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] const XTBConfig &config() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: as =XTBConfig=.
+- Outputs :: the current configuration, with the values the setters wrote.
+- Errors :: none.
+
+*** =rgpot::XTBPot::fusedSettings=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] FusedSettingsSpec fusedSettings() const;
+#+end_src
+
+- Inputs :: none.
+- Units :: =charge= in elementary charges, =electronicTemperature= in kelvin.
+- Outputs :: the number of unpaired electrons, charge, accuracy, electronic
+  temperature, SCC iteration budget and, as the engine build, the libxtb API
+  version and the method.
+  The potential is non-periodic, so =periodic= is 0.
+  =PotentialHandle::from_impl= installs them as the key of the fused cache.
+- Errors :: none.
+
 *** =rgpot::XTBPot::reusedWavefunction=
 
 #+attr_rgpot: signature
@@ -741,8 +1252,24 @@ void forceImpl(const ForceInput &in, ForceOut *out) const;
 - Units :: as =XTBPot=.
 - Outputs :: =out->energy=, =out->F= and =out->variance= from =rgpot_xtb_force=.
   =out->has_stress= and =out->stress= are not written.
-- Errors :: =std::runtime_error= with the return code when =rgpot_xtb_force=
-  returns nonzero.
+- Errors :: =rgpot::SccNotConverged= when =rgpot_xtb_force= returns
+  =RGPOT_XTB_RC_SCC_NOT_CONVERGED=, and =std::runtime_error= with the return
+  code for any other nonzero value.
+
+*** =rgpot::XTBDlopen::fusedSettings=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] FusedSettingsSpec fusedSettings() const;
+#+end_src
+
+- Inputs :: none.
+- Units :: as =XTBPot::fusedSettings=.
+- Outputs :: the settings of the configuration the engine was created with, and
+  the engine ABI version and method as the engine build.
+  The engine ABI has no setters for them, so another setting means another
+  =XTBDlopen=.
+- Errors :: none.
 
 *** =rgpot::XTBDlopen::reset=
 
@@ -819,6 +1346,14 @@ void setWarmMinGap(double ev);
 
 ** Metatomic
 
+The model container is metatomic: Bigi et al., J. Chem.
+Phys. 164, 064113 (2026), doi:10.1063/5.0304911.
+Positions are Angstrom and the energy is eV.
+The parameters are the exported model plus =MetatomicConfig=.
+Reference value: the 13-atom geometry in =MetatomicPotTest=, on
+=CppCore/tests/data/lj38/lennard-jones.pt=, is 98374.87753058573 eV within 1e-2,
+the pin from eOn =MetatomicTest=.
+
 *** =rgpot::MetatomicConfig=
 
 - Inputs :: the fields and their defaults:
@@ -871,10 +1406,15 @@ explicit MetatomicPot(const MetatomicConfig &config);
   where there is one, uses its defaults.
 - Units :: positions are passed unchanged and declared to the model in
   =length_unit=; the energy is requested in eV.
-  With the default
-  =length_unit= that is Angstrom in, eV and eV/Angstrom out. =variance= is the mean model =energy_uncertainty=
-  in eV when that output is used, else the RMS force spread over rotations in
-  eV/Angstrom, else 0.
+  With the default =length_unit= that is Angstrom in, eV and eV/Angstrom out.
+  The =variance= is a variance, so one square root gives a scale in the units of
+  the quantity it describes.
+  It is the square of the mean model =energy_uncertainty= in eV^2 when that
+  output is used.
+  Otherwise it is the mean square of the force deviation over the rotations, in
+  eV^2 per Angstrom squared: the mean over every atom, Cartesian component and
+  rotation of the squared difference from the force the potential returns.
+  It is 0 when neither applies.
 - Outputs :: a potential that evaluates the model in process with libtorch.
 - Errors :: the constructor throws what metatomic raises when the model cannot
   be loaded, and =std::runtime_error= for a model dtype other than =float32= or
@@ -898,8 +1438,28 @@ void setChargeSpin(int charge, int spin);
 - Units :: none.
 - Outputs :: none; later forces attach these values under the names the model
   reads (see =readsCharge= and =readsSpin=).
+  The result-cache key from =paramsKey= is recomputed, so a result cached under
+  the previous pair is not served for the new one.
 - Errors :: none; a value the model does not read has no effect, and
   =libmetatomic_engine= refuses such a value without calling this.
+
+*** =rgpot::MetatomicPot::paramsKey=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] uint64_t paramsKey() const noexcept override;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: a 64-bit FNV-1a hash of every setting the model sees.
+  These are the model path, device, length unit, extensions directory,
+  uncertainty threshold, dtype override, rotation averaging, determinism policy,
+  task name, extras flag, charge and spin, together with a kernel version.
+  Instances that differ in these values get different result-cache keys, and
+  =setChargeSpin= changes the key.
+  The consistency check and the engine path are not part of the hash.
+- Errors :: none.
 
 *** =rgpot::MetatomicPot::readsCharge=
 
@@ -986,19 +1546,27 @@ void forceImpl(const ForceInput &in, ForceOut *out) const;
 
 ** UMA
 
+The model family is Wood and coauthors, Advances in Neural Information
+Processing Systems 38, pages 143528-143564 (2025), doi:10.52202/085713-4310.
+UmaPotTest pins the ASE FAIRChemCalculator energy of HCN, uma-s-1p1 task omol,
+at -2542.4200323230975 eV within 1e-4.
+That figure is the test's parity pin, not a value from the paper.
+
 *** =rgpot::UmaConfig=
 
 - Inputs ::
   =model_path= (default empty; an AOTInductor =.pt2= package from =scripts/export_uma_aoti.py=), =task_name=
   (default =omol=), =device= (default =cpu=), =charge= (default 0), =spin=
-  (multiplicity, default 1), =cutoff= (default 6.0),
+  (integer from 0 to 100, default 1), =cutoff= (default 6.0),
   =max_neighbors= (default 300), =cache_dir= (default empty; the root of the
   persistent cache the package is unpacked into).
 - Units :: =cutoff= in Angstrom; =charge= in elementary charges; the other
   fields have no unit.
 - Outputs :: a plain struct read by =UmaPot=.
 - Errors :: =UmaPot= throws =std::runtime_error= when =model_path= is empty or
-  does not end in =.pt2=.
+  does not end in =.pt2=, and
+  =std::invalid_argument= (via =rgpot::validate_uma_spin_for_task=) when =spin=
+  is outside =[0, 100]=.
   The first force throws =std::runtime_error= when the cache root cannot be
   created or the package cannot be unpacked into it.
   An empty
@@ -1011,6 +1579,20 @@ void forceImpl(const ForceInput &in, ForceOut *out) const;
   when present.
   A =task_name=, =charge= or =spin= that disagrees with the package metadata
   makes each force throw =rgpot::UmaContractError=.
+
+*** =rgpot::validate_uma_spin_for_task=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+void validate_uma_spin_for_task(std::string_view task_name, int spin,
+                                std::string_view where = "UmaPot");
+#+end_src
+
+- Inputs :: =task_name=, the UMA head name; =spin=, the integer spin; =where=,
+  the caller prefix for error messages (default =UmaPot=).
+- Units :: none.
+- Outputs :: none; accepted values are not modified.
+- Errors :: throws =std::invalid_argument= when =spin= is outside =[0, 100]=.
 
 *** =rgpot::UmaPot=
 
@@ -1028,7 +1610,8 @@ explicit UmaPot(const UmaConfig &config);
 - Outputs :: a potential that builds a neighbour list and runs the compiled
   graph.
 - Errors :: =std::runtime_error= from the constructor when =model_path= is empty
-  or does not end in =.pt2=.
+  or does not end in =.pt2=, and
+  =std::invalid_argument= when =spin= violates =rgpot::validate_uma_spin_for_task=.
   The package loads on the first force; loader errors and =std::runtime_error=
   for bad dtype metadata surface there.
   A force throws =rgpot::UmaContractError= when charge, spin, task or
@@ -1059,11 +1642,13 @@ The build option is
 void setChargeSpin(int charge, int spin);
 #+end_src
 
-- Inputs :: =charge= in elementary charges and =spin= as the multiplicity.
+- Inputs :: =charge= in elementary charges and =spin= (integer in =[0, 100]=).
 - Units :: none.
 - Outputs :: none; the config is updated and =paramsKey= is recomputed.
-- Errors :: none here; the next force throws =rgpot::UmaContractError= when the
-  package was exported for other values.
+- Errors :: throws
+  =std::invalid_argument= without mutating the config when =spin= violates =rgpot::validate_uma_spin_for_task=;
+  the next force throws =rgpot::UmaContractError= when the package was exported
+  for other values.
 
 *** =rgpot::UmaPot::posDtypeName=
 
@@ -1157,6 +1742,14 @@ fromMetadata(const std::unordered_map<std::string, std::string> &meta);
   is not 40.
 
 ** i-PI socket
+
+The socket is the i-PI force-engine protocol of Ceriotti, More and Manolopoulos,
+Computer Physics Communications 185, 1019-1026 (2014),
+doi:10.1016/j.cpc.2013.10.027. i-PI 2.0 is Kapil and coauthors, Computer Physics Communications 236, 214-223 (2019), doi:10.1016/j.cpc.2018.09.020.
+IPIPotTest's mock returns 0.25 Hartree.
+The host energy must lie within 1e-12 of 0.25 times =HARTREE_TO_EV=, which is
+6.802846561497 eV.
+That is a unit conversion, not a path-integral energy.
 
 *** =rgpot::IPIConfig=
 
@@ -1296,6 +1889,12 @@ These three classes evaluate the shifted 12-6 Lennard-Jones potential described
 by =ExternalLjConfig=.
 The C entry points with the same names as the three factory functions are in
 =CppCore/rgpot/ExternalPot/external_potentials.h=.
+The engines are Thompson and coauthors, Computer Physics Communications 271,
+108171 (2022),
+doi:10.1016/j.cpc.2021.108171, Abraham and coauthors, SoftwareX 1-2, 19-25 (2015), doi:10.1016/j.softx.2015.06.001,
+and Eastman and coauthors, PLOS Computational Biology 13, e1005659 (2017),
+doi:10.1371/journal.pcbi.1005659. The pair form is Lennard-Jones, Proceedings of the Royal Society A 106, 463 (1924), doi:10.1098/rspa.1924.0082.
+No test in this tree pins an energy for these three classes.
 
 *** =rgpot::ExternalLjConfig=
 
@@ -1331,6 +1930,36 @@ rgpot_lammps_potential(const ExternalLjConfig &config);
 - Errors :: what the =LammpsPot= constructor throws:
   =std::invalid_argument= for a non-positive parameter, =std::runtime_error=
   when no plugin loads or =rgpot_engine_create= fails.
+
+*** =rgpot::rgpot_lammpc_potential=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+std::unique_ptr<LammpsPot>
+rgpot_lammpc_potential(const void *config_capnp, size_t config_capnp_size,
+                       const std::string &engine_path = "");
+#+end_src
+
+- Inputs ::
+  =config_capnp= and =config_capnp_size=, a flat =PotentialConfig= whose =lammps= arm is =LammpsParams=, and =engine_path=.
+  A non-empty =engine_path= is the only library tried.
+  An empty =engine_path= tries =LAMMPC_LIBRARY= and =RGPOT_LAMMPC_ENGINE= when
+  either is set and not empty, and nothing after them; with neither set it
+  searches =liblammpc.so=, =./liblammpc.so= and the macOS and Windows names.
+- Units :: those of =LammpsParams.unitsStyle=; =metal= is eV and Angstrom.
+- Outputs :: a new =LammpsPot= that keeps one lammpc session, owned by the
+  returned =std::unique_ptr=.
+  Destroying it destroys the session.
+  The last =LammpsPot= on a lammpc backend to go, or to have its session
+  refused, calls =lammpc_finalize=.
+- Errors :: =std::invalid_argument= when the bytes are missing, not a multiple
+  of a Cap'n Proto word, truncated, or not a =PotentialConfig= with the =lammps=
+  arm.
+  =std::runtime_error= when the build has no Cap'n Proto headers, no =liblammpc= loads, its =Capabilities= fail the handshake of =rgpot::abi::checked_load=,
+  the backend reports unavailable, or =lammpc_session_create_from_config=
+  returns null.
+  A non-empty =engine_path= that does not open, or whose backend the handshake
+  refuses, throws a message that names it.
 
 *** =rgpot::rgpot_gromacs_potential=
 
@@ -1371,21 +2000,34 @@ rgpot_openmm_potential(const ExternalLjConfig &config);
 #+attr_rgpot: signature
 #+begin_src cpp
 explicit LammpsPot(const ExternalLjConfig &config);
+LammpsPot(const void *config_capnp, size_t config_capnp_size,
+          const std::string &engine_path = "");
 #+end_src
 
-- Inputs :: =ExternalLjConfig=.
+- Inputs :: =ExternalLjConfig=, or a flat =PotentialConfig=
+  (=config_capnp=, =config_capnp_size=) with the =lammps= arm and =engine_path=.
 - Units :: =u0= in eV, =cutoff= and =psi= in Angstrom; positions in Angstrom,
   energy in eV, forces in eV/Angstrom.
   The plugin receives these values as three doubles and nothing is converted.
+  The lammpc constructor uses the units of =LammpsParams.unitsStyle=.
 - Outputs :: a potential whose forces come from =rgpot_engine_force= of the
-  loaded plugin; the plugin stays the backend.
+  loaded plugin, or from =lammpc_session_calculate_result= when the config bytes
+  are given.
+  The plugin or the lammpc session stays the backend.
+  =caps().stress= is true only for a lammpc backend whose =Capabilities= list
+  the =stress= operation; its forces then set =has_stress= and the stress.
 - Errors ::
   =std::invalid_argument= when =u0=, =cutoff= or =psi= is not positive and finite; =std::runtime_error=
   when no library opens with =rgpot_engine_create=, =rgpot_engine_destroy= and
   =rgpot_engine_force=, or =rgpot_engine_create= fails.
+  The lammpc constructor throws
+  =std::invalid_argument= for missing or misaligned config bytes, and =std::runtime_error=
+  when =liblammpc= does not load, fails the =Capabilities= handshake, reports
+  unavailable, or refuses the session.
   A force throws
   =std::invalid_argument= for missing buffers and =std::runtime_error= when
-  =rgpot_engine_force= returns nonzero.
+  =rgpot_engine_force= returns nonzero, the lammpc result is refused, a stress
+  is not 9 values, or a backend that declares =stress= returns none.
 
 *** =rgpot::GromacsPot=
 
@@ -1460,6 +2102,214 @@ int main() {
 }
 #+end_src
 
+*** =rgpot::OpenMMSessionConfig=
+
+- Inputs :: =platform= (default ="Reference"=),
+  =time_step= (default =0.001=), =friction= (default =1.0=), =temperature= (default =0.02585 * md::kKjPerEv=), =random_seed=
+  (default =1=).
+- Units :: =time_step= in ps, =friction= in ps^-1, =temperature= (kT) in kJ/mol.
+- Outputs :: configuration struct read by =rgpot::OpenMMSession=, which manages
+  an owned =OpenMM::System= and exposes =numParticles=, =masses=,
+  =setPositions=, =setVelocities=, =stepLangevin= (3N projected BAOAB with
+  specular planar walls and deterministic 64-bit PRNG), =stepNVE=, =state=
+  (returning =OpenMMState= in nm, nm/ps, kJ/(mol nm), and kJ/mol), and
+  =openmm_md_session_init= for the rgpot-unit C ABI.
+- Errors :: =OpenMMSession= throws
+  =std::invalid_argument= if =platform= is empty, =time_step= or =temperature=
+  is not positive and finite, or =friction= is negative or non-finite.
+
+*** =rgpot::OpenMMSession=
+
+- Inputs :: =OpenMMSession(system, config)= with an owned
+  =std::unique_ptr<OpenMM::System>= and an =OpenMMSessionConfig=.
+  The session is move-only.
+  =setPositions= and =setVelocities= take one =OpenMM::Vec3= per particle;
+  =stepLangevin= and =runLangevin= take =kT=, =friction=, =time_step=, a plane
+  point and normal and the wall points and normals, each one =OpenMM::Vec3= per
+  particle, a step count and a seed, and =runLangevin= also an =OpenMMWallMode=
+  and whether to record the constraint force.
+- Units :: OpenMM native units: nm, nm/ps, kJ/mol,
+  kJ/(mol nm), amu and ps; =kT= in kJ/mol and =friction= in ps^-1.
+- Outputs :: =numParticles()= and =masses()= describe the System.
+  =stepNVE= advances unconstrained Verlet dynamics with the configured or an
+  explicit step.
+  =stepLangevin= and =runLangevin= run the =rgpot::md::ProjectedLangevin= driver
+  on the Context: projected BAOAB on the 3N hyperplane in the inverse-mass
+  metric, with the System's distance constraints held in every step and planar
+  walls.
+  The first force of a call is evaluated on the hyperplane.
+  =stepLangevin= returns the number of wall reflections and =runLangevin= an
+  =OpenMMLangevinResult=; an empty plane point and normal run =runLangevin=
+  without the hyperplane.
+  A call with the seed of the previous call continues its stream, and setting
+  positions or velocities ends it.
+  =state()= returns an =OpenMMState=; =boxVectors=, =geometry=,
+  =setPeriodicBox=, =usesPeriodicBoundaryConditions= and =initialize= read and
+  set the cell and evaluate the forces once so a failure shows early.
+- Errors :: the constructor throws =std::invalid_argument= for a null System,
+  bad settings, an empty platform, a System with no particles or no massive
+  particle, a negative mass, or a virtual site.
+  The setters and steppers throw =std::invalid_argument= for a vector count that
+  differs from the System, a non-finite entry, a negative NVE step count, or a
+  wall point list and normal list of different lengths; errors of
+  =rgpot::md::ProjectedLangevin= and of OpenMM pass through.
+
+*** =rgpot::OpenMMWallMode=
+
+- Inputs :: none; an enum.
+- Units :: none.
+- Outputs :: =Reflect= or =Reject=, the treatment of a drift that ends outside a
+  wall, mapped onto =rgpot::md::WallMode=.
+  =stepLangevin= always reflects.
+- Errors :: none.
+
+*** =rgpot::OpenMMLangevinResult=
+
+- Inputs :: none; a struct returned by =OpenMMSession::runLangevin=.
+- Units :: =constraint_force= in kJ/(mol nm).
+- Outputs ::
+  =wall_hits=, the wall reflections of the run, and =constraint_force=, one
+  Lagrange multiplier =lambda = -(n . M^-1 F) / (n . M^-1 n)= per step for the
+  unit normal over the 3N coordinates when recording was requested and a plane
+  is set, the mean of the two force kicks of the step, and =constraint_metric=,
+  Z per step in 1/amu.
+- Errors :: none.
+
+*** =rgpot::OpenMMState=
+
+- Inputs :: none; a struct returned by =OpenMMSession::state=.
+- Units :: nm, nm/ps, kJ/(mol nm) and kJ/mol.
+- Outputs :: =positions=, =velocities= and =forces=, one =OpenMM::Vec3= per
+  particle, and =potential_energy= and =kinetic_energy=.
+- Errors :: none.
+
+** Construction from a PotentialConfig
+
+=rgpot::makePotential= (=CppCore/rgpot/PotentialFactory.hpp=) is the one entry
+point from a =PotentialConfig= to a potential.
+It is in every =librgpot= built with the Cap'n Proto stack.
+A consumer includes
+=rgpot/PotentialFactory.hpp= with the directory that holds the generated =rgpot/rpc/Potentials.capnp.h= and =rgpot/rpc/common.capnp.h=
+on its include path (the installation's include directory, or =CppCore= of a
+meson build tree): the schema imports =common.capnp=, so =Potentials.capnp.h=
+includes =common.capnp.h=.
+
+*** =rgpot::makePotential=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] std::unique_ptr<PotentialBase>
+makePotential(const ::PotentialConfig::Reader &config);
+[[nodiscard]] std::unique_ptr<PotentialBase>
+makePotential(const void *bytes, std::size_t size);
+#+end_src
+
+- Inputs :: a =PotentialConfig= reader, or the flat-array bytes of one (=size= a
+  non-zero multiple of 8).
+  Only the union arm is read; the shared fields (=common=, =commonPatch=,
+  =neighborList=, =rpcEndpoint=, =logPotentialCalls=, =emtRasmussenParameters=)
+  are not, as no =setPotentialConfig= method reads them either.
+- Units :: those of the potential returned.
+- Outputs :: the potential the arm configures, owned by the returned pointer.
+  =lj=, =morse= (with =switchWidth=), =zbl=, =d2=, =d2cpmd=, =mullerBrown= and
+  =composite= build the in-process kernels; =cpmd=, =nwchem=, =mopac= and
+  =lammps= build =CPMDPot=, =NWChemPot=, =MOPACPot= and the lammpc profile of
+  =LammpsPot=; =d3=, =d4=, =xtb=, =tblite=, =skala=, =cp2k= and =expr= build
+  =D3Pot=, =D4Pot=, =XTBPot=, =TBLitePot=, =SkalaPot=, =CP2KPot= and =ExprPot=
+  when the build has them.
+  =orca= builds an =rgpot::ORCACPot= from =ORCAParams= alone, lowered onto the
+  =OrcaCConfig= of =liborcac= C ABI 1.
+  =metatomic=, =uma=, =plugin=, and =xtb= in a build without
+  =-Dwith_xtb=, return an =rgpot::EnginePot= over an engine library whose configuration message is the arm's params struct (=BuiltinParams= naming =xtb= for =libxtb_engine=,
+  the =opaquePayload= bytes for =plugin=):
+
+  | Arm         | Library                 | Search order                                                                 |
+  |-------------+-------------------------+------------------------------------------------------------------------------|
+  | =metatomic= | =libmetatomic_engine=   | =enginePath= alone when set; else =RGPOT_METATOMIC_ENGINE=, =METATOMIC_ENGINE= |
+  | =uma=       | =libuma_engine=         | =RGPOT_UMA_ENGINE=                                                           |
+  | =xtb=       | =libxtb_engine=         | =RGPOT_XTB_ENGINE=, =XTB_ENGINE=                                             |
+  | =plugin=    | =lib<pluginName>_engine= | =libraryPath= alone when set; else =RGPOT_<PLUGINNAME>_ENGINE=              |
+
+After the variables each search tries =lib<stem>.so=, =./lib<stem>.so=, the
+=.dylib= names and =<stem>.dll=, then the directories of =EON_POTENTIALS_PATH=
+and =RGPOT_ENGINE_PATH=.
+- Errors ::
+  =std::invalid_argument= for bytes that are not a =PotentialConfig= message, for the =none=, =gpr=, =potlib= and =external= arms (rgpot has no backend for them), for =d3=, =d4=, =tblite=, =skala=, =cp2k= and =expr= in a build without =-Dwith_dftd3=,
+  =-Dwith_dftd4=, =-Dwith_tblite=, =-Dwith_skala=, =-Dwith_cp2k= or
+  =-Dwith_expr= (the message names the option), for a =mopac= arm that sets
+  =epsilon=, =solver=, =extraKeywords= or =cell= (=MOPACPot= takes none of
+  them), for an =xtb=, =tblite= or =d3= method or damping it does not know, for
+  a =plugin= arm with neither =pluginName= nor =libraryPath=, and for an arm
+  newer than the compiled schema.
+  The constructors of the potentials throw as their entries say, and
+  =rgpot::EnginePot= throws =std::runtime_error= as below.
+
+*** =rgpot::EnginePot=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+EnginePot(const std::vector<std::string> &candidates, const void *config,
+          std::size_t config_len, std::string label);
+#+end_src
+
+- Inputs :: =candidates=, library paths tried in order; =config= and
+  =config_len=, the configuration message handed to =rgpot_engine_create= (for
+  the in-tree engines a word-aligned Cap'n Proto flat array whose root is the
+  backend's params struct); =label=, the name used in messages.
+- Units :: positions in Angstrom, energy in eV and forces in eV/Angstrom, the
+  units of =rgpot_engine_force=.
+- Outputs :: one engine instance, destroyed with the potential, from the first
+  candidate that opens and exports =rgpot_engine_create=, =rgpot_engine_destroy=
+  and =rgpot_engine_force=.
+  =caps()= reports =Reentrancy::PerInstance=, and calls on one instance are
+  serialised.
+  The library stays mapped for the life of the process.
+  =getType()= is =PotType::Engine=.
+- Errors ::
+  =std::runtime_error= when no candidate opens or exports the three symbols (the message names every path tried), when the library's =rgpot_engine_abi_version=
+  is not
+  =RGPOT_ENGINE_ABI_VERSION=, when its =rgpot_engine_available= returns 0, or when =rgpot_engine_create=
+  fails (the message carries the engine's reason).
+  A force call throws
+  =std::runtime_error= with the code =rgpot_engine_force= returned and the engine's =rgpot_engine_last_error=.
+
+*** =rgpot::EnginePot::libraryPath=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] const std::string &libraryPath() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the candidate the library was opened from.
+- Errors :: none.
+
+*** =rgpot::EnginePot::label=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] const std::string &label() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the label given to the constructor (=uma=, =plugin <name>=).
+- Errors :: none.
+
+*** =rgpot::EnginePot::paramsKey=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] uint64_t paramsKey() const noexcept override;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: a hash of the library path and the configuration bytes, so cached
+  results never cross engines or configurations.
+- Errors :: none.
+
 ** Members common to several classes
 
 These members have the same declaration in each class that has them.
@@ -1504,6 +2354,41 @@ A member whose description differs between classes has one entry per class.
 - Units :: none.
 - Outputs :: a 64-bit FNV-1a hash of =address= and =timeout_s=.
   Instances that differ in these values get different result-cache keys.
+- Errors :: none.
+
+*** =rgpot::LammpsPot::paramsKey=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] uint64_t paramsKey() const noexcept override;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: a 64-bit FNV-1a hash of the constructor mode, a kernel-version salt
+  and the canonical path of the backend file that loaded.
+  The path is the one resolved after the environment hints are applied, not the
+  path that was requested.
+  The plugin constructor adds =u0=, =cutoff= and =psi=.
+  The lammpc constructor adds the version and ABI revision the backend reports
+  and the flat =PotentialConfig= bytes.
+  Requests that resolve to one backend file share a key.
+  Instances that differ in these values get different result-cache keys.
+- Errors :: none.
+
+*** =rgpot::ORCAPot::paramsKey=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] uint64_t paramsKey() const noexcept override;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: a 64-bit FNV-1a hash of =method=, =basis=, =keywords=, =charge=,
+  =multiplicity=, =restart= and a kernel version.
+  =executable=, =nprocs=, =maxcore_mb=, =scratch_dir=,
+  =keep_files= and =timeout_s= do not change the result and are left out.
 - Errors :: none.
 
 *** =rgpot::SkalaPot::paramsKey=
@@ -1622,8 +2507,10 @@ static bool probeAvailable();
 - Inputs :: none.
 - Units :: none.
 - Outputs :: true when the environment and default-name search, without an
-  explicit path, finds a library that has =mopacc_energy_gradient=, the ABI
-  version and a nonzero =mopacc_available=, when exported.
+  explicit path, finds a library that passes the =MOPACPot= load check
+  (=mopacc_energy_gradient=, both ABI versions equal to 2, and
+  =mopacc_result_size= and =mopacc_params_size= equal to this build's struct
+  sizes) and has a nonzero =mopacc_available=, when exported.
   The first result is cached for the process.
 - Errors :: none; a load failure gives false.
 
@@ -1719,12 +2606,27 @@ void selectOrbitals(int64_t key);
 - Inputs :: =key=, an identifier of the calculation the following forces belong
   to (a band image, a ring-polymer bead).
 - Units :: none.
-- Outputs :: none; every later force names this key to the engine first, so each
-  key restarts from its own converged orbitals.
+- Outputs :: none; the key is applied to the live engine session when this call
+  runs and is re-applied after a session recreation.
   Every rank of a calculator names the same key before the same force.
   An engine without =cpmdc_session_select_orbitals= ignores the key.
-- Errors :: none here; a force throws =std::runtime_error= when the engine
-  refuses the key.
+- Errors :: throws =std::runtime_error= immediately when the live engine session
+  refuses the key, leaving the previous orbital key in place.
+
+*** =rgpot::CPMDPot::copyOrbitals=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] bool copyOrbitals(int64_t from_key, int64_t to_key);
+#+end_src
+
+- Inputs :: =from_key=, the source orbital key; =to_key=, the destination
+  orbital key.
+- Units :: none.
+- Outputs :: true when the loaded engine supports and accepts
+  =cpmdc_session_copy_orbitals=.
+  False when that primitive is unavailable or no session is active.
+- Errors :: none; an engine rejection returns false.
 
 *** =rgpot::CP2KPot::keepsOrbitalsPerKey=
 

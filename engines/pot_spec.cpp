@@ -10,35 +10,30 @@
 #include "rgpot/StillingerWeber/SWSi.hpp"
 #include "rgpot/SuttonChen/SuttonChenScales.hpp"
 #include "rgpot/Tersoff/TersoffSiC.hpp"
+#include "rgpot/elements.hpp"
 #ifdef RGPOT_HAS_EAM_TABLE
 #include "rgpot/EAMTable/EAMTablePot.hpp"
 #endif
 #ifdef RGPOT_HAS_FORTRAN_POTS
 #include "rgpot/fortran/FortranPots.hpp"
 #endif
+#ifdef RGPOT_POT_SPEC_HAS_CPMD
+#include "rgpot/CPMDPot/CPMDPot.hpp"
+
+#include <capnp/serialize.h>
+#include <kj/array.h>
+#endif
 
 #include <algorithm>
-#include <array>
 #include <cctype>
 #include <cstddef>
+#include <fstream>
 #include <stdexcept>
 #include <utility>
 
 namespace rgpot::spec {
 
 namespace {
-
-constexpr std::array<const char *, 118> kSymbols = {
-    "H",  "He", "Li", "Be", "B",  "C",  "N",  "O",  "F",  "Ne", "Na", "Mg",
-    "Al", "Si", "P",  "S",  "Cl", "Ar", "K",  "Ca", "Sc", "Ti", "V",  "Cr",
-    "Mn", "Fe", "Co", "Ni", "Cu", "Zn", "Ga", "Ge", "As", "Se", "Br", "Kr",
-    "Rb", "Sr", "Y",  "Zr", "Nb", "Mo", "Tc", "Ru", "Rh", "Pd", "Ag", "Cd",
-    "In", "Sn", "Sb", "Te", "I",  "Xe", "Cs", "Ba", "La", "Ce", "Pr", "Nd",
-    "Pm", "Sm", "Eu", "Gd", "Tb", "Dy", "Ho", "Er", "Tm", "Yb", "Lu", "Hf",
-    "Ta", "W",  "Re", "Os", "Ir", "Pt", "Au", "Hg", "Tl", "Pb", "Bi", "Po",
-    "At", "Rn", "Fr", "Ra", "Ac", "Th", "Pa", "U",  "Np", "Pu", "Am", "Cm",
-    "Bk", "Cf", "Es", "Fm", "Md", "No", "Lr", "Rf", "Db", "Sg", "Bh", "Hs",
-    "Mt", "Ds", "Rg", "Cn", "Nh", "Fl", "Mc", "Lv", "Ts", "Og"};
 
 std::string lower(std::string s) {
   std::transform(s.begin(), s.end(), s.begin(),
@@ -153,12 +148,13 @@ template <typename P, typename... A> Built own(A &&...args) {
   const P *kernel = pot.get();
   Built out;
   out.eval = [kernel](const ForceInput &in, ForceOut *res) {
+    guardForceCall(in, res, kernelNeedsCell(*kernel));
     kernel->forceImpl(in, res);
   };
   if constexpr (PerAtomPotential<P>) {
     out.perAtom = [kernel](const ForceInput &in, ForceOut *res,
                            const PerAtomOut &atoms) {
-      kernel->forcePerAtom(in, res, atoms);
+      invokeForcePerAtom(*kernel, in, res, atoms);
     };
   }
   if constexpr (LocalPotential<P>) {
@@ -183,7 +179,52 @@ template <typename P, typename C> Built ownCut(const C &c) {
   return out;
 }
 
+#ifdef RGPOT_POT_SPEC_HAS_CPMD
+Built cpmd(const std::string &path) {
+  if (path.empty()) {
+    throw std::invalid_argument("CPMD needs params <serialized CPMDParams>");
+  }
+  std::ifstream input(path, std::ios::binary | std::ios::ate);
+  if (!input) {
+    throw std::invalid_argument("CPMD cannot open params file " + path);
+  }
+  const std::streamoff bytes = input.tellg();
+  if (bytes <= 0 ||
+      bytes % static_cast<std::streamoff>(sizeof(::capnp::word)) != 0) {
+    throw std::invalid_argument("CPMD params file is not a flat Cap'n Proto message: " +
+                                path);
+  }
+  input.seekg(0);
+  std::vector<::capnp::word> words(
+      static_cast<size_t>(bytes) / sizeof(::capnp::word));
+  input.read(reinterpret_cast<char *>(words.data()),
+             static_cast<std::streamsize>(bytes));
+  if (!input) {
+    throw std::invalid_argument("CPMD cannot read params file " + path);
+  }
+  auto view = kj::arrayPtr<const ::capnp::word>(words.data(), words.size());
+  ::capnp::FlatArrayMessageReader reader(view);
+  auto pot = std::make_unique<CPMDPot>(reader.getRoot<::CPMDParams>());
+  if (!pot->available()) {
+    throw std::invalid_argument(
+        "CPMD could not load libcpmdc; set enginePath in CPMDParams or CPMDC_LIBRARY");
+  }
+  const CPMDPot *kernel = pot.get();
+  Built out;
+  out.eval = [kernel](const ForceInput &in, ForceOut *res) {
+    kernel->forceImpl(in, res);
+  };
+  out.pot = std::move(pot);
+  return out;
+}
+#endif
+
 Built make(const std::string &key, Reader &r, double fallback) {
+#ifdef RGPOT_POT_SPEC_HAS_CPMD
+  if (key == "cpmd") {
+    return cpmd(r.text("params", ""));
+  }
+#endif
   if (key == "lj") {
     LJConfig c;
     c.u0 = r.real("u0", c.u0);
@@ -281,6 +322,9 @@ Built make(const std::string &key, Reader &r, double fallback) {
 
 std::string names() {
   std::string out = "LJ Morse SuttonChen";
+#ifdef RGPOT_POT_SPEC_HAS_CPMD
+  out += " CPMD";
+#endif
 #ifdef RGPOT_HAS_EAM_TABLE
   out += " EAMTable";
 #endif
@@ -310,12 +354,7 @@ Built build(const std::string &name, const Options &options, double cutoff) {
 }
 
 int atomicNumber(const std::string &symbol) {
-  for (std::size_t k = 0; k < kSymbols.size(); ++k) {
-    if (symbol == kSymbols[k]) {
-      return static_cast<int>(k) + 1;
-    }
-  }
-  return 0;
+  return rgpot::elements::atomicNumber(symbol);
 }
 
 } // namespace rgpot::spec

@@ -32,8 +32,14 @@
   # the same wall.
   windows = "windows-2022",
   msvc_dev_cmd = "ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756", # v1
+  # MinGW-w64 legs: the cross build needs the 24.04 posix mingw-w64 packages;
+  # MSYS2 has no Visual Studio dependency, so it can take windows-latest.
+  ubuntu_mingw = "ubuntu-24.04",
+  windows_msys2 = "windows-latest",
+  setup_msys2 = "msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e", # v2.33.0
 
   # --- meson machine files (repo-relative; also present in `git archive` trees) ---
   no_fortran_native_file = "ci/gha/machines/no-fortran.ini",
   win_flang_msvc_native_file = "ci/gha/machines/win-flang-msvc.ini",
+  mingw64_wine_cross_file = "ci/gha/machines/mingw64-wine.ini",
 }

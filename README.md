@@ -9,6 +9,10 @@
 `rgpot` is a potential-energy library and Cap'n Proto RPC server for atomistic
 simulation codes.
 Documentation: [rgpot.rgoswami.me](https://rgpot.rgoswami.me).
+The direct in-process interface and Cap'n Proto RPC are the default paths.
+An optional, non-default [MDI compatibility frontend](docs/mdi.md) serves the
+same generic potential abstraction to drivers such as LAMMPS `fix mdi/qm`;
+enable it explicitly with Cargo feature `mdi` or Meson `-Dwith_mdi=true`.
 It gives clients one geometry carrier, one result carrier, and one extensible
 backend-configuration carrier:
 
@@ -29,11 +33,15 @@ See `docs/xckernel.md`.
 
 `D3Pot` and `D4Pot` (meson `-Dwith_dftd3` / `-Dwith_dftd4`) are in-process
 `Potential` summands: construct them and evaluate `ForceInput` to energy and
-forces.
+forces, plus stress for periodic `D4Pot`.
 The schema has `PotentialConfig.d3` @12 and `PotentialConfig.d4` @13 arms.
-Nothing applies them yet.
-The `potserv` `D3` and `D4` backends run the default configuration.
-`configure()` refuses both arms by name on every `potserv` backend.
+Nothing applies `d3` yet: the `potserv` `D3` backend runs the default
+configuration and `configure()` refuses `d3` by name on every `potserv` backend.
+On a build with dftd4, `potserv <port> D4` starts with the default `D4Config`
+and `configure()` applies `PotentialConfig.d4` to rebuild its `D4Pot` from
+`D4Params` (including `periodic` for a 3D lattice and stress); `d4` is also a
+builtin composite term, and other `potserv` backends refuse the `d4` arm by
+name.
 A DFT host sums XcKernel + VV10 + D4 itself; dispersion is not folded into
 the XC kernel.
 
@@ -59,9 +67,9 @@ See `docs/orgmode/howto/ase.org`.
 
 The public wire schema lives in `CppCore/rgpot/rpc/Potentials.capnp` and is
 shared by the C++ server, Python integration tests, and the Rust core crate.
-That file is the pinned potentials-schema release byte for byte; the build
-adds the rgpot-local fields listed in `CppCore/rgpot/rpc/local/series` and
-installs the result.
+That file is rgconf's `potential.capnp` at the commit
+`CppCore/rgpot/rpc/schema.pin` names, byte for byte, with the `common.capnp` it
+imports beside it; the build compiles and installs both as they are.
 Native rgpot units are eV and Angstrom.
 RPC clients may request compatible units through `ForceInput.lengthUnit` and
 `ForceInput.energyUnit`.
@@ -244,7 +252,7 @@ ctest --test-dir build_client --output-on-failure
 <tr>
 <td class="org-left"><code>D4Pot</code></td>
 <td class="org-left"><code>D4</code></td>
-<td class="org-left">In-process Potential summand. Enable with <code>-Dwith_dftd4=true</code>; use pixi env <code>dftd4</code> or <code>dftd</code>. Functional key, charge, explicit ATM/many-body flag. <code>PotentialConfig.d4</code> is not applied; every <code>potserv</code> backend refuses it. Goldens: <code>meson test --suite dftd</code></td>
+<td class="org-left">In-process Potential summand. Enable with <code>-Dwith_dftd4=true</code>; use pixi env <code>dftd4</code> or <code>dftd</code>. Functional key, charge, explicit ATM/many-body flag. <code>PotentialConfig.d4</code> configures <code>potserv &lt;port&gt; D4</code> and a <code>d4</code> composite term, including the periodic box. Goldens: <code>meson test --suite dftd</code></td>
 </tr>
 
 <tr>

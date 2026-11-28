@@ -51,6 +51,16 @@ struct PotCaps {
   /// sigma = (1/V) dE/dstrain in energy/length^3, row-major in ForceOut.
   /// IPIPot also keeps the tensor for copyStress.
   bool stress = false;
+  /// An exact Hessian-vector product is available without differencing.
+  bool analyticHvp = false;
+  /// hessianImpl writes the dense Hessian from closed-form derivatives.
+  bool analyticHessian = false;
+  /// hessianAdImpl writes the dense Hessian from dual-number evaluation of
+  /// the energy kernel.
+  bool adHessian = false;
+  /// hessianVectorAdImpl writes the Hessian-vector product from dual-number
+  /// evaluation of the energy kernel.
+  bool adHvp = false;
 };
 
 } // namespace rgpot

@@ -3,43 +3,41 @@
 
 Cap'n Proto identifies a field, union arm, enumerant or method on the wire
 by its ordinal. An ordinal may never be renumbered, reused or given another
-type, and peers (gpridge, eOn, other potentials-schema consumers) only agree
-when every copy keeps upstream's numbering. Potentials.ordinals records each
+type, and peers (gpridge, eOn, rgconf and its other consumers) only agree
+when every copy keeps one numbering. Potentials.ordinals records each
 ordinal once as
 
     <scope> @<ordinal> <kind> <name> <type> <origin>
 
 kind is field, arm (union member), group, enumerant or method. origin is
-upstream (in the pinned potentials-schema commit) or local (added by a diff
-in the local series and shipped by rgpot).
+upstream (declared by the pinned schema) or local (rgpot shipped it before
+the pinned schema adopted it).
 
-The two vendored copies are the pinned upstream file, byte for byte, which
-is what a parent project such as gpridge compares them with. The local
-series (CppCore/rgpot/rpc/local/series, mirrored in rgpot-core/schema/local
-for the crate) lists add-only diffs that apply on top of the vendored copy;
-the result is the effective schema that rgpot compiles, installs and serves.
+The schema is rgconf's crates/rgconf-core/schema/potential.capnp at the
+commit schema.pin names, vendored byte for byte as Potentials.capnp with
+the common.capnp it imports beside it, in CppCore/rgpot/rpc and in
+rgpot-core/schema. Through rgpot 3.8 the pin was potentials-schema and rgpot
+compiled it with an add-only series of local diffs; rgconf now declares
+every one of those members at the ordinal rgpot gave it, so the series is
+gone and every local ledger entry is retired by a later upstream line for
+the same entry. A new member is added to rgconf first and arrives here with
+the next pin.
 
 check fails when
 
 * a ledger line changes or disappears relative to --base (append only),
-* the unpatched pinned upstream schema drops, renumbers or retypes an
-  upstream entry, declares one the ledger lacks, or collides with a local
-  entry,
-* a vendored copy is not byte for byte the pinned upstream schema, or
-  declares anything but the upstream ledger entries,
-* the effective schema differs from the ledger in any entry,
-* a series diff removes or rewrites a line carrying an @N ordinal, or adds
-  one that is not a local ledger entry,
-* the series mirror differs from the series, or the wrap applies
-  diff_files to the pinned checkout.
+* a local entry has no later upstream line retiring it,
+* a vendored copy declares an entry the ledger lacks, or differs from the
+  ledger in any entry,
+* the two copies of a vendored file differ,
+* the pinned schema (given with --upstream, or fetched with --fetch)
+  drops, renumbers or retypes a ledger entry or declares one the ledger
+  lacks, or a vendored file is not byte for byte the pinned file.
 
-append adds the entries the effective schema declares and the ledger lacks,
-at the end of the ledger. It never rewrites an existing line. When the pin
-adopts a local entry unchanged, append retires it by adding the same entry
-again as upstream; the later line wins, and check then wants the entry gone
-from the series.
-
-apply writes the effective schema: the vendored copy plus the series.
+append adds the entries the pinned schema declares and the ledger lacks, at
+the end of the ledger, and retires a local entry the pinned schema declares
+unchanged by adding the same entry again as upstream; the later line wins.
+It never rewrites an existing line.
 """
 
 from __future__ import annotations
@@ -55,18 +53,16 @@ import tempfile
 from pathlib import Path
 
 LEDGER = Path("CppCore/rgpot/rpc/Potentials.ordinals")
-VENDORED = (
-    Path("CppCore/rgpot/rpc/Potentials.capnp"),
-    Path("rgpot-core/schema/Potentials.capnp"),
+PIN = Path("CppCore/rgpot/rpc/schema.pin")
+SCHEMA_DIRS = (
+    Path("CppCore/rgpot/rpc"),
+    Path("rgpot-core/schema"),
 )
-WRAP = Path("subprojects/potentials-schema.wrap")
-SERIES_DIRS = (
-    Path("CppCore/rgpot/rpc/local"),
-    Path("rgpot-core/schema/local"),
-)
-SERIES = "series"
 SCHEMA_NAME = "Potentials.capnp"
-DIVERGES = "vendored Potentials.capnp diverges from pinned potentials-schema release"
+COMMON_NAME = "common.capnp"
+VENDORED = tuple(d / SCHEMA_NAME for d in SCHEMA_DIRS)
+VENDORED_COMMON = tuple(d / COMMON_NAME for d in SCHEMA_DIRS)
+DIVERGES = "diverges from the pinned rgconf schema"
 
 ORDINAL = re.compile(r"@\d+\b")
 
@@ -329,120 +325,30 @@ def resolve_ledger(entries: list[Entry]) -> list[Entry]:
 LEDGER_HEADER = """\
 # Append-only ordinal ledger for Potentials.capnp (see schema_ledger.py).
 # <scope> @<ordinal> <kind> <name> <type> <origin>
-# upstream: in the pinned potentials-schema commit.
-# local: added by a diff in the local series. Never edit or delete a line;
-# append only.
+# upstream: declared by the pinned schema (potentials-schema through rgpot 3.8,
+# rgconf's potential.capnp after).
+# local: shipped by rgpot before the pinned schema adopted it; a later
+# upstream line retires it. Never edit or delete a line; append only.
 """
-
-
-# ------------------------------------------------------------- unified diff
-
-
-@dataclasses.dataclass
-class Hunk:
-    old_start: int
-    lines: list[str]
-
-
-def parse_diff(text: str, label: str) -> dict[str, list[Hunk]]:
-    files: dict[str, list[Hunk]] = {}
-    current: list[Hunk] | None = None
-    hunk: Hunk | None = None
-    for raw in text.splitlines():
-        if raw.startswith("+++ "):
-            target = raw[4:].split("\t")[0].strip()
-            target = target[2:] if target.startswith("b/") else target
-            current = files.setdefault(target, [])
-            hunk = None
-        elif raw.startswith("@@ "):
-            m = re.match(r"^@@ -(\d+)(?:,\d+)? \+\d+(?:,\d+)? @@", raw)
-            if not m or current is None:
-                raise LedgerError(f"{label}: bad hunk header {raw!r}")
-            hunk = Hunk(int(m.group(1)), [])
-            current.append(hunk)
-        elif hunk is not None and raw[:1] in (" ", "+", "-"):
-            hunk.lines.append(raw)
-        elif hunk is not None and raw == "":
-            hunk.lines.append(" ")
-        elif raw.startswith("\\"):
-            continue
-        else:
-            hunk = None
-    return files
-
-
-def apply_hunks(text: str, hunks: list[Hunk], label: str) -> tuple[str, list[int]]:
-    """Apply hunks like patch -p1 (exact context, any offset).
-
-    Returns the new text and the 1-based new line number of every added line.
-    """
-    lines = text.splitlines()
-    out: list[str] = []
-    added: list[int] = []
-    pos = 0
-    for number, hunk in enumerate(hunks, 1):
-        old = [ln[1:] for ln in hunk.lines if ln[0] in (" ", "-")]
-        new_kinds = [(ln[0], ln[1:]) for ln in hunk.lines if ln[0] in (" ", "+")]
-        want = hunk.old_start - 1 if old else hunk.old_start
-        candidates = sorted(range(pos, len(lines) - len(old) + 1), key=lambda i: abs(i - want))
-        at = next((i for i in candidates if lines[i : i + len(old)] == old), None)
-        if at is None:
-            raise LedgerError(f"{label}: hunk {number} does not apply")
-        out.extend(lines[pos:at])
-        for kind, body in new_kinds:
-            out.append(body)
-            if kind == "+":
-                added.append(len(out))
-        pos = at + len(old)
-    out.extend(lines[pos:])
-    return "\n".join(out) + ("\n" if text.endswith("\n") or not text else ""), added
 
 
 # ------------------------------------------------------------------- inputs
 
 
 @dataclasses.dataclass
-class Wrap:
+class Pin:
     url: str
     revision: str
-    diff_files: list[str]
+    schema: str
+    common: str
 
 
-def read_wrap(root: Path) -> Wrap:
+def read_pin(root: Path) -> Pin:
     parser = configparser.ConfigParser()
-    parser.read(root / WRAP, encoding="utf-8")
-    section = parser["wrap-git"]
-    names = [n.strip() for n in section.get("diff_files", "").split(",") if n.strip()]
-    return Wrap(section["url"], section["revision"], names)
-
-
-def read_series(directory: Path) -> list[Path]:
-    """The diffs a series file lists, in order. No series file means none."""
-    path = directory / SERIES
-    if not path.is_file():
-        return []
-    names = []
-    for raw in path.read_text(encoding="utf-8").splitlines():
-        name = raw.strip()
-        if name and not name.startswith("#"):
-            names.append(directory / name)
-    return names
-
-
-def apply_series(text: str, diffs: list[Path]) -> str:
-    for diff in diffs:
-        text, _ = apply_hunks(text, schema_hunks(diff), diff.name)
-    return text
-
-
-def schema_hunks(diff: Path) -> list[Hunk]:
-    files = parse_diff(diff.read_text(encoding="utf-8"), diff.name)
-    other = sorted(set(files) - {SCHEMA_NAME})
-    if other:
-        raise LedgerError(
-            f"{diff.name} patches {', '.join(other)}; schema diffs may only touch {SCHEMA_NAME}"
-        )
-    return files.get(SCHEMA_NAME, [])
+    if not parser.read(root / PIN, encoding="utf-8"):
+        raise LedgerError(f"{PIN} is missing")
+    section = parser["rgconf"]
+    return Pin(section["url"], section["revision"], section["schema"], section["common"])
 
 
 def _git(*args: str, cwd: Path | None = None) -> str:
@@ -458,31 +364,18 @@ def _git(*args: str, cwd: Path | None = None) -> str:
     ).stdout
 
 
-def fetch_upstream(wrap: Wrap) -> str:
+def fetch_pinned(pin: Pin) -> tuple[str, str]:
+    """The pinned potential.capnp and common.capnp, fetched from the pin url."""
     with tempfile.TemporaryDirectory() as tmp:
         _git("init", "-q", cwd=Path(tmp))
-        _git("fetch", "-q", "--depth", "1", wrap.url, wrap.revision, cwd=Path(tmp))
+        _git("fetch", "-q", "--depth", "1", pin.url, pin.revision, cwd=Path(tmp))
         head = _git("rev-parse", "FETCH_HEAD", cwd=Path(tmp)).strip()
-        if head != wrap.revision:
-            raise LedgerError(f"fetched {head}, the wrap pins {wrap.revision}")
-        return _git("show", f"{wrap.revision}:{SCHEMA_NAME}", cwd=Path(tmp))
-
-
-def upstream_from_subproject(schema: Path, wrap: Wrap) -> tuple[str, str]:
-    """Upstream text from a meson checkout of the wrap.
-
-    The git object at the pin is preferred, so a parent project that patches
-    its own checkout still yields the pinned file. Otherwise the file is read
-    as it is, and the canonical check compares the vendored copies with it.
-    """
-    directory = schema.resolve().parent
-    try:
-        top = Path(_git("rev-parse", "--show-toplevel", cwd=directory).strip()).resolve()
-        if top == directory and _git("rev-parse", "HEAD", cwd=directory).strip() == wrap.revision:
-            return _git("show", f"{wrap.revision}:{SCHEMA_NAME}", cwd=directory), "git object"
-    except (OSError, subprocess.CalledProcessError):
-        pass
-    return schema.read_text(encoding="utf-8"), str(schema)
+        if head != pin.revision:
+            raise LedgerError(f"fetched {head}, {PIN} pins {pin.revision}")
+        return (
+            _git("show", f"{pin.revision}:{pin.schema}", cwd=Path(tmp)),
+            _git("show", f"{pin.revision}:{pin.common}", cwd=Path(tmp)),
+        )
 
 
 def base_ledger(root: Path, base: str) -> str | None:
@@ -496,7 +389,54 @@ def base_ledger(root: Path, base: str) -> str | None:
         return None
 
 
+def _read(path: Path) -> str:
+    return path.read_text(encoding="utf-8").replace("\r\n", "\n")
+
+
+def pinned_texts(args: argparse.Namespace, pin: Pin) -> tuple[str, str | None, str] | None:
+    """(potential.capnp, common.capnp or None, source) of the pin, if given."""
+    if args.upstream:
+        common = args.upstream_common or args.upstream.parent / COMMON_NAME
+        common_text = _read(common) if common.is_file() else None
+        return _read(args.upstream), common_text, str(args.upstream)
+    if getattr(args, "fetch", False):
+        schema, common = fetch_pinned(pin)
+        return (
+            schema.replace("\r\n", "\n"),
+            common.replace("\r\n", "\n"),
+            f"{pin.url} at {pin.revision}",
+        )
+    return None
+
+
 # ------------------------------------------------------------------- checks
+
+
+def check_retired(ledger_lines: list[Entry]) -> list[str]:
+    """Every local entry has a later upstream line for the same entry."""
+    latest = {e.key: e for e in ledger_lines}
+    return [
+        f"local {e.describe()} is not retired: rgpot no longer carries local schema members; "
+        "add it to rgconf's potential.capnp, re-pin and run append"
+        for e in resolve_ledger(ledger_lines)
+        if latest[e.key].origin == "local"
+    ]
+
+
+def check_upstream(ledger: list[Entry], upstream: list[Entry]) -> list[str]:
+    errors = []
+    up_key = {e.key: e for e in upstream}
+    led_key = {e.key: e for e in ledger}
+    for entry in ledger:
+        theirs = up_key.get(entry.key)
+        if theirs is None:
+            errors.append(f"pinned schema no longer declares {entry.line()}")
+        elif not theirs.same(entry):
+            errors.append(f"pinned schema has {theirs.describe()}, ledger has {entry.line()}")
+    for entry in upstream:
+        if entry.key not in led_key:
+            errors.append(f"pinned schema declares {entry.describe()}, not in the ledger (run append)")
+    return errors
 
 
 def check_append_only(base: list[Entry], current: list[Entry]) -> list[str]:
@@ -526,35 +466,6 @@ def check_append_only(base: list[Entry], current: list[Entry]) -> list[str]:
     return errors
 
 
-def check_upstream(ledger: list[Entry], upstream: list[Entry]) -> list[str]:
-    errors = []
-    up_key = {e.key: e for e in upstream}
-    up_name = {(e.scope, e.name): e for e in upstream}
-    led_key = {e.key: e for e in ledger}
-    for entry in ledger:
-        theirs = up_key.get(entry.key)
-        if entry.origin == "upstream":
-            if theirs is None:
-                errors.append(f"pinned upstream no longer declares {entry.line()}")
-            elif not theirs.same(entry):
-                errors.append(f"pinned upstream has {theirs.describe()}, ledger has {entry.line()}")
-        else:
-            if theirs is not None and theirs.same(entry):
-                errors.append(
-                    f"pinned upstream now declares local {entry.describe()}; drop it from the local "
-                    "series and run append to retire it"
-                )
-            elif theirs is not None:
-                errors.append(f"local {entry.describe()} collides with upstream {theirs.describe()}")
-            other = up_name.get((entry.scope, entry.name))
-            if other is not None and other.ordinal != entry.ordinal:
-                errors.append(f"local {entry.describe()} collides with upstream {other.describe()}")
-    for entry in upstream:
-        if entry.key not in led_key:
-            errors.append(f"pinned upstream declares {entry.describe()}, not in the ledger (run append)")
-    return errors
-
-
 def check_copy(ledger: list[Entry], copy: list[Entry], label: str) -> list[str]:
     errors = []
     mine = {e.key: e for e in copy}
@@ -571,90 +482,9 @@ def check_copy(ledger: list[Entry], copy: list[Entry], label: str) -> list[str]:
     return errors
 
 
-def check_vendored(ledger: list[Entry], copy: list[Entry], label: str) -> list[str]:
-    """A vendored copy holds the upstream entries and none of the local ones."""
-    errors = []
-    local = {e.key: e for e in ledger if e.origin == "local"}
-    rest = []
-    for entry in copy:
-        mine = local.get(entry.key)
-        if mine is not None and mine.same(entry):
-            errors.append(f"{label} carries local {mine.describe()}; it belongs in the local series")
-        else:
-            rest.append(entry)
-    return errors + check_copy([e for e in ledger if e.origin == "upstream"], rest, label)
-
-
-def check_series_mirror(root: Path) -> list[str]:
-    errors = []
-    main, mirror = (root / d for d in SERIES_DIRS)
-    names = {p.name for p in main.iterdir() if p.is_file()} if main.is_dir() else set()
-    copies = {p.name for p in mirror.iterdir() if p.is_file()} if mirror.is_dir() else set()
-    for name in sorted(names | copies):
-        if name not in copies:
-            errors.append(f"{SERIES_DIRS[1] / name} is missing; copy {SERIES_DIRS[0] / name}")
-        elif name not in names:
-            errors.append(f"{SERIES_DIRS[1] / name} has no counterpart in {SERIES_DIRS[0]}")
-        elif (main / name).read_bytes().replace(b"\r\n", b"\n") != (mirror / name).read_bytes().replace(
-            b"\r\n", b"\n"
-        ):
-            errors.append(f"{SERIES_DIRS[1] / name} differs from {SERIES_DIRS[0] / name}")
-    return errors
-
-
-def check_diffs(base_text: str, diffs: list[Path], ledger: list[Entry]) -> tuple[list[str], str]:
-    errors = []
-    local = {e.key: e for e in ledger if e.origin == "local"}
-    by_key = {e.key: e for e in ledger}
-    text = base_text
-    for diff in diffs:
-        if not diff.is_file():
-            errors.append(f"series diff {diff.name} is missing")
-            continue
-        hunks = schema_hunks(diff)
-        for hunk in hunks:
-            for line in hunk.lines:
-                if line[0] == "-" and ORDINAL.search(line):
-                    errors.append(f"{diff.name} removes or rewrites an ordinal line: {line[1:].strip()}")
-        try:
-            text, added = apply_hunks(text, hunks, diff.name)
-        except LedgerError as exc:
-            errors.append(str(exc))
-            continue
-        try:
-            at_line = {line: entry for entry, line in parse_schema(text)}
-        except LedgerError as exc:
-            errors.append(f"{diff.name}: {exc}")
-            continue
-        lines = text.splitlines()
-        for number in added:
-            body = lines[number - 1]
-            if not ORDINAL.search(body):
-                continue
-            entry = at_line.get(number)
-            if entry is None:
-                errors.append(f"{diff.name} adds an ordinal outside a declaration: {body.strip()}")
-                continue
-            mine = local.get(entry.key)
-            if mine is None or not mine.same(entry):
-                have = by_key.get(entry.key)
-                if have is None:
-                    where = ", not a local ledger entry"
-                elif have.same(entry):
-                    where = ", which the ledger records as upstream; a wrap diff may only add local entries"
-                else:
-                    where = f", ledger has {have.line()}"
-                errors.append(f"{diff.name} adds {entry.describe()}{where}")
-    return errors, text
-
-
-def _read(path: Path) -> str:
-    return path.read_text(encoding="utf-8").replace("\r\n", "\n")
-
-
 def run_check(args: argparse.Namespace) -> int:
     root = args.root.resolve()
-    wrap = read_wrap(root)
+    pin = read_pin(root)
     ledger_path = args.ledger or root / LEDGER
     lines = parse_ledger(ledger_path.read_text(encoding="utf-8"), str(ledger_path))
     ledger = resolve_ledger(lines)
@@ -667,45 +497,32 @@ def run_check(args: argparse.Namespace) -> int:
             notes.append(f"{LEDGER} does not exist at {args.base}; append-only check skipped")
         else:
             errors += check_append_only(parse_ledger(old, f"{args.base}:{LEDGER}"), lines)
-
-    if wrap.diff_files:
-        errors.append(
-            f"{WRAP} applies diff_files ({', '.join(wrap.diff_files)}); a parent project resolves "
-            f"the pin from its own wrap without them. List rgpot-local diffs in "
-            f"{(SERIES_DIRS[0] / SERIES).as_posix()} instead"
-        )
-    errors += check_series_mirror(root)
+    errors += check_retired(lines)
 
     texts = {rel: _read(root / rel) for rel in VENDORED}
+    commons = {rel: _read(root / rel) for rel in VENDORED_COMMON}
     for rel, text in texts.items():
-        errors += check_vendored(ledger, schema_entries(text, str(rel)), str(rel))
-    first = texts[VENDORED[0]]
-    for rel in VENDORED[1:]:
-        if texts[rel] != first:
-            errors.append(f"{rel} differs from {VENDORED[0]}")
+        errors += check_copy(ledger, schema_entries(text, str(rel)), str(rel))
+    for group in (texts, commons):
+        (first_rel, first), *rest = group.items()
+        for rel, text in rest:
+            if text != first:
+                errors.append(f"{rel} differs from {first_rel}")
 
-    upstream_text = None
-    if args.upstream:
-        upstream_text, source = _read(args.upstream), str(args.upstream)
-    elif args.subproject_schema:
-        upstream_text, source = upstream_from_subproject(args.subproject_schema, wrap)
-    elif args.fetch:
-        upstream_text, source = fetch_upstream(wrap), f"{wrap.url} at {wrap.revision}"
-    if upstream_text is None:
-        notes.append("no pinned upstream schema given; upstream and canonical checks skipped")
+    pinned = pinned_texts(args, pin)
+    if pinned is None:
+        notes.append("no pinned schema given; the comparison with the rgconf pin is skipped")
     else:
-        upstream_text = upstream_text.replace("\r\n", "\n")
-        notes.append(f"pinned upstream: {source}")
-        errors += check_upstream(ledger, schema_entries(upstream_text, "pinned upstream"))
+        schema_text, common_text, source = pinned
+        notes.append(f"pinned schema: {source}")
+        errors += check_upstream(ledger, schema_entries(schema_text, "pinned schema"))
         for rel, text in texts.items():
-            if text != upstream_text:
-                errors.append(f"{rel}: {DIVERGES} {wrap.revision[:8]}")
-
-    diffs = read_series(root / SERIES_DIRS[0])
-    diff_errors, effective = check_diffs(first if upstream_text is None else upstream_text, diffs, ledger)
-    errors += diff_errors
-    if not diff_errors:
-        errors += check_copy(ledger, schema_entries(effective, "effective schema"), "effective schema")
+            if text != schema_text:
+                errors.append(f"{rel} {DIVERGES} {pin.revision[:8]}")
+        if common_text is not None:
+            for rel, text in commons.items():
+                if text != common_text:
+                    errors.append(f"{rel} {DIVERGES} {pin.revision[:8]}")
 
     for note in notes:
         print(f"note: {note}", flush=True)
@@ -720,30 +537,26 @@ def run_check(args: argparse.Namespace) -> int:
 
 def run_append(args: argparse.Namespace) -> int:
     root = args.root.resolve()
-    wrap = read_wrap(root)
+    pin = read_pin(root)
     ledger_path = args.ledger or root / LEDGER
     text = ledger_path.read_text(encoding="utf-8") if ledger_path.exists() else LEDGER_HEADER
     ledger = resolve_ledger(parse_ledger(text, str(ledger_path)))
-    upstream_text = args.upstream.read_text(encoding="utf-8") if args.upstream else fetch_upstream(wrap)
-    upstream = {e.key: e for e in schema_entries(upstream_text, "pinned upstream")}
+    pinned = pinned_texts(args, pin)
+    schema_text = pinned[0] if pinned is not None else fetch_pinned(pin)[0]
     known = {e.key: e for e in ledger}
-    effective = apply_series(_read(root / VENDORED[0]), read_series(root / SERIES_DIRS[0]))
-    copy = schema_entries(effective, "effective schema")
     fresh = []
-    for entry in copy:
+    for entry in schema_entries(schema_text, "pinned schema"):
         old = known.get(entry.key)
-        theirs = upstream.get(entry.key)
-        if old is not None:
-            if not old.same(entry):
-                raise LedgerError(
-                    f"effective schema has {entry.describe()}, ledger has {old.line()}; "
-                    "append will not rewrite it"
-                )
-            if old.origin == "local" and theirs is not None and theirs.same(entry):
-                fresh.append(dataclasses.replace(entry, origin="upstream"))
+        if old is None:
+            fresh.append(dataclasses.replace(entry, origin="upstream"))
             continue
-        origin = "upstream" if theirs is not None and theirs.same(entry) else "local"
-        fresh.append(dataclasses.replace(entry, origin=origin))
+        if not old.same(entry):
+            raise LedgerError(
+                f"pinned schema has {entry.describe()}, ledger has {old.line()}; "
+                "append will not rewrite it"
+            )
+        if old.origin == "local":
+            fresh.append(dataclasses.replace(entry, origin="upstream"))
     if fresh:
         if not text.endswith("\n"):
             text += "\n"
@@ -753,43 +566,25 @@ def run_append(args: argparse.Namespace) -> int:
     return 0
 
 
-def run_apply(args: argparse.Namespace) -> int:
-    root = args.root.resolve()
-    schema = args.schema or root / VENDORED[0]
-    text = apply_series(_read(schema), read_series(args.series or root / SERIES_DIRS[0]))
-    # Rewriting identical bytes would make every capnp consumer rebuild.
-    if not args.out.is_file() or args.out.read_text(encoding="utf-8") != text:
-        args.out.parent.mkdir(parents=True, exist_ok=True)
-        args.out.write_text(text, encoding="utf-8", newline="\n")
-    return 0
-
-
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = parser.add_subparsers(dest="command", required=True)
-    for name in ("check", "append", "apply"):
+    for name in ("check", "append"):
         cmd = sub.add_parser(name)
         cmd.add_argument("--root", type=Path, default=Path(__file__).resolve().parents[3])
-    for name in ("check", "append"):
-        cmd = sub.choices[name]
         cmd.add_argument("--ledger", type=Path)
-        cmd.add_argument("--upstream", type=Path, help="unpatched pinned Potentials.capnp")
-    apply = sub.choices["apply"]
-    apply.add_argument("--schema", type=Path, help="vendored Potentials.capnp (default: the C++ copy)")
-    apply.add_argument("--series", type=Path, help="directory holding the series file")
-    apply.add_argument("--out", type=Path, required=True, help="where to write the effective schema")
-    check = sub.choices["check"]
-    source = check.add_mutually_exclusive_group()
-    source.add_argument(
-        "--subproject-schema", type=Path, help="Potentials.capnp from the meson checkout of the wrap"
-    )
-    source.add_argument("--fetch", action="store_true", help="fetch the pinned revision from the wrap url")
-    check.add_argument("--base", help="git revision whose ledger must be a prefix of this one")
+        source = cmd.add_mutually_exclusive_group()
+        source.add_argument("--upstream", type=Path, help="the pinned rgconf potential.capnp")
+        source.add_argument("--fetch", action="store_true", help="fetch the pinned revision from the pin url")
+        cmd.add_argument(
+            "--upstream-common",
+            type=Path,
+            help="the pinned common.capnp (default: common.capnp beside --upstream)",
+        )
+    sub.choices["check"].add_argument("--base", help="git revision whose ledger must be a prefix of this one")
     args = parser.parse_args(argv)
-    if args.command == "check" and args.upstream and (args.subproject_schema or args.fetch):
-        parser.error("give one of --upstream, --subproject-schema and --fetch")
     try:
-        return {"check": run_check, "append": run_append, "apply": run_apply}[args.command](args)
+        return {"check": run_check, "append": run_append}[args.command](args)
     except (LedgerError, OSError, subprocess.CalledProcessError, KeyError) as exc:
         detail = getattr(exc, "stderr", None)
         print(f"error: {exc}{': ' + detail.strip() if detail else ''}", file=sys.stderr)

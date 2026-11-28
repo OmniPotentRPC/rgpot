@@ -1,7 +1,7 @@
 [project]
 name = "rgpot"
 # [[[cog import rgpot_version as v; cog.outl(f'version = "{v.VERSION}"')]]]
-version = "3.7.0"
+version = "3.8.0"
 # [[[end]]]
 description = "Potential energy surfaces for atomistic simulation (LJ + Metatomic multi-ABI dlopen; nanobind abi3)"
 readme = "README.md"
@@ -48,10 +48,13 @@ metatomic = [
 ase = ["ase>=3.23"]
 test = ["pytest>=7", "numpy>=1.24", "hypothesis>=6", "pytest-timeout>=2"]
 
+[project.entry-points."ase.plugins"]
+rgpot = "rgpot.ase"
+
 [build-system]
 requires = [
   "meson-python>=0.16",
-  "meson>=1.3",
+  "meson>=1.10",
   "ninja",
   "nanobind>=3.1",
   "numpy>=1.24",
@@ -87,6 +90,7 @@ setup = [
   # repair step vendors libgfortran into the wheel like any other
   # dependency.
   "-Dwith_fortran_pots=enabled",
+  "-Dwith_eam_table=true",
   "-Dwith_metatomic=true",
   "-Dwith_xtb=false",
   "-Dwith_xckernel=true",
@@ -109,10 +113,11 @@ python_files = ["test_*.py"]
 markers = [
   "thread_unsafe: mutates process-wide thread state (OpenMP or a pool)",
   "iterations: pytest-run-parallel repeat count for one test",
+  "rpc: requires the potserv RPC server binary and pycapnp",
 ]
 
 [[tool.mypy.overrides]]
-module = ["ase.*", "capnp", "anneal", "torch", "torch.*"]
+module = ["ase.*", "capnp", "anneal", "mpi4py", "mpi4py.*", "torch", "torch.*"]
 ignore_missing_imports = true
 
 # nanobind.stubgen writes tuple and dict without parameters. The file is

@@ -28,6 +28,25 @@
 namespace rgpot {
 namespace {
 
+// A package can keep its constants in a separate blob, which the runner
+// reads with update_constant_buffer_from_blob. Torch 2.8 has no such member,
+// and packages it exports carry no blob. The first overload is chosen when
+// the member exists; the second keeps this file compiling against a torch
+// without it and reports a package that torch cannot load.
+template <class Runner>
+auto loadConstantsBlob(Runner &runner, const std::string &blob, int)
+    -> decltype(runner.update_constant_buffer_from_blob(blob), void()) {
+  runner.update_constant_buffer_from_blob(blob);
+}
+
+template <class Runner>
+void loadConstantsBlob(Runner &, const std::string &blob, long) {
+  throw std::runtime_error(
+      "UmaPot: the package keeps its constants in " + blob +
+      ", and this torch has no update_constant_buffer_from_blob to load "
+      "them; use the torch that exported the package");
+}
+
 bool ends_with(const std::string &s, const std::string &suf) {
   return s.size() >= suf.size() &&
          s.compare(s.size() - suf.size(), suf.size(), suf) == 0;
@@ -38,7 +57,9 @@ torch::Device parse_device(const std::string &name) {
     return torch::kCPU;
   if (name.rfind("cuda", 0) == 0)
     return torch::Device(name);
-  return torch::kCPU;
+  // A misspelt device used to run on the CPU without a word.
+  throw std::invalid_argument("UmaPot: unknown device '" + name +
+                              "'; use cpu, cuda or cuda:N");
 }
 
 struct EdgeList {
@@ -268,13 +289,27 @@ void UmaPot::ensureLoaded() const {
   if (create == registry.end())
     throw std::runtime_error("UmaPot: this torch has no AOTI runner for "
                              "device '" + device_key->second + "'");
+  // An AOTI package runs on the device it was traced for. The inputs go to
+  // the configured device, so the two must be of one kind: a CPU package
+  // handed CUDA tensors, or the reverse, reads memory of the wrong device.
+  const bool package_cuda = device_key->second.rfind("cuda", 0) == 0;
+  if (package_cuda != m_impl->device.is_cuda())
+    throw std::runtime_error(
+        "UmaPot: AOTI package " + m_config.model_path + " was exported for '" +
+        device_key->second + "' and device '" + m_impl->device.str() +
+        "' was requested; export the package for that device "
+        "(scripts/export_uma_aoti.py --device) or request '" +
+        device_key->second + "'");
   c10::Device device(device_key->second);
-  device.set_index(-1);
+  // The runner computes where the inputs are sent: cuda:N keeps its index.
+  device.set_index(package_cuda && m_impl->device.has_index()
+                       ? m_impl->device.index()
+                       : -1);
   m_impl->runner =
       create->second(unpacked.so.string(), 1, device.str(),
                      unpacked.model_dir.string(), false);
   if (!unpacked.blob.empty())
-    m_impl->runner->update_constant_buffer_from_blob(unpacked.blob.string());
+    loadConstantsBlob(*m_impl->runner, unpacked.blob.string(), 0);
   auto num = [&](const char *key, double fallback) {
     const auto it = meta.find(key);
     if (it == meta.end() || it->second.empty())
@@ -347,6 +382,7 @@ UmaPot::UmaPot(const UmaConfig &config)
         "UmaPot: model_path must be an AOTI .pt2 from "
         "scripts/export_uma_aoti.py (not a metatomic/torchscript .pt)");
   }
+  validate_uma_spin_for_task(m_config.task_name, m_config.spin, "UmaPot");
   recomputeParamsKey();
   m_impl = std::make_unique<Impl>();
   m_impl->device = parse_device(m_config.device);
@@ -359,6 +395,7 @@ UmaPot::UmaPot(const UmaConfig &config)
 UmaPot::~UmaPot() = default;
 
 void UmaPot::setChargeSpin(int charge, int spin) {
+  validate_uma_spin_for_task(m_config.task_name, spin, "UmaPot::setChargeSpin");
   m_config.charge = charge;
   m_config.spin = spin;
   recomputeParamsKey();

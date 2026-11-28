@@ -26,6 +26,16 @@ On glibc 2.33 and newer it also asks glibc, so
 =RGPOT_FMA=software= selects it on any C library.
 
 Both paths compute =a*b+c= with one rounding, so they return the same bits.
+=exact_fma= hands inputs with a very large or small exponent, and zero or
+subnormal results, to the C library's =fma=. mingw-w64's =fma= is not fused: it
+returns the rounded =a*b+c= when that is infinite or NaN, and otherwise sums
+separately rounded partial products.
+A MinGW build uses =simd::detail::fma_soft= there, a correctly rounded fma in
+integer arithmetic.
+The hardware bodies call =simd::detail::fma_insn=.
+Inlined into a =target("fma")= function it is the instruction; a copy left out
+of line calls the C library's =fma=, and at =-O0= every copy is out of line, so
+an unoptimized MinGW build calls =fma_soft= there too.
 =ExactFmaEq= checks this against the hardware instruction on 1.5 million cases:
 edge values, ties, near cancellation, the whole exponent range, and a million
 uniform bit patterns.

@@ -120,9 +120,32 @@ RGPOT_CPMDC_API void cpmdc_session_destroy(CPMDCSession *session);
  * evaluates several images or beads in turn starts each SCF from that
  * image's or bead's own previous orbitals. Optional: an engine without the
  * symbol keeps one stored copy.
+ *
+ * @return 0 when `session` is non-null and the runtime accepts `key` (seeding
+ *         a new key from the session's current orbitals or restoring a
+ *         previously stored key's orbitals), and -1 when `session` is NULL,
+ *         `key` is refused, or the library is the stub without an embedded
+ *         runtime (leaving the session's active key and orbitals unchanged).
+ *         Seeding means choosing the next SCF initial guess: the session's
+ *         current converged orbitals for a key with no stored copy, or the
+ *         orbitals last converged under that key when one exists.
+ *         `cpmdc_last_error` is not declared here. This note covers only the
+ *         stub and the reference fake: the stub does not define
+ *         `cpmdc_last_error`, and the reference fake stores one string that a
+ *         failing select or session create sets and a successful select or
+ *         session create clears. Other engines are not described.
  */
 RGPOT_CPMDC_API int cpmdc_session_select_orbitals(CPMDCSession *session,
                                                   long long key);
+
+/**
+ * @brief Copy stored orbitals from one key to another in a live session.
+ *
+ * Returns 0 on success and -1 when either key is invalid or unsupported.
+ */
+RGPOT_CPMDC_API int cpmdc_session_copy_orbitals(CPMDCSession *session,
+                                                long long from_key,
+                                                long long to_key);
 
 RGPOT_CPMDC_API CPMDCResult cpmdc_session_energy_gradient(
     CPMDCSession *session, int n_atoms, const double *positions_ang,

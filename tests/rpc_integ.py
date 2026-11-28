@@ -6,13 +6,33 @@ import subprocess
 import traceback
 import sys
 import os
+from pathlib import Path
 import capnp
 import numpy as np
 
-# Load schema relative to this script
+# Load the vendored schema relative to this script.
 SCRIPT_DIR = os.path.dirname(os.path.realpath(__file__))
-SCHEMA_PATH = os.path.join(SCRIPT_DIR, "../CppCore/rgpot/rpc/Potentials.capnp")
-pot_capnp = capnp.load(SCHEMA_PATH)
+SOURCE_SCHEMA_PATH = Path(SCRIPT_DIR) / "../CppCore/rgpot/rpc/Potentials.capnp"
+pot_capnp = None
+
+
+def load_schema(server_bin):
+    candidates = []
+    if server_bin:
+        server_path = Path(server_bin).resolve()
+        if server_path.parent.name == "CppCore":
+            build_schema = (
+                server_path.parent.parent / "CppCore/rgpot/rpc/Potentials.capnp"
+            )
+            candidates.append(build_schema)
+    candidates.append(SOURCE_SCHEMA_PATH.resolve())
+    for candidate in candidates:
+        if candidate.exists():
+            print(f"Loading RPC schema: {candidate}")
+            return capnp.load(str(candidate))
+    raise FileNotFoundError(
+        f"could not find Potentials.capnp (checked {', '.join(str(c) for c in candidates)})"
+    )
 
 try:
     from cpmd_params import configure_cpmd
@@ -162,6 +182,273 @@ async def run_morse_configure(port):
     return True
 
 
+def effective_schema(server_bin):
+    """The schema potserv was built from: the vendored Potentials.capnp."""
+    del server_bin
+    return capnp.SchemaParser().load(str(SOURCE_SCHEMA_PATH.resolve()))
+
+
+async def run_composite_configure(port, schema):
+    """configure(composite) on a Composite server sums the terms it names."""
+    for _ in range(10):
+        try:
+            connection = await capnp.AsyncIoStream.create_connection(
+                host="localhost", port=port
+            )
+            break
+        except OSError:
+            await asyncio.sleep(0.5)
+    else:
+        print("Composite configure: failed to connect to server.")
+        return False
+
+    client = capnp.TwoPartyClient(connection)
+    pot = client.bootstrap().cast_as(schema.Potential)
+
+    fip = schema.ForceInput.new_message()
+    pos = [0.0, 0.0, 0.0, 1.1, 0.0, 0.0, 0.0, 1.2, 0.0]
+    fip.init("pos", len(pos))
+    for i, p in enumerate(pos):
+        fip.pos[i] = p
+    fip.init("atmnrs", 3)
+    for i in range(3):
+        fip.atmnrs[i] = 1
+    fip.init("box", 9)
+    for i, b in enumerate([20.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 20.0]):
+        fip.box[i] = b
+
+    empty = (await pot.calculate(fip)).result
+    assert empty.energy == 0.0, empty.energy
+
+    async def configure(terms):
+        cfg = schema.PotentialConfig.new_message()
+        built = cfg.init("composite").init("terms", len(terms))
+        for slot, (name, backend, weight, enabled) in zip(built, terms):
+            slot.name = name
+            slot.weight = weight
+            slot.enabled = enabled
+            slot.init("pot").init("builtin").name = backend
+        reply = await pot.configure(cfg)
+        print(f"Composite configure(composite): ok={reply.ok} msg={reply.message}")
+        assert reply.ok, reply.message
+        return (await pot.calculate(fip)).result
+
+    lj = await configure([("lj", "lj", 1.0, True)])
+    assert lj.energy != 0.0
+    cancel = await configure([("lj", "lj", 1.0, True), ("minus", "lj", -1.0, True)])
+    assert abs(cancel.energy) <= 1e-12 * abs(lj.energy), cancel.energy
+    assert max(abs(f) for f in cancel.forces) <= 1e-12 * max(abs(f) for f in lj.forces)
+    scaled = await configure([("lj", "lj", 2.5, True), ("off", "nonesuch", 1.0, False)])
+    assert math.isclose(scaled.energy, 2.5 * lj.energy, rel_tol=1e-12)
+    for a, b in zip(scaled.forces, lj.forces):
+        assert math.isclose(a, 2.5 * b, rel_tol=1e-12, abs_tol=1e-14)
+
+    d2 = await configure([("d2", "d2", 1.0, True)])
+    assert d2.energy < 0.0
+    both = await configure([("lj", "lj", 1.0, True), ("d2", "d2", 1.0, True)])
+    assert math.isclose(both.energy, lj.energy + d2.energy, rel_tol=1e-12)
+    undone = await configure(
+        [("lj", "lj", 1.0, True), ("d2", "d2", 1.0, True), ("undo", "d2", -1.0, True)]
+    )
+    assert math.isclose(undone.energy, lj.energy, rel_tol=1e-12)
+    for a, b in zip(undone.forces, lj.forces):
+        assert math.isclose(a, b, rel_tol=1e-12, abs_tol=1e-14)
+    cpmd = await configure([("cpmd", "d2cpmd", 1.0, True)])
+    assert cpmd.energy < 0.0
+    swapped = await configure([("undo cpmd", "d2cpmd", -1.0, True), ("d2", "d2", 1.0, True)])
+    assert math.isclose(swapped.energy, d2.energy - cpmd.energy, rel_tol=1e-12, abs_tol=1e-15)
+    scaled = await configure([("lj", "lj", 2.5, True), ("off", "nonesuch", 1.0, False)])
+
+    cfg = schema.PotentialConfig.new_message()
+    bad = cfg.init("composite").init("terms", 1)[0]
+    bad.name = "bad"
+    bad.init("pot").init("builtin").name = "nonesuch"
+    reply = await pot.configure(cfg)
+    assert not reply.ok and "'bad'" in reply.message, reply.message
+    assert (await pot.calculate(fip)).result.energy == scaled.energy
+
+    for name in schema.PotentialConfig.schema.union_fields:
+        if name in ("none", "composite"):
+            continue
+        arm = schema.PotentialConfig.new_message()
+        field = schema.PotentialConfig.schema.fields[name]
+        if field.proto.slot.type.which() == "void":
+            setattr(arm, name, None)
+        else:
+            arm.init(name)
+        reply = await pot.configure(arm)
+        assert not reply.ok, f"Composite accepted configure({name}): {reply.message}"
+        assert name in reply.message, reply.message
+    print("Composite configure: weights, switches and refusals hold")
+    return True
+
+
+async def run_d2_configure(port, schema, arm="d2"):
+    """configure(d2) on a D2 server, or d2cpmd on D2Cpmd, rebuilds the pot."""
+    for _ in range(10):
+        try:
+            connection = await capnp.AsyncIoStream.create_connection(
+                host="localhost", port=port
+            )
+            break
+        except OSError:
+            await asyncio.sleep(0.5)
+    else:
+        print("D2 configure: failed to connect to server.")
+        return False
+
+    client = capnp.TwoPartyClient(connection)
+    pot = client.bootstrap().cast_as(schema.Potential)
+    fip = schema.ForceInput.new_message()
+    pos = [0.0, 0.0, 0.0, 0.96, 0.0, 0.0, -0.24, 0.93, 0.0, 2.9, 0.1, 0.2]
+    fip.init("pos", len(pos))
+    for i, p in enumerate(pos):
+        fip.pos[i] = p
+    fip.init("atmnrs", 4)
+    for i, z in enumerate([8, 1, 1, 8]):
+        fip.atmnrs[i] = z
+    fip.init("box", 9)
+    for i, b in enumerate([9.0, 0.0, 0.0, 1.0, 9.5, 0.0, 0.0, 0.5, 10.0]):
+        fip.box[i] = b
+
+    blyp = (await pot.calculate(fip)).result
+    assert blyp.energy < 0.0, blyp.energy
+    cfg = schema.PotentialConfig.new_message()
+    cfg.init(arm).functional = "pbe"
+    reply = await pot.configure(cfg)
+    print(f"D2 configure({arm}): ok={reply.ok} msg={reply.message}")
+    assert reply.ok, reply.message
+    pbe = (await pot.calculate(fip)).result
+    assert math.isclose(pbe.energy, blyp.energy * 0.75 / 1.2, rel_tol=1e-12)
+
+    getattr(cfg, arm).functional = "nonesuch"
+    reply = await pot.configure(cfg)
+    assert not reply.ok and "nonesuch" in reply.message, reply.message
+    assert (await pot.calculate(fip)).result.energy == pbe.energy
+    for name in schema.PotentialConfig.schema.union_fields:
+        if name in ("none", arm):
+            continue
+        other = schema.PotentialConfig.new_message()
+        field = schema.PotentialConfig.schema.fields[name]
+        if field.proto.slot.type.which() == "void":
+            setattr(other, name, None)
+        else:
+            other.init(name)
+        reply = await pot.configure(other)
+        assert not reply.ok, f"{arm} backend accepted configure({name}): {reply.message}"
+        assert name in reply.message, reply.message
+    print("D2 configure: functional table and refusals hold")
+    return True
+
+
+def server_lists(server_bin, backend):
+    """True when potserv's usage line names @p backend."""
+    done = subprocess.run([server_bin], capture_output=True, text=True)
+    usage = done.stderr.split("Available PotentialTypes:", 1)[-1].splitlines()[0]
+    return backend in [name.strip() for name in usage.split(",")]
+
+
+async def run_d4_configure(port, schema):
+    """configure(d4) on a D4 server switches functional and periodicity."""
+    for _ in range(10):
+        try:
+            connection = await capnp.AsyncIoStream.create_connection(
+                host="localhost", port=port
+            )
+            break
+        except OSError:
+            await asyncio.sleep(0.5)
+    else:
+        print("D4 configure: failed to connect to server.")
+        return False
+
+    client = capnp.TwoPartyClient(connection)
+    pot = client.bootstrap().cast_as(schema.Potential)
+    fip = schema.ForceInput.new_message()
+    pos = [0.0, 0.0, 0.0, 0.96, 0.0, 0.0, -0.24, 0.93, 0.0, 2.9, 0.1, 0.2]
+    fip.init("pos", len(pos))
+    for i, p in enumerate(pos):
+        fip.pos[i] = p
+    fip.init("atmnrs", 4)
+    for i, z in enumerate([8, 1, 1, 8]):
+        fip.atmnrs[i] = z
+    fip.init("box", 9)
+    for i, b in enumerate([40.0, 0.0, 0.0, 5.0, 38.0, 0.0, -3.0, 4.0, 39.0]):
+        fip.box[i] = b
+
+    pbe = (await pot.calculate(fip)).result
+    assert pbe.energy < 0.0, pbe.energy
+    cfg = schema.PotentialConfig.new_message()
+    d4 = cfg.init("d4")
+    d4.functional = "blyp"
+    d4.periodic = True
+    reply = await pot.configure(cfg)
+    print(f"D4 configure(d4): ok={reply.ok} msg={reply.message}")
+    assert reply.ok, reply.message
+    blyp = (await pot.calculate(fip)).result
+    assert blyp.energy < 0.0 and blyp.energy != pbe.energy, (blyp.energy, pbe.energy)
+
+    cfg.d4.functional = "nonesuch"
+    reply = await pot.configure(cfg)
+    assert not reply.ok and "d4 arm rejected" in reply.message, reply.message
+    assert (await pot.calculate(fip)).result.energy == blyp.energy
+    other = schema.PotentialConfig.new_message()
+    other.init("d2")
+    reply = await pot.configure(other)
+    assert not reply.ok and "d2" in reply.message, reply.message
+    print("D4 configure: functional, periodicity and refusals hold")
+    return True
+
+
+async def run_rpc_stress_parity(d2_port, composite_port, schema):
+    """Periodic D2 and Composite(D2) return the same stress over RPC."""
+    async def connect(port):
+        for _ in range(10):
+            try:
+                return await capnp.AsyncIoStream.create_connection(
+                    host="localhost", port=port
+                )
+            except OSError:
+                await asyncio.sleep(0.5)
+        raise RuntimeError(f"failed to connect to server on port {port}")
+
+    d2 = capnp.TwoPartyClient(await connect(d2_port)).bootstrap().cast_as(schema.Potential)
+    comp = capnp.TwoPartyClient(await connect(composite_port)).bootstrap().cast_as(schema.Potential)
+
+    cfg = schema.PotentialConfig.new_message()
+    terms = cfg.init("composite").init("terms", 1)
+    terms[0].name = "d2"
+    terms[0].weight = 1.0
+    terms[0].enabled = True
+    terms[0].init("pot").init("builtin").name = "d2"
+    reply = await comp.configure(cfg)
+    assert reply.ok, reply.message
+
+    fip = schema.ForceInput.new_message()
+    pos = [0.0, 0.0, 0.0, 0.96, 0.0, 0.0, -0.24, 0.93, 0.0, 2.9, 0.1, 0.2]
+    fip.init("pos", len(pos))
+    for i, p in enumerate(pos):
+        fip.pos[i] = p
+    fip.init("atmnrs", 4)
+    for i, z in enumerate([8, 1, 1, 8]):
+        fip.atmnrs[i] = z
+    fip.init("box", 9)
+    for i, b in enumerate([9.0, 0.0, 0.0, 1.0, 9.5, 0.0, 0.0, 0.5, 10.0]):
+        fip.box[i] = b
+
+    direct = (await d2.calculate(fip)).result
+    summed = (await comp.calculate(fip)).result
+    assert len(direct.stress) == 9
+    assert len(summed.stress) == 9
+    assert math.isclose(summed.energy, direct.energy, rel_tol=1e-12, abs_tol=1e-14)
+    for a, b in zip(summed.forces, direct.forces):
+        assert math.isclose(a, b, rel_tol=1e-12, abs_tol=1e-14)
+    for a, b in zip(summed.stress, direct.stress):
+        assert math.isclose(a, b, rel_tol=1e-12, abs_tol=1e-14)
+    print("RPC stress parity: Composite(D2) matches D2 direct call")
+    return True
+
+
 async def run_nwchem_smoke(port):
     """Optional smoke: start NWChem server, configure(), skip calculate if no engine."""
     for _ in range(10):
@@ -308,7 +595,266 @@ async def run_cpmd_smoke(port):
     return True
 
 
+def _force_input(point, unit):
+    fip = pot_capnp.ForceInput.new_message()
+    fip.init("pos", 3)
+    fip.pos[0] = float(point)
+    fip.pos[1] = 0.0
+    fip.pos[2] = 0.0
+    fip.init("atmnrs", 1)
+    fip.atmnrs[0] = 1
+    fip.init("box", 9)
+    for i, b in enumerate([40.0, 0.0, 0.0, 0.0, 40.0, 0.0, 0.0, 0.0, 40.0]):
+        fip.box[i] = b
+    fip.lengthUnit = unit
+    fip.energyUnit = "eV"
+    return fip
+
+
+async def run_hvp_unit_smoke(port):
+    for _ in range(10):
+        try:
+            connection = await capnp.AsyncIoStream.create_connection(
+                host="localhost", port=port
+            )
+            break
+        except OSError:
+            await asyncio.sleep(0.5)
+    else:
+        print("HVP unit smoke: failed to connect to server.")
+        return False
+
+    client = capnp.TwoPartyClient(connection)
+    pot = client.bootstrap().cast_as(pot_capnp.Potential)
+    bohr_to_angstrom = 0.529177210903
+    cases = [
+        ("bohr", 0.75 / bohr_to_angstrom, 0.28 / bohr_to_angstrom),
+        ("nm", 0.075, 0.028),
+    ]
+    for unit, point, direction in cases:
+        fip = _force_input(point, unit)
+        req = pot.calculateHvp_request()
+        req.fip = fip
+        req.init("direction", 3)
+        req.direction[0] = float(direction)
+        req.direction[1] = 0.0
+        req.direction[2] = 0.0
+        hvp = np.array((await req.send()).product, dtype=np.float64)
+        delta = np.sqrt(np.finfo(np.float64).eps) * (
+            1.0 + abs(point) + abs(direction)
+        )
+        fp = np.array(
+            (await pot.calculate(_force_input(point + delta * direction, unit))).result.forces,
+            dtype=np.float64,
+        )
+        fm = np.array(
+            (await pot.calculate(_force_input(point - delta * direction, unit))).result.forces,
+            dtype=np.float64,
+        )
+        fd = -(fp - fm) / (2.0 * delta)
+        # calculate() and calculateHvp() both return values in caller units.
+        scale = np.max(np.abs(np.concatenate([hvp, fd])))
+        bar = np.cbrt(np.finfo(np.float64).eps) * (1.0 + scale)
+        assert np.max(np.abs(hvp - fd)) <= bar, (
+            f"{unit} HVP mismatch: got={hvp[0]} fd={fd[0]} bar={bar}"
+        )
+
+        # The comparison above cannot see a sign flip applied to the force
+        # and the product together, since both sides flip. The energy is not
+        # touched by either conversion, so it fixes the absolute sign and
+        # unit scale: F = -dE/dx and H = d^2E/dx^2, in caller units.
+        eps = np.finfo(np.float64).eps
+        energies = []
+
+        async def energy_at(shift):
+            result = await pot.calculate(_force_input(point + shift, unit))
+            energies.append(abs(float(result.result.energy)))
+            return float(result.result.energy)
+
+        at_point = await pot.calculate(_force_input(point, unit))
+        force = float(np.array(at_point.result.forces, dtype=np.float64)[0])
+        e_here = await energy_at(0.0)
+
+        step = np.cbrt(eps) * (1.0 + abs(point))
+        slopes = [
+            (await energy_at(h) - await energy_at(-h)) / (2.0 * h)
+            for h in (step, step / 2.0)
+        ]
+        # The h/2 slope keeps a third of the gap between the two slopes as
+        # truncation; the rounding is eps times the energy over the step.
+        slope_bar = abs(slopes[0] - slopes[1]) + eps * max(energies) / (step / 2.0)
+        assert abs(force) > slope_bar, (
+            f"{unit} force {force} is not resolved by the slope bar {slope_bar}"
+        )
+        assert abs(force + slopes[1]) <= slope_bar, (
+            f"{unit} force {force} is not -dE/dx = {-slopes[1]} (bar={slope_bar})"
+        )
+        e_along = await energy_at(step * np.sign(force))
+        assert e_along < e_here, (
+            f"{unit} energy rose along the force: {e_here} -> {e_along}"
+        )
+
+        energies.clear()
+        span = np.sqrt(np.sqrt(eps)) * (1.0 + abs(point))
+        curvatures = [
+            (await energy_at(t) - 2.0 * e_here + await energy_at(-t)) / t**2
+            for t in (span, span / 2.0)
+        ]
+        curvature_bar = abs(curvatures[0] - curvatures[1]) + (
+            4.0 * eps * max(energies + [abs(e_here)]) / (span / 2.0) ** 2
+        )
+        # One atom along x: H v = (d^2E/dx^2) * v.
+        assert abs(curvatures[1]) > curvature_bar, (
+            f"{unit} curvature {curvatures[1]} is not resolved by {curvature_bar}"
+        )
+        assert abs(hvp[0] / direction - curvatures[1]) <= curvature_bar, (
+            f"{unit} HVP {hvp[0]} is not (d^2E/dx^2) v = "
+            f"{curvatures[1] * direction} (bar={curvature_bar * abs(direction)})"
+        )
+    print(
+        "HVP unit smoke: bohr and nm finite differences agree, and the force "
+        "and product match the energy's own gradient and curvature."
+    )
+    return True
+
+
+MULLER_BROWN_PUBLISHED = {
+    "amplitude": [-200.0, -100.0, -170.0, 15.0],
+    "a": [-1.0, -1.0, -6.5, 0.7],
+    "b": [0.0, 0.0, 11.0, 0.6],
+    "c": [-10.0, -10.0, -6.5, 0.7],
+    "x0": [1.0, 0.0, -0.5, -1.0],
+    "y0": [0.0, 0.5, 1.5, 1.0],
+}
+
+
+def muller_brown_energy(x, y, **lists):
+    """The Muller-Brown energy; a list not given is the published one."""
+    p = {**MULLER_BROWN_PUBLISHED, **lists}
+    return sum(
+        p["amplitude"][i]
+        * math.exp(
+            p["a"][i] * (x - p["x0"][i]) ** 2
+            + p["b"][i] * (x - p["x0"][i]) * (y - p["y0"][i])
+            + p["c"][i] * (y - p["y0"][i]) ** 2
+        )
+        for i in range(4)
+    )
+
+
+async def run_muller_brown_configure(port):
+    """configure(mullerBrown) describes the whole surface on every call."""
+    for _ in range(10):
+        try:
+            connection = await capnp.AsyncIoStream.create_connection(
+                host="localhost", port=port
+            )
+            break
+        except OSError:
+            await asyncio.sleep(0.5)
+    else:
+        print("Muller-Brown configure: failed to connect to server.")
+        return False
+
+    client = capnp.TwoPartyClient(connection)
+    pot = client.bootstrap().cast_as(pot_capnp.Potential)
+    fip = pot_capnp.ForceInput.new_message()
+    fip.init("pos", 3)
+    for i, value in enumerate([0.23, -0.17, 0.0]):
+        fip.pos[i] = value
+    fip.init("atmnrs", 1)
+    fip.atmnrs[0] = 1
+    fip.init("box", 9)
+    for i, b in enumerate([40.0, 0.0, 0.0, 0.0, 40.0, 0.0, 0.0, 0.0, 40.0]):
+        fip.box[i] = b
+
+    defaults = (await pot.calculate(fip)).result.energy
+
+    async def configure_muller_brown(**lists):
+        cfg = pot_capnp.PotentialConfig.new_message()
+        params = cfg.init("mullerBrown")
+        for name, values in lists.items():
+            slots = params.init(name, len(values))
+            for i, value in enumerate(values):
+                slots[i] = value
+        reply = await pot.configure(cfg)
+        assert reply.ok, reply.message
+        return (await pot.calculate(fip)).result.energy
+
+    # Each call describes the whole surface: override, then empty, then partial.
+    x, y = 0.23, -0.17
+    override = {
+        "amplitude": [-400.0, -200.0, -340.0, 30.0],
+        "x0": [2.0, 1.0, 0.0, -1.0],
+    }
+    expected = muller_brown_energy(x, y, **override)
+    assert expected != muller_brown_energy(x, y)
+    energy = await configure_muller_brown(**override)
+    assert math.isclose(energy, expected, rel_tol=1e-12), (energy, expected)
+
+    energy = await configure_muller_brown()
+    print(f"Muller-Brown configure(empty lists): energy={energy}")
+    assert energy == defaults
+
+    partial = {"a": [-2.0, -2.0, -13.0, 1.4]}
+    expected = muller_brown_energy(x, y, **partial)
+    assert expected != defaults
+    energy = await configure_muller_brown(**partial)
+    assert math.isclose(energy, expected, rel_tol=1e-12), (energy, expected)
+
+    assert await configure_muller_brown(amplitude=[], a=[], x0=[]) == defaults
+
+    bad = pot_capnp.PotentialConfig.new_message()
+    bad.init("mullerBrown").init("a", 3)
+    reply = await pot.configure(bad)
+    assert not reply.ok and "four values" in reply.message, reply.message
+    assert (await pot.calculate(fip)).result.energy == defaults
+
+    await refuse_every_arm(pot, "Muller-Brown", applied=("mullerBrown",))
+    return True
+
+
+async def run_model_surface_smoke(port, name):
+    for _ in range(10):
+        try:
+            connection = await capnp.AsyncIoStream.create_connection(
+                host="localhost", port=port
+            )
+            break
+        except OSError:
+            await asyncio.sleep(0.5)
+    else:
+        print(f"{name} smoke: failed to connect to server.")
+        return False
+    client = capnp.TwoPartyClient(connection)
+    pot = client.bootstrap().cast_as(pot_capnp.Potential)
+    fip = pot_capnp.ForceInput.new_message()
+    fip.init("box", 9)
+    for i, b in enumerate([40.0, 0.0, 0.0, 0.0, 40.0, 0.0, 0.0, 0.0, 40.0]):
+        fip.box[i] = b
+    fip.lengthUnit = "angstrom"
+    fip.energyUnit = "eV"
+    if name == "DoubleWell":
+        pos = [0.7, -0.2, 0.0]
+    else:
+        pos = [0.7, -0.2, 0.0]
+    fip.init("pos", len(pos))
+    for i, value in enumerate(pos):
+        fip.pos[i] = value
+    fip.init("atmnrs", 1)
+    fip.atmnrs[0] = 1
+    result = await pot.calculate(fip)
+    energy = float(result.result.energy)
+    forces = np.array(result.result.forces, dtype=np.float64)
+    assert np.isfinite(energy)
+    assert np.all(np.isfinite(forces))
+    assert np.max(np.abs(forces)) > np.finfo(np.float64).eps
+    print(f"{name} smoke: energy={energy} force0={forces[0]}")
+    return True
+
+
 def main():
+    global pot_capnp
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--server-bin", required=True, help="Path to potserv executable"
@@ -325,6 +871,8 @@ def main():
         help="Also run CPMD configure() smoke on a separate server port",
     )
     args = parser.parse_args()
+    # Use the schema that potserv was built with: the vendored Potentials.capnp.
+    pot_capnp = effective_schema(args.server_bin)
 
     # 1. Start Server
     print(f"Starting server: {args.server_bin} {args.port} CuH2")
@@ -382,6 +930,207 @@ def main():
     if not morse_ok:
         sys.exit(1)
     print("Morse configure passed.")
+
+    muller_port = args.port + 12
+    print(f"Starting Muller-Brown server: {args.server_bin} {muller_port} MullerBrown")
+    muller_proc = subprocess.Popen(
+        [args.server_bin, str(muller_port), "MullerBrown"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    try:
+        muller_ok = asyncio.run(capnp.run(run_muller_brown_configure(muller_port)))
+    except BaseException as e:
+        print(f"Muller-Brown configure exception: {type(e).__name__}: {e}")
+        traceback.print_exc()
+        muller_proc.kill()
+        out, err = muller_proc.communicate(timeout=30)
+        print("Server stdout:", out.decode(errors="replace")[-4000:])
+        print("Server stderr:", err.decode(errors="replace")[-4000:])
+        muller_ok = False
+    finally:
+        muller_proc.kill()
+        muller_proc.wait()
+    if not muller_ok:
+        sys.exit(1)
+    print("Muller-Brown configure passed.")
+
+    model_port = args.port + 6
+    for name in ("DoubleWell", "CoupledProtonWell"):
+        print(f"Starting model smoke server: {args.server_bin} {model_port} {name}")
+        model_proc = subprocess.Popen(
+            [args.server_bin, str(model_port), name],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        try:
+            model_ok = asyncio.run(capnp.run(run_model_surface_smoke(model_port, name)))
+        except BaseException as e:
+            print(f"{name} smoke exception: {type(e).__name__}: {e}")
+            traceback.print_exc()
+            model_proc.kill()
+            out, err = model_proc.communicate(timeout=30)
+            print("Server stdout:", out.decode(errors="replace")[-4000:])
+            print("Server stderr:", err.decode(errors="replace")[-4000:])
+            model_ok = False
+        finally:
+            model_proc.kill()
+            model_proc.wait()
+        if not model_ok:
+            sys.exit(1)
+        model_port += 1
+
+    hvp_port = args.port + 9
+    print(f"Starting HVP unit server: {args.server_bin} {hvp_port} Eckart")
+    hvp_proc = subprocess.Popen(
+        [args.server_bin, str(hvp_port), "Eckart"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    try:
+        hvp_ok = asyncio.run(capnp.run(run_hvp_unit_smoke(hvp_port)))
+    except BaseException as e:
+        print(f"HVP unit smoke exception: {type(e).__name__}: {e}")
+        traceback.print_exc()
+        hvp_proc.kill()
+        out, err = hvp_proc.communicate(timeout=30)
+        print("Server stdout:", out.decode(errors="replace")[-4000:])
+        print("Server stderr:", err.decode(errors="replace")[-4000:])
+        hvp_ok = False
+    finally:
+        hvp_proc.kill()
+        hvp_proc.wait()
+    if not hvp_ok:
+        sys.exit(1)
+
+    composite_port = args.port + 4
+    print(f"Starting Composite server: {args.server_bin} {composite_port} Composite")
+    composite_proc = subprocess.Popen(
+        [args.server_bin, str(composite_port), "Composite"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    try:
+        composite_ok = asyncio.run(
+            capnp.run(
+                run_composite_configure(composite_port, pot_capnp)
+            )
+        )
+    except BaseException as e:
+        print(f"Composite configure exception: {type(e).__name__}: {e}")
+        traceback.print_exc()
+        composite_proc.kill()
+        out, err = composite_proc.communicate(timeout=30)
+        print("Server stdout:", out.decode(errors="replace")[-4000:])
+        print("Server stderr:", err.decode(errors="replace")[-4000:])
+        composite_ok = False
+    finally:
+        composite_proc.kill()
+        composite_proc.wait()
+    if not composite_ok:
+        sys.exit(1)
+    print("Composite configure passed.")
+
+    for offset, backend, arm in ((5, "D2", "d2"), (6, "D2Cpmd", "d2cpmd")):
+        d2_port = args.port + offset
+        print(f"Starting {backend} server: {args.server_bin} {d2_port} {backend}")
+        d2_proc = subprocess.Popen(
+            [args.server_bin, str(d2_port), backend],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        try:
+            d2_ok = asyncio.run(
+                capnp.run(
+                    run_d2_configure(d2_port, pot_capnp, arm)
+                )
+            )
+        except BaseException as e:
+            print(f"{backend} configure exception: {type(e).__name__}: {e}")
+            traceback.print_exc()
+            d2_proc.kill()
+            out, err = d2_proc.communicate(timeout=30)
+            print("Server stdout:", out.decode(errors="replace")[-4000:])
+            print("Server stderr:", err.decode(errors="replace")[-4000:])
+            d2_ok = False
+        finally:
+            d2_proc.kill()
+            d2_proc.wait()
+        if not d2_ok:
+            sys.exit(1)
+        print(f"{backend} configure passed.")
+
+    stress_d2_port = args.port + 8
+    stress_composite_port = args.port + 9
+    print(f"Starting D2 server for stress parity: {args.server_bin} {stress_d2_port} D2")
+    stress_d2_proc = subprocess.Popen(
+        [args.server_bin, str(stress_d2_port), "D2"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    print(
+        f"Starting Composite server for stress parity: {args.server_bin} {stress_composite_port} Composite"
+    )
+    stress_composite_proc = subprocess.Popen(
+        [args.server_bin, str(stress_composite_port), "Composite"],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+    )
+    try:
+        stress_ok = asyncio.run(
+            capnp.run(
+                run_rpc_stress_parity(stress_d2_port, stress_composite_port, pot_capnp)
+            )
+        )
+    except BaseException as e:
+        print(f"Stress parity exception: {type(e).__name__}: {e}")
+        traceback.print_exc()
+        stress_d2_proc.kill()
+        stress_composite_proc.kill()
+        d2_out, d2_err = stress_d2_proc.communicate(timeout=30)
+        comp_out, comp_err = stress_composite_proc.communicate(timeout=30)
+        print("D2 server stdout:", d2_out.decode(errors="replace")[-4000:])
+        print("D2 server stderr:", d2_err.decode(errors="replace")[-4000:])
+        print("Composite server stdout:", comp_out.decode(errors="replace")[-4000:])
+        print("Composite server stderr:", comp_err.decode(errors="replace")[-4000:])
+        stress_ok = False
+    finally:
+        stress_d2_proc.kill()
+        stress_d2_proc.wait()
+        stress_composite_proc.kill()
+        stress_composite_proc.wait()
+    if not stress_ok:
+        sys.exit(1)
+    print("RPC stress parity passed.")
+
+    if server_lists(args.server_bin, "D4"):
+        d4_port = args.port + 7
+        print(f"Starting D4 server: {args.server_bin} {d4_port} D4")
+        d4_proc = subprocess.Popen(
+            [args.server_bin, str(d4_port), "D4"],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+        )
+        try:
+            d4_ok = asyncio.run(
+                capnp.run(run_d4_configure(d4_port, pot_capnp))
+            )
+        except BaseException as e:
+            print(f"D4 configure exception: {type(e).__name__}: {e}")
+            traceback.print_exc()
+            d4_proc.kill()
+            out, err = d4_proc.communicate(timeout=30)
+            print("Server stdout:", out.decode(errors="replace")[-4000:])
+            print("Server stderr:", err.decode(errors="replace")[-4000:])
+            d4_ok = False
+        finally:
+            d4_proc.kill()
+            d4_proc.wait()
+        if not d4_ok:
+            sys.exit(1)
+        print("D4 configure passed.")
+    else:
+        print("D4 configure skipped: potserv built without dftd4.")
 
     if args.nwchem_smoke:
         nw_port = args.port + 1

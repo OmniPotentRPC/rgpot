@@ -1,0 +1,11 @@
+self-hosted-runner:
+  labels:
+    - ubuntu-24.04-arm
+    - macos-15-intel
+paths:
+  .github/workflows/isa-audit.yml:
+    ignore:
+      # job.workflow_repository and job.workflow_sha are documented runner
+      # context properties that actionlint 1.7.12 does not know yet.
+      # Drop this once a release includes them.
+      - 'property "workflow_(repository|sha)" is not defined in object type'

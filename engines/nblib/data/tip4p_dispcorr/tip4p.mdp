@@ -1,0 +1,31 @@
+; Two TIP4P waters. The session replaces rlist with the cutoff plus 0.1 nm,
+; so the list buffer here is that same margin.
+integrator               = md
+dt                       = 0.001
+nsteps                   = 1
+nstxout                  = 1
+nstvout                  = 0
+nstfout                  = 1
+nstlog                   = 1
+nstenergy                = 1
+nstcalcenergy            = 1
+cutoff-scheme            = Verlet
+nstlist                  = 1
+pbc                      = xyz
+coulombtype              = PME
+rcoulomb                 = 0.9
+rvdw                     = 0.9
+rlist                    = 1.0
+vdw-modifier             = Force-switch
+rvdw-switch              = 0.8
+DispCorr                 = EnerPres
+fourierspacing           = 0.12
+pme-order                = 4
+ewald-rtol               = 1e-5
+constraints              = none
+tcoupl                   = no
+pcoupl                   = no
+gen-vel                  = no
+continuation             = no
+verlet-buffer-tolerance  = -1
+comm-mode                = none

@@ -27,6 +27,7 @@
 // clang-format on
 
 #include "rgpot/EAMTable/EAMTablePot.hpp"
+#include "rgpot/PairEval.hpp"
 #include "rgpot/nlist/NeighbourList.hpp"
 #include "rgpot/stress.hpp"
 
@@ -373,6 +374,7 @@ void EAMTablePot::forceImpl(const ForceInput &in, ForceOut *out) const {
 
 void EAMTablePot::forcePerAtom(const ForceInput &in, ForceOut *out,
                                const PerAtomOut &atoms) const {
+  guardForceCall(in, out, kernelNeedsCell(*this));
   clearPerAtom(atoms, in.nAtoms);
   compute(in, out, &atoms);
 }
@@ -394,8 +396,6 @@ void EAMTablePot::compute(const ForceInput &in, ForceOut *out,
     el[i] = static_cast<std::size_t>(a);
   }
 
-  static constexpr double free_box[9] = {1.0e6, 0.0, 0.0, 0.0,  1.0e6,
-                                         0.0,   0.0, 0.0, 1.0e6};
   const double *box = in.box;
   if (m_periodic) {
     const double vol = cellVolume(box);
@@ -410,11 +410,15 @@ void EAMTablePot::compute(const ForceInput &in, ForceOut *out,
       const double cy = u[2] * v[0] - u[0] * v[2];
       const double cz = u[0] * v[1] - u[1] * v[0];
       if (!(2.0 * t.cutoff < vol / std::sqrt(cx * cx + cy * cy + cz * cz))) {
-        bad("cutoff exceeds half a face spacing");
+        // Shorter than half a face: every image inside the cutoff.
+        // That walk is another translation unit, so this function stays
+        // the stored pair kernel.
+        computeAllImages(in, out, atoms);
+        return;
       }
     }
   } else {
-    box = free_box;
+    box = freeBoxOrCell(nullptr);
   }
   nlist::Neighbours &cells = m_neighbours;
   const double cut2 = t.cutoff * t.cutoff;

@@ -49,13 +49,24 @@ The Verlet skin is 1 Angstrom for =LJPot= and one fifth of the cutoff for
 =LJClusterPot= and =MorsePot=; a stream uses no skin.
 A stored list is reused while every atom has moved by at most half the skin and
 the cell, the atom count and the settings are unchanged.
+That is the rule of =nlist::Neighbours=.
+=nlist::Builder=, behind the C ABI and the long-range =DualList=, also keeps its
+table across a cell change whose image moves fit in the skin.
 
 - =StillingerWeberSi= (=PotType::SWSi1985=) :: Stillinger-Weber silicon with the
   1985 parameters (Phys. Rev. B 31, 5262).
 Epsilon is 3.4723e-12 erg, 2.16723920 eV, the value of equation (2.9).
 =energyAndGradient= evaluates one configuration, and =energyAndGradientBatch=
 several configurations that share a cell and a species list.
+A batch is spread across the threads =OMP_NUM_THREADS= requests when no
+configuration would make =StillingerWeberSi= open a team.
+=teamSize= uses =StillingerWeberSi::kTeamMinAtoms= and
+=StillingerWeberSi::kTeamFrom=.
+Each configuration is evaluated whole, on a neighbour list of its own.
 See [[file:sw_si.org][Stillinger-Weber silicon (1985)]].
+=locality= declares a full neighbour list and a ghost reach of twice the cutoff,
+so a domain-decomposed host can evaluate owned atoms and reverse sum the forces
+on the copies.
 The Fortran =SWPot= kernel (=PotType::SWSi=) uses eOn's rescaled epsilon,
 2.16826 × 1.06767385 = 2.3149945 eV.
 The ratio of that epsilon to the published value is 1.068176741337.
@@ -69,6 +80,12 @@ The Fortran =TersoffPot=, which also reports =PotType::TersoffSi= and is the
 engine name =tersoff=, sends all-silicon calls and a null species pointer to its
 Fortran gather and every other call to =TersoffSiC=.
 =setHeldSkin= keeps one Verlet list for =forceImpl=.
+=locality= declares a full neighbour list and a ghost reach of twice the silicon
+outer cutoff, so a domain-decomposed host can evaluate owned atoms and reverse
+sum the forces on the copies.
+=energyAndGradientBatch= spreads configurations the same way as
+=StillingerWeberSi=, from =TersoffSiC::kTeamMinAtoms= and
+=TersoffSiC::kTeamFrom=.
 See [[file:tersoff_sic.org][Tersoff silicon-carbon (1989)]].
 - =ZBLPot= (=PotType::ZBL=) :: Screened nuclear repulsion
   (Ziegler-Biersack-Littmark) with the LAMMPS switching function, on free
@@ -86,13 +103,18 @@ copper set.
   potential.
 - =MOPACPot= (=PotType::MOPAC=, =CppCore/rgpot/MOPACPot/=) :: Frontend that
   loads the split =mopacc= engine at run time.
+- =ORCAPot= (=PotType::ORCA=, =CppCore/rgpot/ORCAPot/=, =-Dwith_orca=true=) ::
+  Frontend that runs the =orca= executable as a child process for each energy
+  and gradient and reads the =.engrad= file.
+  See =docs/orgmode/howto/orca.org=.
 - =LammpsPot=, =GromacsPot=, =OpenMMPot= :: Shifted Lennard-Jones in
   =CppCore/rgpot/ExternalPot/=, as =PotType::Lammps=, =PotType::Gromacs= and =PotType::OpenMM=; =GromacsPot= and =OpenMMPot= store nm and kJ/mol
   parameters.
 - Gupta and reduced cluster pairs :: C kernels
-  (=rgpot_gupta=, =rgpot_lj_gradient=, =rgpot_morse_gradient=) in
-  =CppCore/rgpot/Gupta/= and =CppCore/rgpot/ReducedPair/=, not =Potential=
-  classes.
+  (=rgpot_gupta=, =rgpot_cluster_lj=, =rgpot_cambridge_morse=, =rgpot_lj_gradient=, =rgpot_morse_gradient=) in =CppCore/rgpot/Gupta/=, =CppCore/rgpot/Morse/cambridge_morse.h=
+  and =CppCore/rgpot/ReducedPair/=, not =Potential= classes.
+  [[file:gupta.org][Gupta and reduced cluster kernels]] records the parameters
+  and the checked energies.
 
 *** Fortran Potentials
 
@@ -104,10 +126,10 @@ The C++ classes are in =FortranPots.hpp=, in the namespace =rgpot::fortranpots=:
 |--------------+-------------+---------------------------------------------------------------|
 | =CuH2Pot=    | =CuH2=      | Copper-hydrogen EAM                                           |
 | =EDIPPot=    | =EDIP=      | Environment-dependent interatomic potential for silicon       |
-| =LenoskyPot= | =LenoskySi= | Lenosky silicon                                               |
+| =LenoskyPot= | =LenoskySi= | Cubic-spline MEAM silicon force-matched to LDA                |
 | =EAMAlPot=   | =EAMAl=     | EAM aluminium                                                 |
 | =FeHePot=    | =FeHe=      | Fe-He embedded atom                                           |
-| =WaterHPot=  | =WaterH=    | TIP4P water with a hydrogen atom                              |
+| =WaterHPot=  | =WaterH=    | Andersson's =potH-H2O= surface for one H among water molecules |
 | =SWPot=      | =SWSi=      | Stillinger-Weber silicon with eOn's epsilon                   |
 | =TersoffPot= | =TersoffSi= | Tersoff silicon: Fortran gather, or =TersoffSiC= for other Z |
 
@@ -129,6 +151,11 @@ See =docs/orgmode/howto/ipi.org=.
 - =EAMTablePot= (=-Dwith_eam_table=true=) :: EAM and Finnis-Sinclair potentials
   read from LAMMPS tables.
 See [[file:eam_table.org][Tabulated EAM and Finnis-Sinclair potentials]].
+
+- =MEAMPot= (=PotType::MEAM=, =CppCore/rgpot/MEAM/=) :: Modified embedded-atom
+  method with first and second neighbours, driven by LAMMPS meam library and
+  parameter files.
+See [[file:meam.org][Modified embedded-atom method]].
 
 - =TIP4PPot=, =SPCEPot=, =TIP4PPtPot= (=-Dwith_water=true=) :: Flexible TIP4P,
   SPC/E and TIP4P on platinum, in =CppCore/rgpot/Water/=.
@@ -163,15 +190,19 @@ The =potserv= =D3= backend runs the default =D3Config=.
 - =D4Pot= (=-Dwith_dftd4=true=) :: Grimme DFT-D4 via the
   [[https://github.com/dftd4/dftd4][dftd4]] ISO C API.
 =D4Config= selects the functional key (default =pbe=), the total charge
-forwarded to =dftd4_new_structure= (default 0), and an =atm= flag for the
-many-body (=mdb=) term (default on).
+forwarded to =dftd4_new_structure= (default 0), an =atm= flag for the many-body
+(=mdb=) term (default on), and a =periodic= flag (default off) that passes the
+box to dftd4 as a 3D lattice and returns the stress from its virial.
 It is an in-process =Potential= summand: it takes a =ForceInput= and returns
-energy and forces.
+energy and forces, plus stress when =periodic= is set.
 It is not an XC kernel term.
-The schema has =PotentialConfig.d4= @13, and its =D4Params= mirror =D4Config=.
-Nothing applies that arm yet.
-The =potserv= =D4= backend runs the default =D4Config=.
-=configure()= refuses the =d4= arm by name on every =potserv= backend.
+The schema has =PotentialConfig.d4= @13, and its =D4Params= (with =periodic=
+from =d4-periodic.diff=) mirror =D4Config=.
+On a build with dftd4, =potserv <port> D4= starts with the default =D4Config=
+and =configure()= applies =PotentialConfig.d4= to rebuild its =D4Pot= (refusing
+unknown functionals with dftd4's message and other arms by name); =d4= is also a
+builtin term in =PotentialConfig.composite= and =libcomposite_engine=.
+Other =potserv= backends refuse the =d4= arm by name.
 
 - =ExprPot= (=-Dwith_expr=true=) :: Energy as an expression over named child
   potentials.
@@ -307,6 +338,17 @@ then converts energy and forces into the caller's units on the response.
 Why the handshake exists is in
 [[file:../explanation/architecture.org][Architecture]].
 
+The current RPC identity is family =rgpot.potentials=, major 1, minor 2.
+=ForceInput.neighbors= (@9) is present from minor 0 (v3.6.0).
+Minor 2 adds only =hasOrbitalKey= and =orbitalKey=.
+Clients that set an orbital-key field require a server that advertises minor 2.
+They report the required and advertised minors instead of sending a request that
+an older server would silently interpret without those fields.
+That floor is the minor in which the fields appeared.
+A later bump of the current minor does not raise it.
+Requests that use only the pre-minor-2 =ForceInput= fields remain valid against
+a minor-1 server.
+
 A backend loaded through the potential profile reports a =Capabilities= message
 through =<prefix>_capabilities_result=.
 Before a session is created, =ProfileSession::load= (Rust) and
@@ -368,7 +410,7 @@ The C entry point is listed in [[file:c_abi.org][C ABI of rgpot-core]].
 | =CppCore/rgpot/=                       | C++ potentials, neighbour lists, the RPC server and helpers.                                         |
 | =CppCore/rgpot/fortran/=               | Fortran 2018 potential kernels and their C entry points.                                             |
 | =engines/=                             | Engine plugins and =pot_spec.hpp=, which builds a potential from a name and options.                 |
-| =subprojects/potentials-schema.wrap=   | Pinned canonical Cap'n Proto schema, plus the local =neighbour-chunk.diff=.                          |
-| =rgpot-core/schema/Potentials.capnp=   | Vendored schema copy; =build.rs= prefers it (works on crates.io).                                     |
-| =CppCore/rgpot/rpc/Potentials.capnp=   | Vendored schema copy used by Meson; =build.rs= falls back to it. Both copies must equal the pinned one. |
+| =CppCore/rgpot/rpc/schema.pin=         | The rgconf commit whose =potential.capnp= and =common.capnp= rgpot vendors.                           |
+| =rgpot-core/schema/Potentials.capnp=   | Vendored schema copy, with =common.capnp=; =build.rs= prefers it (works on crates.io).                |
+| =CppCore/rgpot/rpc/Potentials.capnp=   | Vendored schema copy, with =common.capnp=, used by Meson and CMake; =build.rs= falls back to it. Both copies must equal the pinned files. |
 | =CppCore/rgpot/rpc/Potentials.ordinals= | Append-only ledger of schema ordinals.                                                              |

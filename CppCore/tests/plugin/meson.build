@@ -6,6 +6,13 @@ plugin_null = shared_library(
     name_prefix: 'lib',
     install: false,
 )
+plugin_lj_collision = shared_library(
+    'rgpot_lj_collision',
+    'lj_collision_plugin.c',
+    include_directories: plugin_test_inc,
+    name_prefix: 'lib',
+    install: false,
+)
 plugin_morse = shared_library(
     'rgpot_morse',
     '../../examples/plugins/morse_plugin.c',
@@ -41,7 +48,7 @@ foreach item : [
         item[0],
         plugin_test,
         env: plugin_env,
-        depends: [plugin_null, plugin_morse],
+        depends: [plugin_null, plugin_morse, plugin_lj_collision],
         kwargs: _rt_kw[item[0]],
     )
 endforeach
@@ -89,6 +96,7 @@ test(
     find_program('python3', 'python'),
     args: [
         files('../test_plugin_lifetime.py')[0],
+    ] + exe_wrapper_args + [
         plugin_lifetime.full_path(),
         plugin_fixture.full_path(),
     ],

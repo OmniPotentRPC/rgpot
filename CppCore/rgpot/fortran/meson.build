@@ -38,6 +38,7 @@ fortran_pots_sources = files(
     'rgpot_eam_al_capi.f90',
     'rgpot_edip.f90',
     'rgpot_edip_capi.f90',
+    'rgpot_error_text.f90',
     'rgpot_fehe.f90',
     'rgpot_fehe_capi.f90',
     'rgpot_ferror.f90',
@@ -144,7 +145,7 @@ fortran_pots_dep = declare_dependency(
 # Fortran-only test programs link the kernels and the neighbour query.
 # The OpenMP dependency is the C++ one. Its compile flag (/openmp, -fopenmp)
 # must not be handed to flang, which treats /openmp as a source file.
-_fortran_nlist_omp = dependency('openmp', language: 'cpp', required: false)
+_fortran_nlist_omp = rgpot_openmp
 _fortran_nlist_omp_link = []
 if _fortran_nlist_omp.found()
     _fortran_nlist_omp_link = [
@@ -160,6 +161,7 @@ fortran_kernels_dep = declare_dependency(
         rgpot_sw_lib,
         fortran_kernels,
         rgpot_halfshell,
+        rgpot_core,
         rgpot_minimage,
         rgpot_exact_fma,
     ],
@@ -177,25 +179,14 @@ _cuh2_plugin_args = fc.get_supported_arguments(
         '-frecursive',
     ],
 )
-rgpot_cuh2 = library(
-    'rgpot_cuh2',
-    [
-        'rgpot_kinds.f90',
-        'rgpot_ferror.f90',
-        'rgpot_neighbors.f90',
-        'rgpot_workspace.f90',
-        'rgpot_cuh2.f90',
-        'rgpot_cuh2_capi.f90',
-    ],
-    link_with: [rgpot_halfshell, rgpot_minimage, rgpot_exact_fma],
-    # C++ is the link language so the half-shell archives resolve, and meson
-    # then does not add the Fortran runtime. fortran_rt_deps is the same
-    # search the umbrella uses for _gfortran_* (and the flang equivalents).
-    link_language: 'cpp',
-    dependencies: _fortran_nlist_omp_link + fortran_rt_deps,
-    fortran_args: _cuh2_plugin_args,
-    install: not meson.is_subproject(),
-    gnu_symbol_visibility: 'default',
+rgpot_cuh2_sources = files(
+    'rgpot_cuh2.f90',
+    'rgpot_cuh2_capi.f90',
+    'rgpot_error_text.f90',
+    'rgpot_ferror.f90',
+    'rgpot_kinds.f90',
+    'rgpot_neighbors.f90',
+    'rgpot_workspace.f90',
 )
 
 # Physics checks that run without the C++ stack: a failure here points at

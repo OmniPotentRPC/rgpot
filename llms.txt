@@ -1,0 +1,129 @@
+<!-- Copyright 2023--present rgpot developers -->
+
+# rgpot
+
+> `rgpot` provides a unified Cap'n Proto schema for potential energy calculations. It also provides a remote procedure call (RPC) server for that schema. Clients send `ForceInput` messages containing geometry and units, receive `PotentialResult` messages containing energy and forces, and use `PotentialConfig` only for backend setup.
+
+The pages below are the documentation of the repository at https://github.com/OmniPotentRPC/rgpot.
+`llms-full.txt` holds the text of every page in one file.
+`AGENTS.md` in the repository root says how to build, test and contribute.
+
+## Tutorials
+
+- [Quickstart](https://rgpot.rgoswami.me/tutorials/quickstart.html): This tutorial builds rgpot from source, runs the local tests, and exercises the Cap'n Proto RPC server with the repository integration script.
+- [Neighbour lists](https://rgpot.rgoswami.me/tutorials/neighbour-list.html): The public neighbour query has the same columns in C++, C and Cap'n Proto.
+- [Scan a potential energy surface over RPC](https://rgpot.rgoswami.me/tutorials/pes-scan.html): This tutorial sends geometries to the rgpot server over remote procedure calls (RPC) and draws what comes back.
+- [Evaluate a water geometry with CPMD](https://rgpot.rgoswami.me/tutorials/cpmd.html): This tutorial builds rgpot, loads a CPMD engine, and evaluates one water geometry.
+- [Evaluate diamond silicon with CP2K](https://rgpot.rgoswami.me/tutorials/cp2k.html): This tutorial builds rgpot with the CP2K shim and evaluates an eight-atom diamond silicon cell (lattice constant 5.431 angstrom) with PBE, the DZVP-MOLOPT-SR-GTH basis and GTH-PBE pseudopotentials at a reduced 300/40...
+- [Find the Ground State of an EON Structure](https://rgpot.rgoswami.me/tutorials/molecular-global-optimization.html): Atomistic workflows minimize.
+
+## How-To Guides
+
+- [Python package (PyPI)](https://rgpot.rgoswami.me/howto/pip-python.html): The rgpot package on PyPI ships manylinux (x86_64 and aarch64) and macOS wheels with:
+- [ASE calculators](https://rgpot.rgoswami.me/howto/ase.html): rgpot.ase is an optional extra (pip install 'rgpot[ase]', ASE 3.23 or newer). import rgpot does not import ASE.
+- [Run LAMMPS with a Python potential](https://rgpot.rgoswami.me/howto/lammps-fix-external.html): rgpot.lammps.FixExternal connects any Python rgpot potential to LAMMPS' fix external pf/callback.
+- [LAMMPS](https://rgpot.rgoswami.me/howto/engine-lammps.html): pair_style rgpot is a LAMMPS plugin that evaluates an rgpot potential and returns the energy, the forces and the global virial, and for LJ, Morse, SuttonChen and EAMTable the per-atom energy and virial.
+- [GROMACS](https://rgpot.rgoswami.me/howto/engine-gromacs.html): GROMACS 2026's NNPot module loads a TorchScript model.
+- [GROMACS QM/MM drop-in](https://rgpot.rgoswami.me/howto/engine-gromacs-qmmm.html): librgpot_gromacs puts any rgpot potential behind the C API of the CP2K library.
+- [OpenMM](https://rgpot.rgoswami.me/howto/engine-openmm.html): OpenMM has no callback that can call an arbitrary C++ potential.
+- [GROMACS nblib](https://rgpot.rgoswami.me/howto/engine-nblib.html): GROMACS ships a small C++ library, nblib, that builds a topology and evaluates its nonbonded and listed forces without running mdrun. rgpot can load it in process.
+- [PLUMED](https://rgpot.rgoswami.me/howto/engine-plumed.html): RGPOT is a collective variable whose value is the energy of an rgpot potential on the atoms it lists.
+- [Metatomic and the engine ABI](https://rgpot.rgoswami.me/howto/engine-metatomic.html): With -Dwith_python=true, librgpot links neither MetatomicPot nor UmaPot, so import rgpot does not need libtorch.
+- [Export a UMA model with dynamic shapes](https://rgpot.rgoswami.me/howto/uma-export.html): scripts/export_uma_aoti.py turns a UMA checkpoint into an AOTInductor package (.pt2) that UmaPot and libuma_engine load.
+- [Embedding as a Subproject](https://rgpot.rgoswami.me/howto/embedding.html): This page covers how to embed rgpot into another C/C++ project using meson or cmake as a subproject dependency.
+- [Compose potentials with ExprPot](https://rgpot.rgoswami.me/howto/exprpot.html): ExprPot (meson -Dwith_expr=true) compiles an energy string over named child Potential objects with vendored OpenMM Lepton (third_party/lepton).
+- [Add dispersion to a DFT engine](https://rgpot.rgoswami.me/howto/dft-plus-dispersion.html): A DFT engine run without its own dispersion correction, such as cpmdc with BLYP, can take a dispersion term from rgpot instead.
+- [i-PI socket server and driver](https://rgpot.rgoswami.me/howto/ipi.html): rgpot speaks the i-PI socket protocol in both directions.
+- [ORCA single points](https://rgpot.rgoswami.me/howto/orca.html): ORCAPot gives ORCA the normal rgpot Potential interface.
+- [External Integration Guide](https://rgpot.rgoswami.me/howto/integration.html): This guide describes how to integrate rgpot into external codebases, particularly legacy projects with their own type systems.
+- [Add a potential to the Rust core](https://rgpot.rgoswami.me/howto/add-potential.html): This page shows how to put a C++ potential behind the C ABI of the Rust core (rgpot-core).
+- [Open, build and test engine plugins](https://rgpot.rgoswami.me/howto/engine-plugins.html): An engine plugin is a shared library that exports the rgpot_engine_* functions of CppCore/rgpot/engine_c_abi.h.
+- [Use POTLIB surfaces through the potlibc engine](https://rgpot.rgoswami.me/howto/potlibc-engine.html): libpotlibc_engine.so is an optional engine plugin.
+- [Use the parameterized coupled well engine](https://rgpot.rgoswami.me/howto/coupled-well-engine.html): libcoupled_well_engine.so is a small analytic engine plugin for a two-coordinate model with a quartic barrier and a transverse spring that is shifted by the barrier coordinate.
+- [rgpot Potentials as eindir Objectives (and Minimizing Them with anneal)](https://rgpot.rgoswami.me/howto/eindir-anneal.html): This guide shows how an rgpot potential becomes an eindir objective and how anneal then minimizes it.
+- [eOn Potentials Over rgpot](https://rgpot.rgoswami.me/howto/eon-rgpot.html): The **eOn ↔ rgpot** integration gives eOn access to rgpot's quantum-chemistry backends (**NWChem** via nwchemc, **CPMD** e.g.
+- [Pair and shifted potentials](https://rgpot.rgoswami.me/howto/potentials-pair.html): This page covers the classical pair potentials of rgpot and the three host wrappers around the shifted Lennard-Jones form.
+- [Metal and embedded-atom potentials](https://rgpot.rgoswami.me/howto/potentials-metals.html): Seven PotType enumerators evaluate metals with an embedded-atom or an effective-medium energy:
+- [Silicon potentials](https://rgpot.rgoswami.me/howto/potentials-silicon.html): Five PotType enumerators evaluate crystalline silicon in a periodic cell: the Stillinger-Weber potential in two variants (SWSi and SWSi1985), the environment-dependent interatomic potential (EDIP), the Lenosky...
+- [Water potentials](https://rgpot.rgoswami.me/howto/potentials-water.html): This page covers four water surfaces:
+- [Analytic model surfaces](https://rgpot.rgoswami.me/howto/potentials-model.html): The nine surfaces on this page are the analytic test potentials of rgpot.
+- [Quantum and machine-learned potentials](https://rgpot.rgoswami.me/howto/potentials-quantum.html): The potentials on this page do not evaluate a formula that rgpot owns.
+- [Dispersion, long-range and composite potentials](https://rgpot.rgoswami.me/howto/potentials-composite.html): This page covers eight PotType enumerators that add a term to another potential, build one potential out of others, or hand the evaluation to another program.
+- [Read the stress of a periodic Sutton-Chen cell](https://rgpot.rgoswami.me/howto/sutton-chen-stress.html): SuttonChenPot writes the Cauchy stress only when SuttonChenConfig::stress is set.
+- [Measure CPU scaling of batch evaluation](https://rgpot.rgoswami.me/howto/cpu-scaling.html): scripts/cpu_scaling.py times evaluate_batch at each thread count.
+
+## Explanation
+
+- [Explanation](https://rgpot.rgoswami.me/explanation/index.html): These pages say why the library is shaped the way it is.
+- [Architecture](https://rgpot.rgoswami.me/explanation/architecture.html): This page explains how the layers of rgpot fit together and why errors and capabilities cross them the way they do.
+- [The RPC Model](https://rgpot.rgoswami.me/explanation/rpc-model.html): A client needs an energy and forces for one geometry, from one backend.
+- [ABI stamps](https://rgpot.rgoswami.me/explanation/abi-stamps.html): rgpot carries compatibility numbers that are separate from its package version.
+- [Hessian-vector products](https://rgpot.rgoswami.me/explanation/hessian-vector.html): This page explains why a potential handle computes Hessian-vector products itself and keeps a cached centre, how it reports the scheme that answered, and when a caller should ask for the dense Hessian instead.
+- [Fortran kernels: port, not wrap](https://rgpot.rgoswami.me/explanation/fortran-kernels.html): This page explains why the Fortran potentials in CppCore/rgpot/fortran/ are ports rather than wrappers, and why their force loops gather.
+- [GROMACS QM/MM through the CP2K interface](https://rgpot.rgoswami.me/explanation/gromacs-qmmm.html): The steps are in GROMACS QM/MM drop-in, and the input keys and limits are in GROMACS QM/MM drop-in reference.
+- [SIMD paths and dispatch](https://rgpot.rgoswami.me/explanation/simd.html): This page explains how the C++ core picks instruction sets at run time, and why every path returns the same bits.
+- [Thread safety](https://rgpot.rgoswami.me/explanation/thread-safety.html): This page explains what the Python extension allows when several threads call it at once.
+- [Neighbour list design](https://rgpot.rgoswami.me/explanation/neighbour-lists.html): This page says why the neighbour layers behave the way they do.
+- [Calculator groups over MPI](https://rgpot.rgoswami.me/explanation/mpi.html): This page explains how the MPI-parallel engines share one force call across the ranks of a calculator.
+- [Local and global minimization](https://rgpot.rgoswami.me/explanation/global-optimization.html): This page says when to reach for a local or a global minimizer, and why the plots of the minimization tutorial need their own environment.
+
+## Reference
+
+- [Architecture reference](https://rgpot.rgoswami.me/reference/architecture.html): The layers and why they exist are in Architecture.
+- [Python API](https://rgpot.rgoswami.me/reference/python_api.html): The extension module is rgpot._core, and import rgpot re-exports its public names.
+- [LAMMPS Python frontend reference](https://rgpot.rgoswami.me/reference/lammps_fix_external.html): lmp is an initialized object from LAMMPS' Python module. potential is a Python rgpot potential object: an evaluate(positions, numbers, cell) method returns a dictionary with energy, forces and optional stress, or a...
+- [C++ API](https://rgpot.rgoswami.me/reference/cpp_api.html): The C++ API in include/rgpot/ wraps the C ABI of rgpot-core in move-only handles. rgpot/rgpot.hpp includes errors.hpp, potential.hpp and types.hpp, and rpc_client.hpp only when RGPOT_HAS_RPC is defined.
+- [C++ potentials](https://rgpot.rgoswami.me/reference/cpp_potentials.html): Every potential derives from rgpot::Potential<Derived>, which derives from rgpot::PotentialBase.
+- [C++ engine-backed potentials](https://rgpot.rgoswami.me/reference/cpp_backends.html): These potentials call an external program or library: a quantum-chemistry engine, a tight-binding library, a machine-learned model or a socket peer.
+- [C++ support types](https://rgpot.rgoswami.me/reference/cpp_support.html): meson.build installs every header under CppCore/rgpot, so each type declared there at namespace scope is part of the C++ surface.
+- [i-PI driver client](https://rgpot.rgoswami.me/reference/ipi_driver.html): IPIDriver is the client side of the i-PI socket protocol.
+- [Command-line programs](https://rgpot.rgoswami.me/reference/cli.html): The build installs up to six programs (potserv, potserv_mpi, nwchem_mpi_force_host, rgpot-lj, rgpot-ipi-driver and rgpot-mdi) when their build options are enabled, and the repository carries one project tool, potctl.
+- [Build options](https://rgpot.rgoswami.me/reference/build_options.html): Meson is the primary build.
+- [PotentialConfig arms](https://rgpot.rgoswami.me/reference/potential_config.html): This page lists the arms of the Cap'n Proto PotentialConfig union and what potserv does with each.
+- [Stillinger-Weber silicon (1985)](https://rgpot.rgoswami.me/reference/sw_si.html): StillingerWeberSi (PotType::SWSi1985) evaluates the silicon potential of F.
+- [Tersoff silicon-carbon (1989)](https://rgpot.rgoswami.me/reference/tersoff_sic.html): TersoffSiC is the 1989 silicon, carbon, and silicon-carbide kernel of J.
+- [MPI](https://rgpot.rgoswami.me/reference/mpi.html): with_mpi is a Meson feature option in meson_options.txt.
+- [C ABI of rgpot-core](https://rgpot.rgoswami.me/reference/c_abi.html): rgpot-core/include/rgpot.h declares the C ABI of the Rust crate rgpot-core.
+- [Neighbour-list C ABI](https://rgpot.rgoswami.me/reference/nlist_abi.html): CppCore/rgpot/nlist/rgpot_nlist.h declares the neighbour query of librgpot.
+- [Fast pair list C ABI](https://rgpot.rgoswami.me/reference/fast_nlist.html): CppCore/rgpot/nlist/fastnlist.h is the C ABI of a Rust static library, CppCore/rgpot/nlist/fastnlist/src/lib.rs.
+- [Engine plugin ABI](https://rgpot.rgoswami.me/reference/engine_abi.html): CppCore/rgpot/engine_c_abi.h declares the functions a host calls to drive an engine shared library through dlopen and dlsym.
+- [Quantum engine C ABIs](https://rgpot.rgoswami.me/reference/quantum_abi.html): NWChem, CPMD, MOPAC and CP2K run outside librgpot.
+- [Cap'n Proto schema](https://rgpot.rgoswami.me/reference/capnp_schema.html): This page is generated by docs/gen_capnp_reference.py from CppCore/rgpot/rpc/Potentials.capnp, the pinned rgconf schema the build compiles. common.capnp sits beside it and is imported by that file.
+- [GROMACS QM/MM drop-in reference](https://rgpot.rgoswami.me/reference/gromacs_dropin.html): librgpot_gromacs implements the C API of the CP2K library, which GROMACS calls for its QM group when built with -DGMX_CP2K=ON.
+- [Plugin C ABI](https://rgpot.rgoswami.me/reference/plugin_abi.html): include/rgpot/plugin.h declares the descriptor a potential plugin exports.
+- [External engine C ABI](https://rgpot.rgoswami.me/reference/external_abi.html): CppCore/rgpot/ExternalPot/external_potentials.h declares the C constructors of the LAMMPS, GROMACS and OpenMM shifted Lennard-Jones potentials.
+- [FMA dispatch and exp](https://rgpot.rgoswami.me/reference/simd_exp.html): The classical pair kernels return the same bits on every x86-64 instruction set, on AArch64, and with any C library.
+- [Sutton-Chen potential](https://rgpot.rgoswami.me/reference/sutton_chen.html): SuttonChenPot evaluates
+- [Gupta and reduced cluster kernels](https://rgpot.rgoswami.me/reference/gupta.html): These are C kernels, not rgpot::Potential classes.
+- [Tabulated EAM and Finnis-Sinclair potentials](https://rgpot.rgoswami.me/reference/eam_table.html): EAMTablePot reads an embedded atom method (EAM) potential from a DYNAMO table and evaluates
+- [Modified embedded-atom method](https://rgpot.rgoswami.me/reference/meam.html): MEAMPot is the modified embedded-atom method of Baskes, Physical Review B 46, 2727 (1992).
+- [Fortran potentials: porting rules](https://rgpot.rgoswami.me/reference/fortran_potentials.html): Why kernels are ported and why they gather are explained in Fortran kernels: port, not wrap.
+- [Potential names and options](https://rgpot.rgoswami.me/reference/potential_names.html): pair_style rgpot in LAMMPS (pair_coeff * * Name [key value ...] El ...), the PLUMED action RGPOT (POTENTIAL=Name OPTIONS={key value ...}) and the rgpot-eval tool build a potential from the same name and options....
+- [Changelog](https://rgpot.rgoswami.me/changelog.html): Canonical user-facing changelog is the repo-root CHANGELOG.md (Keep a Changelog, maintained by towncrier + cog bump hooks).
+- [Developer Guide](https://rgpot.rgoswami.me/contributing/developer/index.html): This section covers the day-to-day development workflow for rgpot.
+- [Code of Conduct](https://rgpot.rgoswami.me/contributing/../code_of_conduct.html)
+
+## Details
+
+- [Testing](https://rgpot.rgoswami.me/contributing/developer/testing.html): The pixi environments supply all build and test tools.
+- [Release Process](https://rgpot.rgoswami.me/contributing/developer/release.html): rgpot has one release version, written by hand in one place: the [workspace.package] version key of the root Cargo.toml. rgpot-core and rgpot-pair inherit it with version.workspace = true, and cargo writes it into...
+- [Bump the ABI numbers](https://rgpot.rgoswami.me/contributing/developer/abi-bump.html): This page lists the steps to change the C ABI stamp of rgpot-core and the C++ soversion and layout stamp of librgpot.
+- [Developer FAQ](https://rgpot.rgoswami.me/contributing/developer/faq.html): cargo publish forbids build scripts that modify the source directory.
+- [Documentation style guide](https://rgpot.rgoswami.me/contributing/developer/style_guide.html): API documentation uses Doxygen.
+
+## Optional
+
+### Development
+
+- [Contributing to ~rgpot~](https://rgpot.rgoswami.me/contributing/index.html): We welcome all contributions and contributors to rgpot.
+- [Code of Conduct](https://rgpot.rgoswami.me/code_of_conduct.html)
+
+### Notes
+
+- [XcKernel: in-process libxckernel contractions](https://rgpot.rgoswami.me/notes/xckernel.html): rgpot::XcKernel provides contractions from libxckernel (arXiv:2608.26440; Lehtola, Journal of Chemical Physics 165, 174122 (2026), doi:10.1063/5.0358101; pin d6a9d57ba3fe0f2763667ce168d0c0ef21cff4a4).
+- [xTB backends: linked vs dlopen](https://rgpot.rgoswami.me/notes/xtb_backends.html): rgpot exposes two GFN-xTB force loading strategies over the same single-point semantics (Å / eV host units; Bohr / Hartree inside libxtb).
+- [Shared neighbour layer](https://rgpot.rgoswami.me/notes/neighbour_layer.html): The public query is rgpot::nlist::Query, Builder, Table and Walk.
+- [Cell-list EAM](https://rgpot.rgoswami.me/notes/eam_cell.html): EAMPot evaluates the embedded-atom energy and forces for aluminium, palladium and gold.
+- [Calling the neighbour list from eOn](https://rgpot.rgoswami.me/notes/eon_nlist.html): eOn potentials that today call vesin_neighbors can use the same request through the C ABI.
+- [eOn packaging: pkg-config install of rgpot](https://rgpot.rgoswami.me/notes/eon_pkgconfig.html): eOn resolves **installed** rgpot via dependency('rgpot') before the Meson subproject wrap (subprojects/rgpot.wrap).
+- [Neighbour query, four passes](https://rgpot.rgoswami.me/notes/neighbour_api_design.html): The public surface is rgpot::nlist::Query, Builder and Walk, the C ABI in CppCore/rgpot/nlist/rgpot_nlist.h, and NeighborRequest / NeighborList in Potentials.capnp, which rgpot added through a local schema diff...

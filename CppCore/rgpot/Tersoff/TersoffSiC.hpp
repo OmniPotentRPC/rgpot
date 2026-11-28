@@ -23,6 +23,7 @@
 #include <cstdint>
 
 #include "rgpot/Potential.hpp"
+#include "rgpot/Staged.hpp"
 #include "rgpot/nlist/HalfShell.hpp"
 #include "rgpot/nlist/Neighbours.hpp"
 
@@ -64,6 +65,23 @@ public:
     return m_paramsKey;
   }
 
+  /// The bond order of a neighbour needs that neighbour's full list, so
+  /// the copies reach twice the widest taper. Silicon's outer cutoff is
+  /// the widest.
+  [[nodiscard]] Locality locality() const noexcept;
+
+  /// Staged.hpp: a three body kernel has no densities to exchange.
+  void densityStage(const HalfList &list, double *densities) const {
+    (void)list;
+    (void)densities;
+  }
+
+  /// Staged.hpp: owned centres on a full list. Each directed bond keeps
+  /// the one half already in the 1989 sum. With newton on, forces written
+  /// on copies are for the host to reverse sum.
+  void forceStage(const HalfList &list, const double *densities, double *forces,
+                  StageTally *tally) const;
+
   /// Forces, energy and the Cauchy stress sigma = (1/V) dE/dε in
   /// eV/Angstrom^3, the convention of stress.hpp. The virial sums each
   /// folded bond vector times the energy gradient with respect to it.
@@ -84,6 +102,19 @@ public:
   /// thread agrees with the old ordered walk to within 1e-12.
   void setNeighbourMode(nlist::Mode mode) noexcept { mode_ = mode; }
 
+  /// Atoms from which a call adds its terms atom by atom in index order,
+  /// on any thread count: the least in kTeamFrom.
+  static constexpr std::size_t kTeamMinAtoms = 28;
+  /// Atoms from which a team of two threads opens, of three, and of four
+  /// or more: the smallest clusters from which each took at most nine
+  /// tenths of the one-thread time in thread_count_bench.
+  static constexpr TeamFrom kTeamFrom{80, kTeamMinAtoms, kTeamMinAtoms};
+
+  /// True when the last energy or force call kept the Verlet list.
+  [[nodiscard]] bool listReused() const noexcept {
+    return neighbours_.reused();
+  }
+
   /// The list forceImpl keeps. Not built until a call with a positive skin.
   [[nodiscard]] const nlist::NeighborList &heldList() const noexcept {
     return m_held;
@@ -98,8 +129,9 @@ public:
    * @param energy Receives the energy, eV.
    * @param gradient Receives dE/dx, eV/Angstrom. The force is its negation.
    * @param neighbors Optional Verlet list. Null uses the internal list,
-   *        with a skin of one fifth of the cutoff (none in Stream mode). A list is reused while each atom has moved by at
-   *        most half its skin and the cell is unchanged.
+   *        with a skin of one fifth of the cutoff (none in Stream mode). A list
+   *        is reused while each atom has moved by at most half its skin and
+   *        the cell is unchanged.
    */
   void energyAndGradient(const double *positions, const int *atomic_numbers,
                          const double *box, std::size_t n_atoms, double *energy,
@@ -115,6 +147,14 @@ public:
    * @param n_atoms Atom count of each configuration.
    * @param energies Length n_config.
    * @param gradients Length n_config * n_atoms * 3.
+   *
+   * A configuration is spread across the thread team when this potential
+   * would not open a team for it. @c teamSize decides, from
+   * @c kTeamMinAtoms and @c kTeamFrom. Each configuration is evaluated
+   * on one thread and on its own neighbour list. A configuration that
+   * would open a team stays on the calling thread, so that team is not
+   * nested and a spread worker does not open one. The bits match that
+   * serial loop.
    */
   void energyAndGradientBatch(std::size_t n_config, const double *positions,
                               const int *atomic_numbers, const double *box,
@@ -124,10 +164,12 @@ public:
 private:
   /// scale +1 writes forces, scale -1 writes dE/dx. A non-null strain
   /// gains dE/dε in eV, in the Voigt order of stress.hpp.
+  /// @c cells is the neighbour scratch for this call. The caller owns it
+  /// and does not share it with another thread.
   void evaluate(const double *positions, const int *atomic_numbers,
                 const double *box, std::size_t n_atoms, double *energy,
                 double *acc, double scale, nlist::NeighborList *neighbors,
-                double *strain) const;
+                double *strain, nlist::Neighbours &cells) const;
 
   Species m_species[2]{};
   Pair m_pair[2][2]{};

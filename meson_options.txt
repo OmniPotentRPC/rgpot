@@ -5,9 +5,28 @@ option('with_xtensor', type: 'boolean', value: false)
 option('with_eigen', type: 'boolean', value: false)
 option('with_rpc', type: 'boolean', value: false)
 option('with_rpc_client_only', type: 'boolean', value: false)
+option(
+    'with_mdi',
+    type: 'boolean',
+    value: false,
+    description: 'optional MDI engine frontend over rgpot_potential_t; uses the official MDI Library at runtime',
+)
 option('with_cache', type: 'boolean', value: false)
 option('pure_lib', type: 'boolean', value: true)
+option(
+    'use_openmp',
+    type: 'boolean',
+    value: true,
+    description: 'Compile the OpenMP regions of the cell walk and the potentials. Off builds every target serially, with no OpenMP flag or runtime on librgpot or its consumers.',
+)
 option('with_rust_core', type: 'boolean', value: false)
+option(
+    'team_min_atoms',
+    type: 'integer',
+    value: 8192,
+    min: 1,
+    description: 'Minimum atom count for opening an OpenMP team',
+)
 option(
     'with_fast_nlist',
     type: 'feature',
@@ -19,6 +38,12 @@ option(
     type: 'feature',
     value: 'disabled',
     description: 'CP2KPot, the potserv CP2K backend and libcp2kc_rgpot.so against libcp2k (pkg-config libcp2k); needs with_rpc',
+)
+option(
+    'with_potlibc',
+    type: 'feature',
+    value: 'disabled',
+    description: 'Build libpotlibc_engine.so against the potlibc C API',
 )
 option(
     'with_mpi',
@@ -63,6 +88,12 @@ option(
 option('with_tblite', type: 'boolean', value: false)
 option('with_metatomic', type: 'boolean', value: false)
 option(
+    'with_uma',
+    type: 'boolean',
+    value: false,
+    description: 'Build the UMA engine plugin against torch alone, without the metatensor and metatomic packages. Torch is a Python package or a libtorch tree named by RGPOT_TORCH_ROOT. with_metatomic builds the plugin too.',
+)
+option(
     'with_skala',
     type: 'boolean',
     value: false,
@@ -79,6 +110,24 @@ option(
     type: 'feature',
     value: 'auto',
     description: 'Fortran-backed potentials (CuH2; grows with the eOn migration). Independent of the RPC options.',
+)
+option(
+    'with_orca',
+    type: 'boolean',
+    value: false,
+    description: 'ORCAPot: ORCA energy and gradient through the orca executable run as a child process (POSIX). The executable is found at run time.',
+)
+option(
+    'orcac_main',
+    type: 'feature',
+    value: 'disabled',
+    description: 'Tests: build liborcac from the orcac commit pinned in subprojects/orcac.wrap and run the orca arm of makePotential against it (PotentialFactoryTest, OrcacMainExports)',
+)
+option(
+    'with_cbe',
+    type: 'feature',
+    value: 'disabled',
+    description: 'CH5 2008 (H + CH4) surface of the linked potlibc library',
 )
 option(
     'with_highway',
@@ -145,6 +194,30 @@ option(
     type: 'feature',
     value: 'auto',
     description: 'OpenMM shifted Lennard-Jones comparison.',
+)
+option(
+    'with_nblib',
+    type: 'feature',
+    value: 'auto',
+    description: 'GROMACS nblib MD session engine.',
+)
+option(
+    'nblib_prefix',
+    type: 'string',
+    value: '',
+    description: 'Prefix of GROMACS built with the installed nblib API.',
+)
+option(
+    'nblib_source',
+    type: 'string',
+    value: '',
+    description: 'GROMACS source tree of nblib_prefix, for the TPR session.',
+)
+option(
+    'nblib_build',
+    type: 'string',
+    value: '',
+    description: 'GROMACS build tree of nblib_prefix, for the TPR session.',
 )
 option(
     'with_plumed',

@@ -4,8 +4,8 @@ name: Wheels
 # with no tag and no main-branch source behind it. Tag-driven builds keep the
 # artifact and the tag describing each other.
 concurrency:
-  group: wheels-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')) }}
 
 on:
   workflow_dispatch:
@@ -22,15 +22,14 @@ on:
           - pypi
         default: testpypi
   push:
-    # v* tags always build. Path filters are not applied to tags.
+    # Tags always build. Path filters are not applied to tags.
     # A branch push starts this workflow only when the wheel or audit
-    # files change. feat/** is included so this branch runs the same jobs.
+    # files change. Other branches run these jobs through their pull request.
     tags:
-      - "v*"
+      - '*'
     branches:
       - main
-      - "ci/**"
-      - "feat/**"
+      - develop
     paths:
       - "pyproject.toml"
       - "meson.build"
@@ -76,23 +75,38 @@ jobs:
   # LLVM flang would be a second CRT and a separate DLL repair path, so
   # this caller drops that runner instead of adding a toolchain.
   py-wheels:
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || github.ref == 'refs/heads/main'
+      || startsWith(github.ref, 'refs/tags/')
+      || contains(github.event.pull_request.labels.*.name, 'ci:full')
     uses: ./.github/workflows/py-wheels.yml
     with:
       package-dir: .
       import-names: rgpot._core
       test-path: tests/python
       # tests/python/test_cpu_scaling.py runs scripts/cpu_scaling.py from the
-      # repository root. The wheel test tree is only the copied sources.
-      extra-test-sources: scripts/cpu_scaling.py
+      # copied tree. The EAM table and vendored vesin tests read the checkout
+      # named by RGPOT_PROJECT, which is the project directory beside the
+      # temp directory the test command runs in. The copied fixtures cover
+      # the same files when that variable is unset and the copy is complete.
+      extra-test-sources: scripts/cpu_scaling.py CppCore/tests/data/eam_table third_party/vesin/VERSION third_party/vesin/vesin-single-build.cpp potctl/src/ci.rs
+      project-root-env: RGPOT_PROJECT
       extras: ase
       test-requires: pytest-timeout hypothesis
+      pytest-args: '-m "not rpc"'
       os: '["ubuntu-latest","ubuntu-24.04-arm","macos-15"]'
       build: "cp310-* cp311-* cp312-* cp314t-*"
 
   kernel-count:
     name: Fortran kernels in the linux wheel
     needs: py-wheels
-    if: always()
+    if: >-
+      always()
+      && (github.event_name == 'workflow_dispatch'
+        || github.ref == 'refs/heads/main'
+        || startsWith(github.ref, 'refs/tags/')
+        || contains(github.event.pull_request.labels.*.name, 'ci:full'))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -151,7 +165,7 @@ jobs:
           python3 -m venv "${RUNNER_TEMP}/stub"
           . "${RUNNER_TEMP}/stub/bin/activate"
           python -m pip install -U pip
-          whl=$(ls wheelhouse/*cp312*.whl | head -1)
+          whl=$(find wheelhouse -maxdepth 1 -name '*cp312*.whl' | sort | head -1)
           test -n "${whl}"
           python -m pip install 'nanobind==3.1.0' numpy "${whl}"
           python -m nanobind.stubgen -m rgpot._core -o /tmp/rgpot._core.pyi
@@ -183,7 +197,7 @@ jobs:
         id: py314t
         with:
           python-version: "3.14t"
-      - name: Import each repaired linux wheel without LD_LIBRARY_PATH
+      - name: Import each repaired linux wheel without LD_LIBRARY_PATH and run the wheel tests, including the ASE plugin test
         shell: bash
         env:
           PY_310: ${{ steps.py310.outputs.python-path }}
@@ -207,7 +221,7 @@ jobs:
             unzip -qo "${whl}" -d "${tmp}"
             tag=$(basename "${whl}" .whl)
             while IFS= read -r f; do
-              if file "${f}" | grep -q ELF; then
+              if file "${f}" | grep ELF >/dev/null; then
                 cp -a "${f}" "isa-audit-libs/${tag}--$(basename "${f}")"
               fi
             done < <(find "${tmp}" -type f \( \
@@ -222,7 +236,7 @@ jobs:
             name="${f##*--}"
             case "${name}" in
               librgpot*|_core*)
-                if readelf -S "${f}" | grep -q '\.symtab'; then
+                if readelf -S "${f}" | grep '\.symtab' >/dev/null; then
                   echo "symtab: ${f}"
                 else
                   echo "NO SYMTAB: ${f}" >&2
@@ -242,6 +256,11 @@ jobs:
           path: isa-audit-libs/
 
   isa-libs-macos:
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || github.ref == 'refs/heads/main'
+      || startsWith(github.ref, 'refs/tags/')
+      || contains(github.event.pull_request.labels.*.name, 'ci:full')
     name: macOS libraries for the ISA audit
     needs: py-wheels
     runs-on: macos-15
@@ -373,6 +392,11 @@ jobs:
           path: isa-audit-libs/
 
   wheel-import-arm:
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || github.ref == 'refs/heads/main'
+      || startsWith(github.ref, 'refs/tags/')
+      || contains(github.event.pull_request.labels.*.name, 'ci:full')
     name: Import each repaired arm wheel without LD_LIBRARY_PATH
     needs: py-wheels
     runs-on: ubuntu-24.04-arm
@@ -450,6 +474,11 @@ jobs:
       baseline: x86-64
 
   isa-audit-macos:
+    if: >-
+      github.event_name == 'workflow_dispatch'
+      || github.ref == 'refs/heads/main'
+      || startsWith(github.ref, 'refs/tags/')
+      || contains(github.event.pull_request.labels.*.name, 'ci:full')
     name: isa audit (macos arm64)
     needs: isa-libs-macos
     permissions:

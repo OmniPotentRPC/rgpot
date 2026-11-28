@@ -12,7 +12,8 @@ foreach(flag IN ITEMS -std=f2018 -fimplicit-none -Wall
 endforeach()
 
 set(_rgpot_common_sources
-    rgpot_kinds.f90 rgpot_ferror.f90 rgpot_neighbors.f90 rgpot_workspace.f90)
+    rgpot_kinds.f90 rgpot_error_text.f90 rgpot_ferror.f90
+    rgpot_neighbors.f90 rgpot_workspace.f90)
 set(_rgpot_kernel_sources
     rgpot_cuh2.f90 rgpot_cuh2_capi.f90
     rgpot_eam_al.f90 rgpot_eam_al_capi.f90
@@ -45,7 +46,12 @@ function(rgpot_fortran_target target module_directory hide_symbols)
     Fortran_MODULE_DIRECTORY "${module_directory}")
   target_include_directories(${target}
     PUBLIC "$<BUILD_INTERFACE:${module_directory}>")
-  target_link_libraries(${target} PRIVATE rgpot_nlist)
+  # The CuH2 plugin links the umbrella after that target exists, the same
+  # choice as the Meson build. Linking the static neighbour archive here
+  # would give the plugin its own Neighbours generation counter.
+  if(NOT target STREQUAL "rgpot_cuh2")
+    target_link_libraries(${target} PRIVATE rgpot_nlist)
+  endif()
   foreach(flag IN LISTS _rgpot_fortran_options)
     if(NOT hide_symbols AND flag STREQUAL "-fvisibility=hidden")
       continue()

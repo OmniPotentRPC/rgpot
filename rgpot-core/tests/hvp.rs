@@ -755,6 +755,106 @@ fn the_rust_api_checks_lengths() {
     unsafe { rgpot_force_input_free(&mut input) };
 }
 
+/// Inputs `force_input_defect` refuses, each with the sentence it reports,
+/// so a product or a centre at them is refused alike and makes no callback.
+fn refused_inputs(system: &mut System) -> Vec<(&'static str, rgpot_force_input_t)> {
+    let mut cases = Vec::new();
+    let input = system.input();
+    unsafe { (*input.atomic_numbers).dl_tensor.data = std::ptr::null_mut() };
+    cases.push(("invalid parameter: atomic numbers are null", input));
+    let mut input = system.input();
+    unsafe { rgpot_tensor_free(input.atomic_numbers) };
+    input.atomic_numbers = std::ptr::null_mut();
+    cases.push(("invalid parameter: atomic numbers are null", input));
+    let input = system.input();
+    unsafe { (*input.positions).dl_tensor.data = std::ptr::null_mut() };
+    cases.push(("invalid parameter: positions is null", input));
+    let input = unsafe {
+        rgpot_force_input_create(
+            0,
+            std::ptr::null_mut(),
+            std::ptr::null_mut(),
+            system.cell.as_mut_ptr(),
+        )
+    };
+    cases.push(("invalid parameter: nAtoms must be positive", input));
+    let input = system.input();
+    unsafe { *(*input.positions).dl_tensor.shape = -2 };
+    cases.push(("invalid parameter: nAtoms must be positive", input));
+    cases
+}
+
+#[test]
+fn hvp_refuses_the_inputs_the_force_call_refuses() {
+    let mut system = System::octahedron();
+    let v = direction(system.pos.len(), 4);
+    let invalid = rgpot_status_t::RGPOT_INVALID_PARAMETER;
+    for handle in [Handle::new(), Handle::with_analytic()] {
+        for (why, mut input) in refused_inputs(&mut system) {
+            for scheme in [AUTO, FORWARD, CENTRAL, ANALYTIC] {
+                if scheme == ANALYTIC && !unsafe { &*handle.pot }.has_hessian_vector_callback() {
+                    continue;
+                }
+                assert_eq!(handle.try_hvp(&input, &v, 0.0, scheme), invalid, "{why}");
+                assert_eq!(last_error(), why);
+            }
+            let mut out = rgpot_force_out_t {
+                forces: std::ptr::null_mut(),
+                energy: 0.0,
+                variance: 0.0,
+            };
+            let status = unsafe { rgpot_potential_hvp_centre(handle.pot, &input, &mut out) };
+            assert_eq!(status, invalid, "{why}");
+            assert_eq!(last_error(), why);
+
+            let mut hv = vec![0.0; v.len()];
+            let err = unsafe {
+                (*handle.pot).hessian_vector(
+                    &input,
+                    &v,
+                    0.0,
+                    rgpot_hvp_scheme_t::RGPOT_HVP_FORWARD,
+                    &mut hv,
+                )
+            }
+            .unwrap_err();
+            assert_eq!(err, HvpError::Invalid(why.to_owned()));
+            let err = unsafe { (*handle.pot).hvp_centre(&input) }.unwrap_err();
+            assert_eq!(err, HvpError::Invalid(why.to_owned()));
+
+            assert_eq!(handle.force_calls(), 0, "{why}");
+            assert_eq!(handle.morse.hvp_calls.load(Ordering::SeqCst), 0, "{why}");
+            assert_eq!(handle.counts(), rgpot_hvp_counts_t::default(), "{why}");
+            unsafe { rgpot_force_input_free(&mut input) };
+        }
+    }
+}
+
+#[test]
+fn hvp_allows_an_absent_cell_tensor_for_molecular_callbacks() {
+    let mut system = System::octahedron();
+    let v = direction(system.pos.len(), 5);
+    let handle = Handle::with_analytic();
+    let mut input = system.input();
+    unsafe { rgpot_tensor_free(input.box_matrix) };
+    input.box_matrix = std::ptr::null_mut();
+
+    let mut hv = vec![0.0; v.len()];
+    let status = unsafe {
+        rgpot_potential_hvp(
+            handle.pot,
+            &input,
+            v.as_ptr(),
+            0.0,
+            ANALYTIC,
+            hv.as_mut_ptr(),
+        )
+    };
+    assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+    assert_eq!(handle.morse.hvp_calls.load(Ordering::SeqCst), 1);
+    unsafe { rgpot_force_input_free(&mut input) };
+}
+
 static FAIL_AFTER: AtomicUsize = AtomicUsize::new(0);
 
 unsafe extern "C" fn failing_force(
@@ -770,7 +870,7 @@ unsafe extern "C" fn failing_force(
 }
 
 #[test]
-fn a_failed_force_call_returns_its_status_and_caches_nothing() {
+fn a_failed_force_call_returns_its_status_and_is_stored_as_the_outcome() {
     let mut system = System::octahedron();
     let mut input = system.input();
     let morse = Box::new(Morse::platinum());
@@ -778,26 +878,45 @@ fn a_failed_force_call_returns_its_status_and_caches_nothing() {
         unsafe { rgpot_potential_new(failing_force, &*morse as *const Morse as *mut c_void, None) };
     let v = direction(system.pos.len(), 6);
     let mut hv = vec![7.0; v.len()];
+    let counts = |pot| {
+        let mut counts = rgpot_hvp_counts_t::default();
+        unsafe { rgpot_potential_hvp_counts(pot, &mut counts) };
+        counts
+    };
 
     FAIL_AFTER.store(0, Ordering::SeqCst);
     let status =
         unsafe { rgpot_potential_hvp(pot, &input, v.as_ptr(), 0.0, FORWARD, hv.as_mut_ptr()) };
     assert_eq!(status, rgpot_status_t::RGPOT_RPC_ERROR);
     assert!(hv.iter().all(|&x| x == 7.0));
+    assert_eq!(counts(pot).force_calls, 1);
 
-    // The centre succeeds and the displaced call fails: the centre is kept.
+    // The centre failed and the same bits ask again with a healthy
+    // callback: the stored failure is returned and no callback runs.
+    FAIL_AFTER.store(usize::MAX, Ordering::SeqCst);
+    let status =
+        unsafe { rgpot_potential_hvp(pot, &input, v.as_ptr(), 0.0, FORWARD, hv.as_mut_ptr()) };
+    assert_eq!(status, rgpot_status_t::RGPOT_RPC_ERROR);
+    assert!(hv.iter().all(|&x| x == 7.0));
+    assert_eq!(counts(pot).force_calls, 1);
+    assert_eq!(counts(pot).centre_reused, 1);
+
+    // Only a change of key evaluates the geometry again.
+    unsafe { rgpot_potential_hvp_invalidate(pot) };
     FAIL_AFTER.store(1, Ordering::SeqCst);
     let status =
         unsafe { rgpot_potential_hvp(pot, &input, v.as_ptr(), 0.0, FORWARD, hv.as_mut_ptr()) };
     assert_eq!(status, rgpot_status_t::RGPOT_RPC_ERROR);
+    assert_eq!(counts(pot).force_calls, 3);
+
+    // The centre succeeded and the displaced call failed: the centre is kept.
     FAIL_AFTER.store(usize::MAX, Ordering::SeqCst);
     let status =
         unsafe { rgpot_potential_hvp(pot, &input, v.as_ptr(), 0.0, FORWARD, hv.as_mut_ptr()) };
     assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
-    let mut counts = rgpot_hvp_counts_t::default();
-    unsafe { rgpot_potential_hvp_counts(pot, &mut counts) };
+    let counts = counts(pot);
     assert_eq!(counts.products, 1);
-    assert_eq!(counts.centre_reused, 1);
+    assert_eq!(counts.centre_reused, 2);
     assert_eq!(counts.force_calls, 4);
 
     unsafe {

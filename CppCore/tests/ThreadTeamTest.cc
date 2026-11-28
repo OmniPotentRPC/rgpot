@@ -1,33 +1,44 @@
 // MIT License
 // Copyright 2023--present rgpot developers
 //
-// The runtime may start fewer threads than a region asks for: under
-// OMP_THREAD_LIMIT, inside another region, with dynamic teams, or below a
-// TeamCap. A result then has the bits of its slice count. meson runs this
-// file again under OMP_THREAD_LIMIT=1 and 2.
+// A potential gives the bits of one thread on any thread count, and on any
+// team the runtime starts: under OMP_THREAD_LIMIT, inside another region,
+// with dynamic teams, or below a TeamCap. A call on fewer atoms than its
+// potential's kTeamFrom asks of its thread count opens no region. A
+// neighbour table has the order of its slice count on any team. The
+// registry runs one Catch2 tag of this file at a time, again under
+// OMP_THREAD_LIMIT=1 and 2. Every TEST_CASE needs a tag those shards
+// select: test_list_parity fails when the tags and the unfiltered list
+// disagree.
 
 #include <algorithm>
 #include <array>
 #include <atomic>
 #include <chrono>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <initializer_list>
+#include <limits>
 #include <memory>
+#include <numeric>
 #include <string>
 #include <thread>
-#include <tuple>
 #include <utility>
 #include <variant>
 #include <vector>
 
 #include <catch2/catch_all.hpp>
 
+#include "lsan_libomp.hpp"
 #include "rgpot/EAM/EAMPot.hpp"
+#include "rgpot/ForceStructs.hpp"
 #include "rgpot/LennardJones/LJClusterPot.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/Morse/MorsePot.hpp"
+#include "rgpot/PerAtom.hpp"
 #include "rgpot/Slices.hpp"
 #include "rgpot/StillingerWeber/SWSi.hpp"
 #include "rgpot/SuttonChen/SuttonChenPot.hpp"
@@ -41,12 +52,9 @@
 
 namespace {
 
-// Against one slice, a result may move only by the order of its sums. The
-// longest here, the Morse energy, adds about 52000 pair terms of mostly one
-// sign, and any two orders of that sum differ by at most about 1e-11 of its
-// size. A lost or repeated slice moves the energy by a share of the whole,
-// near an eV, and a force by a whole bond. 1e-9 of the scale, with a floor
-// of 1 for values near zero, separates the two.
+// Against one slice, a table distance may move only by rounding. A lost or
+// repeated pair moves a sorted distance by a whole shell. 1e-9 of the
+// scale, with a floor of 1 for values near zero, separates the two.
 constexpr double kTolerance = 1e-9;
 
 void setThreads(const char *value) {
@@ -114,42 +122,88 @@ System diamond(int n, double a, int z) {
                  n, a, z);
 }
 
-struct Result {
-  double energy = 0;
-  std::vector<double> forces;
-};
+// The `n` points of an fcc block nearest its centre, in a box a thousand
+// lattice constants wide.
+System cluster(std::size_t n, double a, int z) {
+  const System block =
+      fcc(static_cast<int>(std::cbrt(static_cast<double>(n) / 4.0)) + 2, a, z);
+  const double centre = 0.5 * block.length;
+  const auto dist2 = [&](std::size_t i) {
+    double d2 = 0;
+    for (std::size_t c = 0; c < 3; ++c) {
+      const double d = block.pos[3 * i + c] - centre;
+      d2 += d * d;
+    }
+    return d2;
+  };
+  std::vector<std::size_t> order(block.z.size());
+  std::iota(order.begin(), order.end(), std::size_t{0});
+  std::stable_sort(order.begin(), order.end(),
+                   [&](std::size_t p, std::size_t q) { return dist2(p) < dist2(q); });
+  System s;
+  for (std::size_t k = 0; k < n; ++k) {
+    const std::size_t i = order[k];
+    s.pos.insert(s.pos.end(), block.pos.begin() + 3 * i, block.pos.begin() + 3 * i + 3);
+    s.z.push_back(z);
+  }
+  s.length = 1000 * a;
+  return s;
+}
+
+// The first `n` atoms of `s`, in the same cell.
+System first(const System &s, std::size_t n) {
+  System out;
+  out.pos.assign(s.pos.begin(), s.pos.begin() + static_cast<std::ptrdiff_t>(3 * n));
+  out.z.assign(s.z.begin(), s.z.begin() + static_cast<std::ptrdiff_t>(n));
+  out.length = s.length;
+  return out;
+}
+
+// Everything a call reports: the energy, forces and stress of forceImpl,
+// then, with `split` and where the potential splits its sums over the
+// atoms, those of forcePerAtom with the per-atom energies and virials.
+using Result = std::vector<double>;
 
 template <typename Pot>
-Result evaluate(Pot &pot, const System &s) {
-  rgpot::types::AtomMatrix xyz(s.z.size(), 3);
-  for (std::size_t i = 0; i < s.z.size(); ++i) {
-    xyz(i, 0) = s.pos[3 * i];
-    xyz(i, 1) = s.pos[3 * i + 1];
-    xyz(i, 2) = s.pos[3 * i + 2];
+Result evaluate(Pot &pot, const System &s, bool split = true) {
+  const std::size_t n = s.z.size();
+  const double box[9] = {s.length, 0, 0, 0, s.length, 0, 0, 0, s.length};
+  const rgpot::ForceInput in{n, s.pos.data(), s.z.data(), box};
+  std::vector<double> forces(3 * n, 0.0);
+  Result r;
+  const auto keep = [&](const rgpot::ForceOut &out) {
+    r.push_back(out.energy);
+    r.insert(r.end(), forces.begin(), forces.end());
+    r.insert(r.end(), out.stress, out.stress + 9);
+  };
+  rgpot::ForceOut out{};
+  out.F = forces.data();
+  pot.forceImpl(in, &out);
+  keep(out);
+  if constexpr (rgpot::PerAtomPotential<Pot>) {
+    if (split) {
+      std::vector<double> energy(n, 0.0);
+      std::vector<double> virial(6 * n, 0.0);
+      std::fill(forces.begin(), forces.end(), 0.0);
+      rgpot::ForceOut atoms{};
+      atoms.F = forces.data();
+      pot.forcePerAtom(in, &atoms, rgpot::PerAtomOut{energy.data(), virial.data()});
+      keep(atoms);
+      r.insert(r.end(), energy.begin(), energy.end());
+      r.insert(r.end(), virial.begin(), virial.end());
+    }
   }
-  const std::array<std::array<double, 3>, 3> box{{
-      {s.length, 0, 0},
-      {0, s.length, 0},
-      {0, 0, s.length},
-  }};
-  const auto out = pot(xyz, s.z, box);
-  const auto &f = std::get<1>(out);
-  return {std::get<0>(out), std::vector<double>(f.data(), f.data() + 3 * s.z.size())};
+  return r;
 }
 
-double scaledGap(const Result &a, const Result &b) {
-  double gap = scaledGap(a.energy, b.energy);
-  for (std::size_t i = 0; i < a.forces.size(); ++i) {
-    gap = std::max(gap, scaledGap(a.forces[i], b.forces[i]));
-  }
-  return gap;
-}
-
-// Values whose bits differ, the energy included.
+// Values whose bits differ. Results of two lengths differ everywhere.
 std::size_t bitsApart(const Result &a, const Result &b) {
-  std::size_t apart = bits(a.energy) == bits(b.energy) ? 0 : 1;
-  for (std::size_t i = 0; i < a.forces.size(); ++i) {
-    apart += bits(a.forces[i]) == bits(b.forces[i]) ? 0 : 1;
+  if (a.size() != b.size()) {
+    return std::max(a.size(), b.size());
+  }
+  std::size_t apart = 0;
+  for (std::size_t i = 0; i < a.size(); ++i) {
+    apart += bits(a[i]) == bits(b[i]) ? 0 : 1;
   }
   return apart;
 }
@@ -167,13 +221,42 @@ auto fromOuterTeam(Make &make, Eval &eval, int levels) {
   std::vector<decltype(eval(first))> out(2);
   const int saved = omp_get_max_active_levels();
   omp_set_max_active_levels(levels);
-#pragma omp parallel num_threads(2)
-  {
+#if defined(RGPOT_GOMP_TSAN)
+  rgpot::detail::gompParallel(2, [&] {
     const int team = omp_get_num_threads();
     for (int t = omp_get_thread_num(); t < 2; t += team) {
       out[static_cast<std::size_t>(t)] = eval(t == 0 ? first : second);
     }
+  });
+#else
+#if defined(RGPOT_TSAN_ACTIVE)
+  static std::atomic<std::uint64_t> tsan_fork_epoch{0};
+  auto tsan_join = std::make_unique<std::atomic<int>[]>(2);
+#endif
+#pragma omp parallel num_threads(2)
+  {
+#if defined(RGPOT_TSAN_ACTIVE)
+#pragma omp master
+    tsan_fork_epoch.fetch_add(1, std::memory_order_acq_rel);
+#pragma omp barrier
+    (void)tsan_fork_epoch.load(std::memory_order_acquire);
+#endif
+    const int team = omp_get_num_threads();
+    for (int t = omp_get_thread_num(); t < 2; t += team) {
+      out[static_cast<std::size_t>(t)] = eval(t == 0 ? first : second);
+    }
+#if defined(RGPOT_TSAN_ACTIVE)
+    tsan_join[static_cast<std::size_t>(omp_get_thread_num())].store(
+        1, std::memory_order_release);
+#endif
   }
+#if defined(RGPOT_TSAN_ACTIVE)
+  for (int thread = 0; thread < 2; ++thread) {
+    (void)tsan_join[static_cast<std::size_t>(thread)].load(
+        std::memory_order_acquire);
+  }
+#endif
+#endif
   omp_set_max_active_levels(saved);
   return out;
 }
@@ -210,24 +293,87 @@ auto underShortTeams(Make make, Eval eval) {
   return out;
 }
 
-// One slice against `slices` slices within the tolerance, then `slices`
-// slices on every short team against the full team bit for bit. `make`
-// returns a pointer, since a potential need not move.
+// Everything below, or the thread counts on forceImpl alone.
+enum class Depth { Full, Counts };
+
+// One thread against 1, 2, 3 and 8 threads, bit for bit, and with
+// Depth::Full 8 threads on every short team as well. With OpenMP, a call
+// on at least the atoms the potential's kTeamFrom asks of its thread count
+// opens a region and any other call opens none. The second call
+// on each thread count reuses the neighbour list, so a region it opens is
+// the potential's own sum; below rgpot::kTeamMinAtoms the first call,
+// which builds the list, opens none either. `make` returns a pointer,
+// since a potential need not move.
 template <typename Make>
-void checkPotential(const char *name, Make make, const System &s, int slices) {
-  INFO(name << " on " << s.z.size() << " atoms, " << slices << " slices");
+void checkPotential(const char *name, Make make, const System &s, Depth depth = Depth::Full,
+                    std::initializer_list<int> counts = {1, 2, 3, 8}) {
+  using Pot = typename decltype(make())::element_type;
+  const std::size_t n = s.z.size();
+  const bool split = depth == Depth::Full;
+  INFO(name << " on " << n << " atoms");
   setThreads("");
-  const Result serial = evaluate(*make(), s);
-  const std::string count = std::to_string(slices);
-  setThreads(count.c_str());
-  const Result full = evaluate(*make(), s);
-  CHECK(scaledGap(serial, full) <= kTolerance);
-  const auto eval = [&s](auto &p) { return evaluate(*p, s); };
-  for (const auto &[shape, r] : underShortTeams(make, eval)) {
-    INFO(shape);
-    CHECK(bitsApart(r, full) == 0);
+  const Result serial = evaluate(*make(), s, split);
+  for (const int threads : counts) {
+    INFO(threads << " threads");
+    const std::string count = std::to_string(threads);
+    setThreads(count.c_str());
+#if defined(_OPENMP)
+    const bool team = threads > 1 && n >= Pot::kTeamFrom.of(threads);
+#else
+    const bool team = false;
+#endif
+    const std::uint64_t start = rgpot::teamsOpened();
+    auto pot = make();
+    CHECK(bitsApart(evaluate(*pot, s, split), serial) == 0);
+    if (!team && n < rgpot::kTeamMinAtoms) {
+      CHECK(rgpot::teamsOpened() == start);
+    }
+    const std::uint64_t built = rgpot::teamsOpened();
+    CHECK(bitsApart(evaluate(*pot, s, split), serial) == 0);
+    // Stored Morse and Sutton-Chen leave a list with fewer than 4096 half
+    // pairs on the calling thread. Every other call opens a team exactly
+    // when its own kTeamFrom says so.
+    const bool pair_gated = std::strncmp(name, "stored Morse", 12) == 0 ||
+                            std::strncmp(name, "stored Sutton-Chen", 18) == 0;
+    const bool sparse_stored = pair_gated && n * (n - 1) / 2 < 4096;
+    CHECK((rgpot::teamsOpened() > built) == (team && !sparse_stored));
+  }
+  if (depth == Depth::Full) {
+    setThreads("8");
+    const auto eval = [&s](auto &p) { return evaluate(*p, s); };
+    for (const auto &[shape, r] : underShortTeams(make, eval)) {
+      INFO(shape);
+      CHECK(bitsApart(r, serial) == 0);
+    }
   }
   setThreads("");
+}
+
+// On a cell under rgpot::kTeamMinAtoms atoms, checkPotential on its first
+// T - 1 and T atoms for each atom count T in the potential's kTeamFrom,
+// either side of it: in full at kTeamMinAtoms, the least, and on the
+// thread counts alone at the others. On a larger cell, on the whole cell.
+template <typename Make>
+void checkCell(const char *name, Make make, const System &s) {
+  using Pot = typename decltype(make())::element_type;
+  REQUIRE(Pot::kTeamFrom.least() == Pot::kTeamMinAtoms);
+  if (s.z.size() >= rgpot::kTeamMinAtoms) {
+    checkPotential(name, make, s);
+    return;
+  }
+  std::vector<std::size_t> from = {Pot::kTeamFrom.two, Pot::kTeamFrom.three,
+                                   Pot::kTeamFrom.more};
+  std::sort(from.begin(), from.end());
+  from.erase(std::unique(from.begin(), from.end()), from.end());
+  for (const std::size_t atoms : from) {
+    if (atoms == rgpot::kNoTeam) {
+      continue;
+    }
+    REQUIRE(s.z.size() >= atoms);
+    const Depth depth = atoms == Pot::kTeamMinAtoms ? Depth::Full : Depth::Counts;
+    checkPotential(name, make, first(s, atoms - 1), depth);
+    checkPotential(name, make, first(s, atoms), depth);
+  }
 }
 
 template <typename Pot>
@@ -333,8 +479,8 @@ Inside fullTeamInside(int levels) {
   Inside got;
   const int saved = omp_get_max_active_levels();
   omp_set_max_active_levels(levels);
-#pragma omp parallel num_threads(2)
-  {
+#if defined(RGPOT_GOMP_TSAN)
+  rgpot::detail::gompParallel(2, [&] {
     if (omp_get_thread_num() == 0) {
       Meeting meet;
       got.outer_team = omp_get_num_threads();
@@ -342,7 +488,39 @@ Inside fullTeamInside(int levels) {
       got.runs = meet.runs.load();
       got.stuck = meet.stuck.load();
     }
+  });
+#else
+#if defined(RGPOT_TSAN_ACTIVE)
+  static std::atomic<std::uint64_t> tsan_fork_epoch{0};
+  auto tsan_join = std::make_unique<std::atomic<int>[]>(2);
+#endif
+#pragma omp parallel num_threads(2)
+  {
+#if defined(RGPOT_TSAN_ACTIVE)
+#pragma omp master
+    tsan_fork_epoch.fetch_add(1, std::memory_order_acq_rel);
+#pragma omp barrier
+    (void)tsan_fork_epoch.load(std::memory_order_acquire);
+#endif
+    if (omp_get_thread_num() == 0) {
+      Meeting meet;
+      got.outer_team = omp_get_num_threads();
+      got.together = rgpot::onFullTeam(2, [&meet](int rank) { meet(rank); });
+      got.runs = meet.runs.load();
+      got.stuck = meet.stuck.load();
+    }
+#if defined(RGPOT_TSAN_ACTIVE)
+    tsan_join[static_cast<std::size_t>(omp_get_thread_num())].store(
+        1, std::memory_order_release);
+#endif
   }
+#if defined(RGPOT_TSAN_ACTIVE)
+  for (int thread = 0; thread < 2; ++thread) {
+    (void)tsan_join[static_cast<std::size_t>(thread)].load(
+        std::memory_order_acquire);
+  }
+#endif
+#endif
   omp_set_max_active_levels(saved);
   return got;
 }
@@ -382,49 +560,254 @@ TEST_CASE("onFullTeam runs every rank at once or none", "[threads][slices]") {
 #endif
 }
 
-TEST_CASE("EAM keeps the bits of its slice count on any team", "[threads][eam]") {
-  const auto al = fcc(5, 4.05, 13);
-  checkPotential("stored EAM", mode<rgpot::EAMPot>(kStored), al, 2);
-  checkPotential("stored EAM", mode<rgpot::EAMPot>(kStored), al, 4);
-  checkPotential("streamed EAM", mode<rgpot::EAMPot>(kStream), al, 4);
+TEST_CASE("a call below its threshold takes one slice", "[threads][slices]") {
+  STATIC_REQUIRE(rgpot::kTeamMinAtoms ==
+                 static_cast<std::size_t>(RGPOT_TEAM_MIN_ATOMS));
+  setThreads("8");
+  CHECK(rgpot::teamSize(0, rgpot::kTeamMinAtoms) == 1);
+  if (55 < rgpot::kTeamMinAtoms) {
+    CHECK(rgpot::teamSize(55, rgpot::kTeamMinAtoms) == 1);
+  }
+  CHECK(rgpot::teamSize(rgpot::kTeamMinAtoms - 1, rgpot::kTeamMinAtoms) == 1);
+  CHECK(rgpot::teamSize(99, 100) == 1);
+  // No team of two, a team of three from 200 atoms and of four or more
+  // from 100.
+  constexpr rgpot::TeamFrom team{rgpot::kNoTeam, 200, 100};
+  static_assert(team.least() == 100 && team.of(2) == rgpot::kNoTeam && team.of(3) == 200 &&
+                team.of(4) == 100 && team.of(64) == 100);
+#if defined(_OPENMP)
+  CHECK(rgpot::teamSize(rgpot::kTeamMinAtoms, rgpot::kTeamMinAtoms) ==
+        std::min<int>(8, static_cast<int>(rgpot::kTeamMinAtoms)));
+  CHECK(rgpot::teamSize(100, 100) == 8);
+  CHECK(rgpot::teamSize(5, 0) == 5);
+  CHECK(rgpot::teamSize(2, 0) == 2);
+  CHECK(rgpot::teamSize(100, 100, team) == 8);
+#else
+  CHECK(rgpot::teamSize(rgpot::kTeamMinAtoms, rgpot::kTeamMinAtoms) == 1);
+  CHECK(rgpot::teamSize(100, 100) == 1);
+  CHECK(rgpot::teamSize(100, 100, team) == 1);
+#endif
+  CHECK(rgpot::teamSize(99, 100, team) == 1);
+  // A threshold of zero admits a call with no atoms or one atom, and it
+  // still takes one slice.
+  CHECK(rgpot::teamSize(0, 0) == 1);
+  CHECK(rgpot::teamSize(1, 0) == 1);
+  {
+    const rgpot::TeamThreshold any(0);
+    CHECK(rgpot::teamSize(0, rgpot::teamThreshold(100), team) == 1);
+    CHECK(rgpot::teamSize(1, rgpot::teamThreshold(100), team) == 1);
+  }
+  setThreads("3");
+  CHECK(rgpot::teamSize(199, 100, team) == 1);
+#if defined(_OPENMP)
+  CHECK(rgpot::teamSize(200, 100, team) == 3);
+#endif
+  setThreads("2");
+  CHECK(rgpot::teamSize(rgpot::kTeamMinAtoms, 100, team) == 1);
+  {
+    const rgpot::TeamThreshold any(100);
+#if defined(_OPENMP)
+    CHECK(rgpot::teamSize(100, 100, team) == 2);
+#else
+    CHECK(rgpot::teamSize(100, 100, team) == 1);
+#endif
+  }
+  CHECK(rgpot::teamSize(100, 100, team) == 1);
+  setThreads("");
+  CHECK(rgpot::teamSize(rgpot::kTeamMinAtoms, rgpot::kTeamMinAtoms) == 1);
+  CHECK(rgpot::teamSize(100, 100) == 1);
+
+#if defined(__clang__)
+#pragma clang diagnostic push
+#pragma clang diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wdeprecated-declarations"
+#elif defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
+  setThreads("8");
+  CHECK(rgpot::teamSize(0) == rgpot::teamSize(0, rgpot::kTeamMinAtoms));
+  CHECK(rgpot::teamSize(rgpot::kTeamMinAtoms - 1) ==
+        rgpot::teamSize(rgpot::kTeamMinAtoms - 1, rgpot::kTeamMinAtoms));
+  CHECK(rgpot::teamSize(rgpot::kTeamMinAtoms) ==
+        rgpot::teamSize(rgpot::kTeamMinAtoms, rgpot::kTeamMinAtoms));
+  setThreads("");
+  CHECK(rgpot::teamSize(rgpot::kTeamMinAtoms) ==
+        rgpot::teamSize(rgpot::kTeamMinAtoms, rgpot::kTeamMinAtoms));
+#if defined(__clang__)
+#pragma clang diagnostic pop
+#elif defined(__GNUC__)
+#pragma GCC diagnostic pop
+#elif defined(_MSC_VER)
+#pragma warning(pop)
+#endif
+
+  CHECK(rgpot::teamThreshold(100) == 100);
+  {
+    const rgpot::TeamThreshold outer(10);
+    CHECK(rgpot::teamThreshold(100) == 10);
+    {
+      const rgpot::TeamThreshold inner(rgpot::kNoTeam);
+      CHECK(rgpot::teamThreshold(100) == rgpot::kNoTeam);
+    }
+    CHECK(rgpot::teamThreshold(100) == 10);
+  }
+  CHECK(rgpot::teamThreshold(100) == 100);
+
+  const std::uint64_t start = rgpot::teamsOpened();
+  int runs = 0;
+  rgpot::forEachSlice(1, [&](int) { ++runs; });
+  CHECK(rgpot::teamsOpened() == start);
+  std::vector<int> hits(4, 0);
+  rgpot::forEachSlice(4, [&](int s) { ++hits[static_cast<std::size_t>(s)]; });
+#if defined(_OPENMP)
+  CHECK(rgpot::teamsOpened() == start + 1);
+#else
+  CHECK(rgpot::teamsOpened() == start);
+#endif
+  CHECK(runs == 1);
+  CHECK(std::count(hits.begin(), hits.end(), 1) == 4);
 }
 
-TEST_CASE("pair potentials keep the bits of their slice count on any team",
-          "[threads][pair]") {
+// Each potential below either side of each atom count in its kTeamFrom, on
+// the first atoms of a cell under rgpot::kTeamMinAtoms atoms, and on a
+// whole cell above that, whose neighbour build opens a team too.
+TEST_CASE("EAM gives the one-thread bits on any team", "[threads][eam]") {
+  for (const int side : {5, 13}) {
+    const auto al = fcc(side, 4.05, 13);
+    checkCell("stored EAM", mode<rgpot::EAMPot>(kStored), al);
+    checkCell("streamed EAM", mode<rgpot::EAMPot>(kStream), al);
+  }
+}
+
+TEST_CASE("pair potentials give the one-thread bits on any team", "[threads][pair]") {
+  // The large cells keep two neighbour shells, so a debug build checks
+  // them in seconds.
   const double a_lj = std::pow(2.0, 1.0 / 6.0) * std::sqrt(2.0);
-  const auto ar = fcc(4, a_lj, 18);
   rgpot::LJConfig lj;
-  lj.cutoff = 2.5;
   lj.psi = 1.0;
-  checkPotential("stored LJ", mode<rgpot::LJPot>(lj, kStored), ar, 4);
-  checkPotential("streamed LJ", mode<rgpot::LJPot>(lj, kStream), ar, 4);
   rgpot::LJClusterConfig cluster;
-  cluster.cutoff = 2.5;
-  checkPotential(
-      "LJ cluster", [cluster] { return std::make_unique<rgpot::LJClusterPot>(cluster); }, ar, 4);
+  for (const int side : {6, 13}) {
+    lj.cutoff = side == 6 ? 2.5 : 1.8;
+    cluster.cutoff = lj.cutoff;
+    const auto ar = fcc(side, a_lj, 18);
+    checkCell("stored LJ", mode<rgpot::LJPot>(lj, kStored), ar);
+    checkCell("streamed LJ", mode<rgpot::LJPot>(lj, kStream), ar);
+    checkCell("stored LJ cluster", mode<rgpot::LJClusterPot>(cluster, kStored), ar);
+    checkCell("streamed LJ cluster", mode<rgpot::LJClusterPot>(cluster, kStream), ar);
+  }
 
-  const auto cu = fcc(5, 4.1, 29);
-  checkPotential("stored Morse", mode<rgpot::MorsePot>(rgpot::MorseConfig{}, kStored), cu, 4);
-  checkPotential("streamed Morse", mode<rgpot::MorsePot>(rgpot::MorseConfig{}, kStream), cu, 4);
+  rgpot::MorseConfig morse;
+  for (const int side : {8, 13}) {
+    morse.cutoff = side == 8 ? 9.5 : 4.5;
+    const auto cu = fcc(side, 4.1, 29);
+    checkCell("stored Morse", mode<rgpot::MorsePot>(morse, kStored), cu);
+    checkCell("streamed Morse", mode<rgpot::MorsePot>(morse, kStream), cu);
+  }
 
-  const auto si = diamond(3, 5.431, 14);
-  checkPotential("stored ZBL", mode<rgpot::ZBLPot>(rgpot::ZBLConfig{}, kStored), si, 4);
+  for (const int side : {5, 11}) {
+    const auto si = diamond(side, 5.431, 14);
+    checkCell("stored ZBL", mode<rgpot::ZBLPot>(rgpot::ZBLConfig{}, kStored), si);
+    checkCell("streamed ZBL", mode<rgpot::ZBLPot>(rgpot::ZBLConfig{}, kStream), si);
+  }
 }
 
-TEST_CASE("many-body potentials keep the bits of their slice count on any team",
-          "[threads][manybody]") {
+// Sutton-Chen on a cutoff, and Sutton-Chen that walks every pair, are
+// separate tags. The open cluster is the same potential with a different
+// cost: one call on kTeamMinAtoms atoms adds 33 million pairs twice.
+TEST_CASE("Sutton-Chen gives the one-thread bits on any team",
+          "[threads][manybody][sutton]") {
   rgpot::SuttonChenConfig sc;
-  sc.cutoff = 3.0;
   sc.periodic = true;
-  const auto pt = fcc(4, std::sqrt(2.0), 78);
-  checkPotential("stored Sutton-Chen", mode<rgpot::SuttonChenPot>(sc, kStored), pt, 4);
-  checkPotential("streamed Sutton-Chen", mode<rgpot::SuttonChenPot>(sc, kStream), pt, 4);
+  sc.stress = true;
+  for (const int side : {8, 13}) {
+    // Three nearest-neighbour distances on the small cell, one and a half
+    // on the large one, where three would cost seconds in a debug build.
+    sc.cutoff = side == 8 ? 3.0 : 1.5;
+    const auto pt = fcc(side, std::sqrt(2.0), 78);
+    checkCell("stored Sutton-Chen", mode<rgpot::SuttonChenPot>(sc, kStored), pt);
+    checkCell("streamed Sutton-Chen", mode<rgpot::SuttonChenPot>(sc, kStream), pt);
+  }
+}
 
-  const auto si = diamond(3, 5.431, 14);
-  checkPotential("stored Stillinger-Weber", mode<rgpot::StillingerWeberSi>(kStored), si, 4);
-  checkPotential("streamed Stillinger-Weber", mode<rgpot::StillingerWeberSi>(kStream), si, 4);
-  checkPotential("stored Tersoff", mode<rgpot::TersoffSiC>(kStored), si, 4);
-  checkPotential("streamed Tersoff", mode<rgpot::TersoffSiC>(kStream), si, 4);
+// The potential floor, the 55-atom open cluster and each thread count of
+// the shared kTeamMinAtoms cluster are separate tags. One registration of
+// the large cluster's 1-thread and 2-thread calls ran past its coverage
+// limit on 4 cores when
+// OMP_THREAD_LIMIT was 2. 3 threads and 8 threads were already their own
+// tags. 8 threads is the call that runs forceImpl a second time. Every
+// thread count is still compared with the one-thread bits.
+TEST_CASE("open Sutton-Chen gives the one-thread bits on a small cluster",
+          "[threads][manybody][suttonopen]") {
+  rgpot::SuttonChenConfig open;
+  open.cutoff = 0.0;
+  open.stress = true;
+  const auto every_pair = [open] { return std::make_unique<rgpot::SuttonChenPot>(open); };
+  constexpr std::size_t kOpen = rgpot::SuttonChenPot::kTeamMinAtoms;
+  checkPotential("Sutton-Chen below its floor", every_pair,
+                 cluster(kOpen - 1, std::sqrt(2.0), 78));
+  checkPotential("Sutton-Chen at its floor", every_pair,
+                 cluster(kOpen, std::sqrt(2.0), 78));
+  checkPotential("Sutton-Chen on every pair", every_pair, cluster(55, std::sqrt(2.0), 78));
+}
+
+TEST_CASE("open Sutton-Chen gives the one-thread bits on 1 thread",
+          "[threads][manybody][sutton1]") {
+  rgpot::SuttonChenConfig open;
+  open.cutoff = 0.0;
+  open.stress = true;
+  const auto every_pair = [open] { return std::make_unique<rgpot::SuttonChenPot>(open); };
+  checkPotential("Sutton-Chen on every pair", every_pair,
+                 cluster(rgpot::kTeamMinAtoms, std::sqrt(2.0), 78), Depth::Counts, {1});
+}
+
+TEST_CASE("open Sutton-Chen gives the one-thread bits on 2 threads",
+          "[threads][manybody][sutton2]") {
+  rgpot::SuttonChenConfig open;
+  open.cutoff = 0.0;
+  open.stress = true;
+  const auto every_pair = [open] { return std::make_unique<rgpot::SuttonChenPot>(open); };
+  checkPotential("Sutton-Chen on every pair", every_pair,
+                 cluster(rgpot::kTeamMinAtoms, std::sqrt(2.0), 78), Depth::Counts, {2});
+}
+
+TEST_CASE("open Sutton-Chen gives the one-thread bits on 3 threads",
+          "[threads][manybody][sutton3]") {
+  rgpot::SuttonChenConfig open;
+  open.cutoff = 0.0;
+  open.stress = true;
+  const auto every_pair = [open] { return std::make_unique<rgpot::SuttonChenPot>(open); };
+  checkPotential("Sutton-Chen on every pair", every_pair,
+                 cluster(rgpot::kTeamMinAtoms, std::sqrt(2.0), 78), Depth::Counts, {3});
+}
+
+TEST_CASE("open Sutton-Chen gives the one-thread bits on 8 threads",
+          "[threads][manybody][sutton8]") {
+  rgpot::SuttonChenConfig open;
+  open.cutoff = 0.0;
+  open.stress = true;
+  const auto every_pair = [open] { return std::make_unique<rgpot::SuttonChenPot>(open); };
+  checkPotential("Sutton-Chen on every pair", every_pair,
+                 cluster(rgpot::kTeamMinAtoms, std::sqrt(2.0), 78), Depth::Counts, {8});
+}
+
+TEST_CASE("Stillinger-Weber gives the one-thread bits on any team",
+          "[threads][manybody][sw]") {
+  for (const int side : {3, 11}) {
+    const auto si = diamond(side, 5.431, 14);
+    checkCell("stored Stillinger-Weber", mode<rgpot::StillingerWeberSi>(kStored), si);
+    checkCell("streamed Stillinger-Weber", mode<rgpot::StillingerWeberSi>(kStream), si);
+  }
+}
+
+TEST_CASE("Tersoff gives the one-thread bits on any team", "[threads][manybody][tersoff]") {
+  for (const int side : {3, 11}) {
+    const auto si = diamond(side, 5.431, 14);
+    checkCell("stored Tersoff", mode<rgpot::TersoffSiC>(kStored), si);
+    checkCell("streamed Tersoff", mode<rgpot::TersoffSiC>(kStream), si);
+  }
 }
 
 namespace {

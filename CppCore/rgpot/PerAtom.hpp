@@ -16,6 +16,13 @@
  * offer per-atom output where it exists without a new virtual on
  * @c PotentialBase. Potentials without the member are unchanged.
  *
+ * Every member makes the checks of @c guardForceCall before it writes
+ * @c ForceOut or the per-atom arrays, so a null buffer, a null cell on a
+ * periodic kernel or a system with no atoms throws
+ * @c std::invalid_argument and leaves all outputs untouched. A kernel
+ * that does not read the species, such as Lennard-Jones, Morse and
+ * Sutton-Chen, accepts a null species pointer.
+ *
  * Pair terms go half to each atom. An embedding term F(rho_i) belongs to
  * atom i alone. The per-atom virial is W_i, energy units, with
  * sum_i W_i = -V sigma = -dE/dstrain: a pair whose force on atom i is
@@ -25,10 +32,10 @@
  */
 
 #include "rgpot/ForceStructs.hpp"
+#include "rgpot/PotHelpers.hpp"
 
 #include <algorithm>
 #include <cstddef>
-#include <vector>
 
 namespace rgpot {
 
@@ -43,6 +50,15 @@ concept PerAtomPotential = requires(const P &pot, const ForceInput &in, ForceOut
                                     const PerAtomOut &atoms) {
   pot.forcePerAtom(in, out, atoms);
 };
+
+/// @c forcePerAtom after the same null-buffer check as @c forceImpl.
+/// The concept above only detects the member; this is the call.
+template <PerAtomPotential P>
+void invokeForcePerAtom(const P &pot, const ForceInput &in, ForceOut *out,
+                        const PerAtomOut &atoms) {
+  guardForceCall(in, out, kernelNeedsCell(pot));
+  pot.forcePerAtom(in, out, atoms);
+}
 
 /// Zero the arrays of @p atoms for @p n atoms.
 inline void clearPerAtom(const PerAtomOut &atoms, std::size_t n) {
@@ -80,61 +96,5 @@ inline void tallyPair(const PerAtomOut &atoms, std::size_t i, std::size_t j, dou
   tallyAtomVirial(atoms, i, 0.5, fscale, dx, dy, dz);
   tallyAtomVirial(atoms, j, 0.5, fscale, dx, dy, dz);
 }
-
-/**
- * @brief Private per-atom arrays, one per slice, for a walk that writes
- * both atoms of a pair from any slice.
- *
- * Slice @c t tallies into @c slot(t); @c reduce adds the slots into the
- * caller's arrays in slice order. A null target allocates nothing and
- * hands out empty slots.
- */
-class PerAtomTeam {
-public:
-  PerAtomTeam(const PerAtomOut *target, std::size_t n, int nthreads)
-      : m_target{target}, m_n{n}, m_threads{nthreads < 1 ? 1 : nthreads} {
-    if (m_target == nullptr) {
-      return;
-    }
-    if (m_target->energy != nullptr) {
-      m_energy.assign(static_cast<std::size_t>(m_threads) * n, 0.0);
-    }
-    if (m_target->virial != nullptr) {
-      m_virial.assign(static_cast<std::size_t>(m_threads) * 6 * n, 0.0);
-    }
-  }
-
-  [[nodiscard]] PerAtomOut slot(int t) {
-    const auto k = static_cast<std::size_t>(t);
-    return {m_energy.empty() ? nullptr : m_energy.data() + k * m_n,
-            m_virial.empty() ? nullptr : m_virial.data() + k * 6 * m_n};
-  }
-
-  void reduce() const {
-    if (m_target == nullptr) {
-      return;
-    }
-    for (int t = 0; t < m_threads; ++t) {
-      const auto k = static_cast<std::size_t>(t);
-      if (!m_energy.empty()) {
-        for (std::size_t a = 0; a < m_n; ++a) {
-          m_target->energy[a] += m_energy[k * m_n + a];
-        }
-      }
-      if (!m_virial.empty()) {
-        for (std::size_t a = 0; a < 6 * m_n; ++a) {
-          m_target->virial[a] += m_virial[k * 6 * m_n + a];
-        }
-      }
-    }
-  }
-
-private:
-  const PerAtomOut *m_target;
-  std::size_t m_n;
-  int m_threads;
-  std::vector<double> m_energy;
-  std::vector<double> m_virial;
-};
 
 } // namespace rgpot

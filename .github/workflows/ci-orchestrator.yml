@@ -1,4 +1,4 @@
-# Single PR CI workflow (main and develop) plus pushes to main and feat/**:
+# Single PR CI workflow (main and develop) plus pushes to main and develop:
 # prepare (Nickel plan) → ordered stages.
 # Remaining separate workflows (different triggers/secrets/permissions):
 #   release.yml, release-prepare.yml, ci_docs.yml, ci_doc_commenter.yml, cosmo-potctl.yml
@@ -10,17 +10,29 @@ name: CI (orchestrator)
 
 on:
   push:
-    branches: [main, "feat/**"]
+    branches: [main, develop]
+    tags:
+      - '*'
+    paths-ignore:
+      - docs/**
+      - '**/*.md'
+      - newsfragments/**
+      - LICENSE
   pull_request:
     branches: [main, develop]
+    paths-ignore:
+      - docs/**
+      - '**/*.md'
+      - newsfragments/**
+      - LICENSE
   workflow_dispatch:
   # was docs_quality.yml weekly; keep link/prose hygiene on a schedule
   schedule:
     - cron: "15 7 * * 1"
 
 concurrency:
-  group: ci-orchestrator-${{ github.ref }}
-  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || (github.ref != 'refs/heads/main' && !startsWith(github.ref, 'refs/tags/')) }}
 
 permissions:
   contents: read
@@ -318,7 +330,7 @@ jobs:
           fi
       - if: matrix.sys == 'meson' && matrix.os == 'ubuntu-latest'
         name: mpirun calculator_group_test
-        run: pixi run -e mpibld mpirun --oversubscribe -n 4 ./bbdir/CppCore/calculator_group_test
+        run: pixi run -e mpibld mpirun --oversubscribe -n 4 ./bbdir/CppCore/calculator_group_test --order decl
       - if: matrix.sys == 'cmake'
         name: Build & Test (CMake)
         shell: pixi run bash -e {0}
@@ -372,7 +384,7 @@ jobs:
           export AR=lib
           # flang COFF objects request FortranRuntime.dynamic.lib via DEFAULTLIB.
           # Ensure MSVC link.exe can resolve it from the pixi env.
-          _libdir="$(pixi run -e devbld bash -lc 'printf %s "$CONDA_PREFIX/Library/lib"')"
+          _libdir="$(pixi run -e devbld printenv CONDA_PREFIX)/Library/lib"
           if [ -d "$_libdir" ]; then
             export LIB="${_libdir}${LIB:+;${LIB}}"
           fi
@@ -389,6 +401,84 @@ jobs:
             -Dpure_lib=false
           pixi run -e devbld meson compile -C bbdir
           pixi run -e devbld meson test -C bbdir --print-errorlogs
+
+  # --- Stage 2a': MinGW-w64 (GNU toolchain) Windows builds ---
+  # Cross build from Ubuntu with the tests under wine, then a native MSYS2
+  # MINGW64 build. Both use mingw-w64's C runtime, whose fma is not fused,
+  # and GNU ld for librgpot.dll.
+  build_mingw_wine:
+    name: meson / ubuntu-24.04 mingw-w64 cross [tests under wine]
+    needs: [prepare]
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Install mingw-w64, wine and the Rust windows-gnu target
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            g++-mingw-w64-x86-64-posix gfortran-mingw-w64-x86-64-posix \
+            wine wine64 cmake ninja-build pipx
+          pipx install 'meson>=1.5.2,<2'
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          rustup target add x86_64-pc-windows-gnu
+      - name: Build and test (tests under wine)
+        run: |
+          ci/gha/mingw_wine_build.sh build-mingw \
+            -Dwith_tests=true \
+            -Dwith_examples=false \
+            -Dwith_xtensor=false \
+            -Dwith_eigen=true \
+            -Dwith_rpc=false \
+            -Dwith_fortran_pots=enabled \
+            -Dwith_fast_nlist=enabled \
+            -Dwith_cache=false \
+            -Dpure_lib=false
+
+  # Not in the CI gate until it has passed on a hosted runner.
+  build_msys2_mingw64:
+    name: meson / windows-latest MSYS2 MINGW64
+    needs: [prepare]
+    if: github.event_name != 'schedule'
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: msys2 {0}
+    steps:
+      # The image sets core.autocrlf=true; the .sh tests need LF endings.
+      - name: Keep LF line endings
+        shell: pwsh
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: msys2/setup-msys2@ec48f7c5447b3140e2b088413ae3a55687bccb6e # v2.33.0
+        with:
+          msystem: MINGW64
+          update: true
+          install: git
+          # gcc lists libgomp as optional. -fopenmp still asks ld for
+          # -lgomp. The openmp package is LLVM's runtime and does not
+          # provide that library.
+          # gcc also lists libquadmath as optional. gcc-libs depends on
+          # that runtime, and gcc-fortran is already requested here.
+          # The static archive itself ships in the gcc package.
+          pacboy: >-
+            gcc:p gcc-fortran:p gcc-libs:p libgomp:p meson:p ninja:p
+            cmake:p pkgconf:p catch:p eigen3:p rust:p python:p
+      - name: Build and test
+        run: |
+          set -euo pipefail
+          meson setup bbdir \
+            -Dwith_tests=true \
+            -Dwith_examples=false \
+            -Dwith_xtensor=false \
+            -Dwith_eigen=true \
+            -Dwith_rpc=false \
+            -Dwith_fortran_pots=enabled \
+            -Dwith_cache=false \
+            -Dpure_lib=false
+          meson compile -C bbdir
+          meson test -C bbdir --print-errorlogs
 
   # --- Stage 2a'': offline source-build rehearsal (conda-forge parity) ---
   # Builds the `git archive` tree (tracked files, no .git, no checked-out wrap
@@ -442,7 +532,11 @@ jobs:
   # --- Stage 2a''': classical pair scan, no cargo ---
   # manylinux wheels, conda and the eOn subproject configure without cargo.
   # This leg forces that fallback on a runner that does have cargo, so the
-  # C++ scan is what the tests exercise.
+  # C++ scan is what the tests exercise. with_rust_core is on here, so the
+  # plain rgpot-core archive (no pair list to share a runtime with) is built
+  # and linked, and the rust core tests run. Pixi's rust is newer than the
+  # workspace rust-version, so this leg puts rustup's toolchain for that
+  # version first on PATH: rgpot-core alone must build on it.
   build_fast_nlist_off:
     name: meson / ubuntu [fast nlist off]
     needs: [prepare]
@@ -451,6 +545,8 @@ jobs:
     timeout-minutes: 25
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          fetch-depth: 0
       - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
         with:
           pixi-version: v0.70.2
@@ -460,13 +556,23 @@ jobs:
       - name: Build and test without the fast pair list
         shell: pixi run bash -e {0}
         run: |
+          msrv=$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' Cargo.toml)
+          export PATH="${CARGO_HOME:-$HOME/.cargo}/bin:${PATH}"
+          rustup toolchain install "${msrv}" --profile minimal
+          export RUSTUP_TOOLCHAIN="${msrv}"
+          rustc -V | grep -F "rustc ${msrv}."
+          uv run --no-project --with pytest pytest -q tests/test_build_rust_core.py
           meson setup bbdir \
             -Dwith_tests=true \
+            -Dwith_eam_table=true \
+            -Dwith_long_range=true \
+            -Dwith_rust_core=true \
             -Dwith_examples=false \
             -Dwith_xtensor=false \
             -Dwith_eigen=false \
             -Dwith_rpc=false \
             -Dwith_cache=false \
+            -Dwith_long_range=true \
             -Dwith_fast_nlist=disabled \
             -Dpure_lib=true
           meson compile -C bbdir
@@ -476,7 +582,12 @@ jobs:
   cxx_layout_ubsan:
     name: meson / ubuntu [ASan+UBSan layout]
     needs: [prepare]
-    if: github.event_name != 'schedule'
+    if: >-
+      github.event_name != 'schedule'
+      && (github.event_name == 'workflow_dispatch'
+        || github.ref == 'refs/heads/main'
+        || startsWith(github.ref, 'refs/tags/')
+        || contains(github.event.pull_request.labels.*.name, 'ci:full'))
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -491,10 +602,123 @@ jobs:
         shell: pixi run bash -e {0}
         run: bash tools/check_cxx_layout_ubsan.sh
 
+  lsan_libomp_18:
+    name: meson / ubuntu [LSan + libomp 18]
+    needs: [prepare]
+    if: >-
+      github.event_name != 'schedule'
+      && (github.event_name == 'workflow_dispatch'
+        || github.ref == 'refs/heads/main'
+        || startsWith(github.ref, 'refs/tags/')
+        || contains(github.event.pull_request.labels.*.name, 'ci:full'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CC: /usr/bin/clang-18
+      CXX: /usr/bin/clang++-18
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+      - uses: prefix-dev/setup-pixi@a0af7a228712d6121d37aba47adf55c1332c9c2e # v0.9.4
+        with:
+          pixi-version: v0.70.2
+          cache: true
+          activate-environment: true
+      - name: Install LLVM OpenMP 18
+        run: |
+          bash ci/gha/apt-install.sh --no-install-recommends \
+            clang-18 libclang-rt-18-dev libomp-18-dev llvm-18
+          dpkg-query -W clang-18 libclang-rt-18-dev libomp-18-dev llvm-18
+          test -x /usr/lib/llvm-18/bin/llvm-symbolizer
+          echo "/usr/lib/llvm-18/bin" >> "$GITHUB_PATH"
+      - name: Build and test OpenMP under LeakSanitizer
+        shell: pixi run bash -e {0}
+        run: |
+          export CC=/usr/bin/clang-18
+          export CXX=/usr/bin/clang++-18
+          # The libomp suppression matches function names. Ubuntu's
+          # llvm-symbolizer fails to start against the pixi library path,
+          # so run it through the wrapper that clears LD_LIBRARY_PATH.
+          export ASAN_SYMBOLIZER_PATH="$PWD/tools/lsan/llvm-symbolizer"
+          test -x "$ASAN_SYMBOLIZER_PATH"
+          # Clang leaves __asan_* unresolved in librgpot.so. Meson's
+          # default -Wl,--no-undefined then fails the link. The layout
+          # sanitizer script sets the same option for Clang.
+          meson setup bbdir-lsan \
+            -Db_sanitize=address \
+            -Db_lundef=false \
+            -Dwith_tests=true \
+            -Dwith_examples=false \
+            -Dwith_fortran_pots=disabled \
+            -Dwith_rpc=false \
+            -Dwith_cache=false \
+            -Dwith_fast_nlist=disabled
+          meson compile -C bbdir-lsan
+          # MorsePotTest, then every ThreadTeamTest shard. The shards share
+          # suite threadteam. The wildcard is applied after the suite, so a
+          # mistyped or empty suite fails instead of selecting nothing.
+          meson test -C bbdir-lsan --print-errorlogs MorsePotTest
+          meson test -C bbdir-lsan --print-errorlogs --suite threadteam \
+            'ThreadTeamTest*'
+          bash tools/check_lsan_libomp.sh
+
+  # Release (-O3) with GCC 13 (when available on the Ubuntu runner) covering the
+  # inline xxHash cache-key path in Potential<Derived>::cacheKey under strict
+  # aliasing and IPA-CP.
+  release_gcc13_cache:
+    name: meson / ubuntu [Release -O3 GCC 13 cache]
+    needs: [prepare]
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94 # v0.11.2
+        with:
+          pixi-version: v0.70.2
+          cache: true
+          environments: devbld
+          activate-environment: true
+      - name: Install GCC 13 if available
+        run: |
+          if apt-cache show gcc-13 g++-13 >/dev/null 2>&1; then
+            bash ci/gha/apt-install.sh --no-install-recommends gcc-13 g++-13
+            dpkg-query -W gcc-13 g++-13
+          fi
+      - name: Build Release (-O3) and run cache tests
+        shell: pixi run -e devbld bash -e {0}
+        run: |
+          if [ -x /usr/bin/gcc-13 ] && [ -x /usr/bin/g++-13 ]; then
+            export CC=/usr/bin/gcc-13
+            export CXX=/usr/bin/g++-13
+          else
+            export CC=/usr/bin/gcc
+            export CXX=/usr/bin/g++
+          fi
+          "$CXX" --version
+          export LD=/usr/bin/ld
+          export CFLAGS="-B/usr/bin"
+          export CXXFLAGS="-B/usr/bin"
+          export LDFLAGS="-B/usr/bin -Wl,-rpath,$CONDA_PREFIX/lib"
+          unset CPPFLAGS DEBUG_CFLAGS DEBUG_CXXFLAGS
+          meson setup bbdir-release-gcc13 \
+            --buildtype=release \
+            -Db_ndebug=true \
+            -Dwith_tests=true \
+            -Dwith_cache=true \
+            -Dwith_rpc=false \
+            -Dwith_examples=false \
+            -Dwith_fortran_pots=disabled
+          meson compile -C bbdir-release-gcc13 \
+            cache_test d2_pot_test d2_cpmd_pot_test
+          meson test -C bbdir-release-gcc13 --print-errorlogs \
+            CacheTest D2PotTest D2CpmdPotTest
+
   # The suite on short OpenMP teams. Under OMP_THREAD_LIMIT every region gets
   # fewer threads than it asks for, and results must keep the bits of their
   # slice count. One build, two test runs. Linux only: the macOS legs build
   # without OpenMP, and MSVC's OpenMP 2.0 runtime has no thread limit.
+  # with_rust_core is on next to the fast pair list, so rgpot-bundle, the one
+  # archive that carries both, is what links.
   thread_limit:
     name: meson / ubuntu [OMP_THREAD_LIMIT 1, 2]
     needs: [prepare]
@@ -503,6 +727,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
       - uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94 # v0.11.2
         with:
           pixi-version: v0.70.2
@@ -515,11 +741,13 @@ jobs:
         run: |
           meson setup bbdir \
             -Dwith_tests=true \
+            -Dwith_rust_core=true \
             -Dwith_examples=false \
             -Dwith_xtensor=false \
             -Dwith_eigen=false \
             -Dwith_rpc=false \
-            -Dwith_cache=false
+            -Dwith_cache=false \
+            -Dwith_long_range=true
           meson compile -C bbdir
       - name: Test with OMP_THREAD_LIMIT=1
         if: ${{ !cancelled() && steps.build.outcome == 'success' }}
@@ -533,6 +761,43 @@ jobs:
         env:
           OMP_THREAD_LIMIT: "2"
         run: meson test -C bbdir --print-errorlogs --logbase limit2
+
+  # Keep a serial leg that exercises the long-range electro path and the
+  # static-consumer link case without OpenMP enabled.
+  openmp_off_long_range:
+    name: meson / ubuntu [OpenMP off long-range + consumer]
+    needs: [prepare]
+    if: github.event_name != 'schedule'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94 # v0.11.2
+        with:
+          pixi-version: v0.70.2
+          cache: true
+          environments: devbld
+          activate-environment: true
+      - name: Configure + build with OpenMP disabled
+        shell: pixi run bash -e {0}
+        run: |
+          meson setup bbdir-openmp-off \
+            -Dwith_tests=true \
+            -Dwith_examples=false \
+            -Dwith_xtensor=false \
+            -Dwith_eigen=false \
+            -Dwith_rpc=false \
+            -Dwith_cache=false \
+            -Dwith_long_range=true \
+            -Duse_openmp=false
+          meson compile -C bbdir-openmp-off
+      - name: Run serial long-range and static-consumer tests
+        shell: pixi run bash -e {0}
+        run: |
+          meson test -C bbdir-openmp-off --print-errorlogs \
+            LongRangeTest consumer_no_openmp
 
   # meson and CMake register the tests CppCore/tests/registry.txt lists.
   # Both are configured, not built, for the plain, RPC and cache, and
@@ -583,20 +848,25 @@ jobs:
           cache: true
           environments: devbld
           activate-environment: devbld
+      - name: Check shared Rust dependency versions
+        run: python3 scripts/check_rust_dependency_versions.py
       - name: Install cargo-nextest
         uses: taiki-e/install-action@86f7a0ffb25f40114606501a311ebcfaf882ea32 # v2
         with:
           tool: cargo-nextest
       - name: potctl unit tests
-        run: cargo test -p potctl
+        run: cargo test --locked -p potctl
       - name: Run Rust tests (nextest)
         shell: pixi run bash -e {0}
         run: |
-          cargo nextest run -p rgpot-core
-          cargo nextest run -p rgpot-core --all-features
+          cargo nextest run --locked -p rgpot-core
+          cargo nextest run --locked -p rgpot-core --all-features
       - name: Run Rust doc-tests
         shell: pixi run bash -e {0}
-        run: cargo test --doc -p rgpot-core
+        run: cargo test --locked --doc -p rgpot-core
+      - name: Check rgpot.h is what cbindgen generates
+        shell: pixi run bash -e {0}
+        run: bash tools/check_header_drift.sh
 
   # --- Stage 2c: client bridge ---
   client_bridge_stress:
@@ -909,15 +1179,15 @@ jobs:
           git clone --depth 1 --filter=blob:none --sparse --branch stable_22Jul2025 \
             https://github.com/lammps/lammps.git "$GITHUB_WORKSPACE/lammps-src"
           git -C "$GITHUB_WORKSPACE/lammps-src" sparse-checkout set src cmake
-          pixi run -e engines bash -lc '
-            export CC="$CONDA_PREFIX/bin/x86_64-conda-linux-gnu-cc"
-            export CXX="$CONDA_PREFIX/bin/x86_64-conda-linux-gnu-c++"
-            cmake -S "$GITHUB_WORKSPACE/lammps-src/cmake" \
-              -B "$GITHUB_WORKSPACE/lammps-src/build-lmp" \
-              -DBUILD_MPI=OFF -DBUILD_SHARED_LIBS=ON -DPKG_PLUGIN=ON \
-              -DCMAKE_BUILD_TYPE=Release -DBUILD_TOOLS=OFF
-            cmake --build "$GITHUB_WORKSPACE/lammps-src/build-lmp" -j "$(nproc)" --target lmp
-          '
+          prefix="$(pixi run -e engines printenv CONDA_PREFIX)"
+          pixi run -e engines cmake -S "$GITHUB_WORKSPACE/lammps-src/cmake" \
+            -B "$GITHUB_WORKSPACE/lammps-src/build-lmp" \
+            -DCMAKE_C_COMPILER="$prefix/bin/x86_64-conda-linux-gnu-cc" \
+            -DCMAKE_CXX_COMPILER="$prefix/bin/x86_64-conda-linux-gnu-c++" \
+            -DBUILD_MPI=OFF -DBUILD_SHARED_LIBS=ON -DPKG_PLUGIN=ON \
+            -DCMAKE_BUILD_TYPE=Release -DBUILD_TOOLS=OFF
+          pixi run -e engines cmake --build "$GITHUB_WORKSPACE/lammps-src/build-lmp" \
+            -j "$(nproc)" --target lmp
       - name: Build rgpot and run the engine tests
         run: |
           set -euo pipefail
@@ -926,16 +1196,18 @@ jobs:
             -Dlammps_src="$GITHUB_WORKSPACE/lammps-src/src" \
             -Dlammps_exe="$GITHUB_WORKSPACE/lammps-src/build-lmp/lmp" \
             -Dwith_gromacs=enabled -Dwith_openmm=enabled -Dwith_plumed=enabled \
-            -Dwith_eam_table=true -Dwith_python=true \
+            -Dwith_eam_table=true -Dwith_python=true -Dwith_tests=true \
             --buildtype=release
           pixi run -e engines meson compile -C build
           pixi run -e engines meson test -C build --print-errorlogs \
             lj_eval lj_engine capi_threads abi_symbols \
             lammps_lj plumed_driver plumed_debug_forces plumed_box_derivatives \
-            plumed_units plumed_api gromacs_mdrun openmm_lj \
+            plumed_units plumed_api gromacs_mdrun openmm_lj NullForceAbiTest \
+            BuiltinPluginTest openmm_session openmm_abi \
             | tee build/engine-tests.txt
           for name in lj_eval lj_engine lammps_lj plumed_driver plumed_debug_forces \
-            plumed_box_derivatives plumed_units plumed_api gromacs_mdrun openmm_lj; do
+            plumed_box_derivatives plumed_units plumed_api gromacs_mdrun openmm_lj \
+            NullForceAbiTest BuiltinPluginTest openmm_session openmm_abi; do
             if ! grep -E "${name}[[:space:]]+OK" build/engine-tests.txt >/dev/null; then
               echo "${name} did not pass" >&2
               exit 1
@@ -956,10 +1228,14 @@ jobs:
       - ci-tools
       - build_and_test
       - build_windows_meson
+      - build_mingw_wine
       - nodownload_rehearsal
       - build_fast_nlist_off
       - cxx_layout_ubsan
+      - lsan_libomp_18
+      - release_gcc13_cache
       - thread_limit
+      - openmp_off_long_range
       - test_parity
       - rust_tests
       - client_bridge_stress
@@ -995,10 +1271,14 @@ jobs:
             "ci-tools:${{ needs.ci-tools.result }}" \
             "build_and_test:${{ needs.build_and_test.result }}" \
             "build_windows_meson:${{ needs.build_windows_meson.result }}" \
+            "build_mingw_wine:${{ needs.build_mingw_wine.result }}" \
             "nodownload_rehearsal:${{ needs.nodownload_rehearsal.result }}" \
             "build_fast_nlist_off:${{ needs.build_fast_nlist_off.result }}" \
             "cxx_layout_ubsan:${{ needs.cxx_layout_ubsan.result }}" \
+            "lsan_libomp_18:${{ needs.lsan_libomp_18.result }}" \
+            "release_gcc13_cache:${{ needs.release_gcc13_cache.result }}" \
             "thread_limit:${{ needs.thread_limit.result }}" \
+            "openmp_off_long_range:${{ needs.openmp_off_long_range.result }}" \
             "test_parity:${{ needs.test_parity.result }}" \
             "rust_tests:${{ needs.rust_tests.result }}" \
             "client_bridge_stress:${{ needs.client_bridge_stress.result }}" \

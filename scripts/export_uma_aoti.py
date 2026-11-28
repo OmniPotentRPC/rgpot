@@ -60,6 +60,7 @@ import json
 import os
 import re
 import sys
+import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -1178,7 +1179,29 @@ def aoti_package(exported, path: Path, metadata=None):
             }
         }
     _honor_omp_threads()
-    fn(canonicalize_strided_slices(exported), **kwargs)
+    canonical = canonicalize_strided_slices(exported)
+    prev_cache_dir = os.environ.get("TORCHINDUCTOR_CACHE_DIR")
+    # Inductor bakes the export-time thread count into each OpenMP region,
+    # and an accumulating index_put inside one lowers to float atomic adds
+    # whose order changes from call to call. Deterministic mode lowers it
+    # to the ordered ATen kernel instead, so one input gives one output.
+    previous = torch.are_deterministic_algorithms_enabled()
+    warn_only = torch.is_deterministic_algorithms_warn_only_enabled()
+    torch.use_deterministic_algorithms(True)
+    # AotCodeCompiler hashes generated C++ source without aot_inductor.metadata
+    # and writes <stem>_metadata.json into cache_dir() before invoking the C++
+    # compiler. Isolate TORCHINDUCTOR_CACHE_DIR per package so concurrent builds
+    # of identical graphs cannot overwrite each other's metadata mid-compile.
+    with tempfile.TemporaryDirectory(prefix="rgpot-aoti-cache-") as tmp_cache_dir:
+        os.environ["TORCHINDUCTOR_CACHE_DIR"] = tmp_cache_dir
+        try:
+            fn(canonical, **kwargs)
+        finally:
+            if prev_cache_dir is None:
+                os.environ.pop("TORCHINDUCTOR_CACHE_DIR", None)
+            else:
+                os.environ["TORCHINDUCTOR_CACHE_DIR"] = prev_cache_dir
+            torch.use_deterministic_algorithms(previous, warn_only=warn_only)
     clear_pt2_execstack(path)
     return path
 

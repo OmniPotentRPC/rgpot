@@ -32,20 +32,38 @@ eV/Angstrom (=CppCore/rgpot/units.hpp=).
 
 #+attr_rgpot: signature
 #+begin_src cpp
-explicit Error(const std::string &msg);
+explicit Error(const std::string &msg,
+               rgpot_status_t status = RGPOT_INTERNAL_ERROR);
 #+end_src
 
-- Inputs :: =msg=, the text that =what()= returns.
+- Inputs :: =msg=, the text that =what()= returns, and =status=, the code the C
+  API returned (default =RGPOT_INTERNAL_ERROR=).
 - Units :: none.
 - Outputs :: an exception derived from =std::runtime_error=.
 - Errors :: none; the constructor has no failure path.
+
+*** =rgpot::Error::status=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] rgpot_status_t status() const noexcept;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the status the C API returned, so a caller tells
+  =RGPOT_SCC_NOT_CONVERGED= from other failures.
+  An =Error= built without a status holds =RGPOT_INTERNAL_ERROR=.
+- Errors :: none.
 
 The wrappers build =msg= from a category prefix and the =rgpot_last_error()=
 text, or "unknown error" when that pointer is NULL.
 The prefixes are "invalid parameter: " for =RGPOT_INVALID_PARAMETER=, "RPC
 error: " for =RGPOT_RPC_ERROR=, "buffer size error: " for
-=RGPOT_BUFFER_SIZE_ERROR=, and "internal error: " for =RGPOT_INTERNAL_ERROR= and
-any other code.
+=RGPOT_BUFFER_SIZE_ERROR=, "SCC not converged: " for =RGPOT_SCC_NOT_CONVERGED=,
+"no Taylor jet: " for =RGPOT_NO_JET=, "Taylor jet branch: " for
+=RGPOT_JET_BRANCH=, "Taylor jet domain: " for =RGPOT_JET_DOMAIN=, and "internal
+error: " for =RGPOT_INTERNAL_ERROR= and any other code.
 Every category throws the same type, =rgpot::Error=.
 
 ** include/rgpot/types.hpp
@@ -230,15 +248,20 @@ static PotentialHandle from_impl(Impl &impl, size_t n_atoms,
 - Units :: positions, cell and bounds in the length unit of =impl=.
 - Outputs :: a handle whose callback calls =impl.forceImpl= and returns the
   forces as a new owning =[n, 3]= tensor.
-  When =Impl= has =hessianVectorImpl=, it is registered as the analytic
-  Hessian-vector product.
-- Errors :: none thrown by the factory.
+  Each derivative hook of =impl= is registered when this instance sets its
+  =caps()= bit: =hessianVectorImpl= as the analytic Hessian-vector product
+  (=analyticHvp=), =hessianVectorAdImpl= as the dual-number one (=adHvp=),
+  =hessianImpl= as the analytic Hessian (=analyticHessian=) and =hessianAdImpl=
+  as the dual-number one (=adHessian=).
+- Errors :: throws =std::invalid_argument= when a =caps()= bit is set and =Impl=
+  lacks the matching hook; nothing else is thrown by the factory.
   When =n_atoms * 3= overflows, the second overload returns a handle holding
   NULL, and later calls on it throw =rgpot::Error= ("invalid parameter").
   At calculation time an exception from =impl.forceImpl= becomes
-  =RGPOT_INTERNAL_ERROR=, and missing positions become
-  =RGPOT_INVALID_PARAMETER=; the calling method throws =rgpot::Error=.
-  The exception's own message is dropped.
+  =RGPOT_INTERNAL_ERROR=, or
+  =RGPOT_SCC_NOT_CONVERGED= for =rgpot::SccNotConverged=, and missing positions become =RGPOT_INVALID_PARAMETER=;
+  the calling method throws =rgpot::Error=.
+  The exception's =what()= text is stored with =rgpot_set_last_error=.
 
 The trampoline copies energy, variance and forces from =ForceOut=; it does not
 pass stress through.
@@ -260,6 +283,32 @@ static PotentialHandle from_callback(rgpot_status_t (*callback)(void *, const rg
   A non-success status from =callback= is thrown as =rgpot::Error= by the method
   that called it.
 
+*** =rgpot::PotentialHandle::eam_table=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+static PotentialHandle eam_table(const std::string &path, int format = RGPOT_EAM_TABLE_AUTO,
+                                 bool periodic = true);
+#+end_src
+
+- Inputs :: =path=, a funcfl, setfl or Finnis-Sinclair table; =format=, one of
+  =RGPOT_EAM_TABLE_AUTO=, =RGPOT_EAM_TABLE_FUNCFL=,
+  =RGPOT_EAM_TABLE_SETFL= and =RGPOT_EAM_TABLE_FINNIS_SINCLAIR=; =periodic=,
+  nearest image on the cell or a free cluster.
+- Units :: positions and cell in Angstrom, energy in eV, forces in eV per
+  Angstrom.
+- Outputs :: a handle from =rgpot_potential_new_eam_table=: the tabulated EAM
+  potential of the Rust core, evaluated in process with no C++ kernel and no
+  engine plugin.
+  The handle needs a build with =with_rust_core=.
+  See [[file:c_abi.org][C ABI of rgpot-core]] for what it evaluates.
+- Errors :: throws =rgpot::Error= with status =RGPOT_INVALID_PARAMETER= and a
+  message starting =invalid parameter: EAM table:= when the core returns NULL:
+  an empty =path=, an unknown =format=, a file that cannot be opened or is not a
+  table of that format.
+  A calculation on a cell whose face spacing is not above twice the cutoff
+  throws the same status from =calculate=.
+
 *** =rgpot::PotentialHandle::calculate=
 
 #+attr_rgpot: signature
@@ -279,32 +328,70 @@ CalcResult calculate(const InputSpec &input);
 
 #+attr_rgpot: signature
 #+begin_src cpp
-void hvp(const InputSpec &input, const double *direction, double *hv_out,
-         double step = 0.0, rgpot_hvp_scheme_t scheme = RGPOT_HVP_AUTO) const;
+rgpot_hvp_scheme_t hvp(const InputSpec &input, const double *direction,
+                       double *hv_out, double step = 0.0,
+                       rgpot_hvp_scheme_t scheme = RGPOT_HVP_AUTO) const;
 std::vector<double> hvp(const InputSpec &input,
                         const std::vector<double> &direction,
                         double step = 0.0,
-                        rgpot_hvp_scheme_t scheme = RGPOT_HVP_AUTO) const;
+                        rgpot_hvp_scheme_t scheme = RGPOT_HVP_AUTO,
+                        rgpot_hvp_scheme_t *scheme_used = nullptr) const;
 #+end_src
 
 - Inputs :: =input=, the geometry; =direction=,
   3*n doubles laid out like the positions; =hv_out=, room for 3*n doubles that
   must not overlap =direction=; =step=, the displacement length, where 0 selects
-  =RGPOT_HVP_DEFAULT_STEP=; =scheme=, one of =RGPOT_HVP_AUTO=, =RGPOT_HVP_FORWARD=, =RGPOT_HVP_CENTRAL=, =RGPOT_HVP_ANALYTIC=.
+  =RGPOT_HVP_DEFAULT_STEP=; =scheme=, one of =RGPOT_HVP_AUTO=, =RGPOT_HVP_FORWARD=, =RGPOT_HVP_CENTRAL=, =RGPOT_HVP_ANALYTIC=, =RGPOT_HVP_AD=, =RGPOT_HVP_EXACT=; =scheme_used=,
+  =nullptr= or writable.
 - Units :: =step= in the length unit of the positions; the product is the
   Hessian (energy per length squared, eV/Angstrom^2 for the built-in potentials)
   times =direction=.
 - Outputs :: the Hessian-vector product, 3*n doubles: written to =hv_out=, or
   returned as a new vector by the second overload.
-- Errors :: throws =rgpot::Error= when =rgpot_potential_hvp= returns a
-  non-success status: NULL pointers, an unknown scheme, a negative or non-finite
-  step, a non-finite direction value, overlapping buffers, or
-  =RGPOT_HVP_ANALYTIC= with no analytic callback give "invalid parameter"; a
-  failing force callback gives the category of its status.
+  The scheme that computed it, from
+  =rgpot_potential_hvp_resolved=, is returned by the first overload and written to a non-null =scheme_used=
+  by the second: =RGPOT_HVP_AUTO= reports =RGPOT_HVP_ANALYTIC= or
+  =RGPOT_HVP_FORWARD=, and =RGPOT_HVP_EXACT= reports =RGPOT_HVP_ANALYTIC= or
+  =RGPOT_HVP_AD=.
+- Errors :: throws =rgpot::Error= when
+  =rgpot_potential_hvp_resolved= returns a non-success status: NULL pointers, an unknown scheme, a negative or non-finite step, a non-finite direction value, overlapping buffers, =RGPOT_HVP_ANALYTIC= with no analytic callback, =RGPOT_HVP_AD= with no dual-number callback, or =RGPOT_HVP_EXACT=
+  with neither give "invalid parameter"; a failing force callback gives the
+  category of its status.
   The vector overload throws =rgpot::Error= ("invalid parameter: direction must
   hold 3 * n_atoms values") when =direction.size()= is not 3*n.
 
 With =RGPOT_HVP_FORWARD=, k products at one geometry make k+1 force calls.
+
+*** =rgpot::PotentialHandle::hessian=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+rgpot_hessian_scheme_t hessian(const InputSpec &input, double *hessian_out,
+                               rgpot_hessian_scheme_t scheme,
+                               double step = 0.0) const;
+std::vector<double> hessian(const InputSpec &input,
+                            rgpot_hessian_scheme_t scheme, double step = 0.0,
+                            rgpot_hessian_scheme_t *scheme_used = nullptr) const;
+#+end_src
+
+- Inputs :: =input=, the geometry;
+  =hessian_out=, room for (3*n)^2 doubles; =scheme=, one of =RGPOT_HESSIAN_ANALYTIC=, =RGPOT_HESSIAN_AD=, =RGPOT_HESSIAN_EXACT= and =RGPOT_HESSIAN_CENTRAL=, with no default; =step=, the central displacement, where 0 selects =RGPOT_HVP_DEFAULT_STEP=;
+  =scheme_used=, =nullptr= or writable.
+- Units :: =step= in the length unit of the positions; the Hessian in energy per
+  length squared, eV/Angstrom^2 for the built-in potentials.
+- Outputs :: the dense Hessian, row-major with coordinate 3i+k for axis k of
+  atom i: written to =hessian_out=, or returned as a new vector by the second
+  overload.
+  The scheme that computed it is returned by the first overload and written to a
+  non-null
+  =scheme_used= by the second; =RGPOT_HESSIAN_EXACT= reports =RGPOT_HESSIAN_ANALYTIC= or =RGPOT_HESSIAN_AD=.
+  =RGPOT_HESSIAN_CENTRAL= makes 6n force calls and writes a symmetric matrix.
+- Errors :: throws =rgpot::Error= when =rgpot_potential_hessian= returns a
+  non-success status: an unknown scheme, a negative or non-finite step,
+  =RGPOT_HESSIAN_ANALYTIC= with no Hessian callback, =RGPOT_HESSIAN_AD= with no
+  dual-number Hessian callback, or =RGPOT_HESSIAN_EXACT= with neither give
+  "invalid parameter" before any call; a failing force or Hessian callback gives
+  the category of its status.
 
 *** =rgpot::PotentialHandle::hvp_centre=
 
@@ -332,6 +419,75 @@ void set_hvp_callback(HessianVectorCallback callback) const;
   handle's =user_data=, or =nullptr= to clear it.
 - Units :: those of the wrapped potential.
 - Outputs :: none.
+- Errors :: throws =rgpot::Error= ("invalid parameter") when the handle is NULL.
+
+*** =rgpot::PotentialHandle::set_ad_hvp_callback=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+void set_ad_hvp_callback(HessianVectorCallback callback) const;
+#+end_src
+
+- Inputs :: =callback=, a dual-number Hessian-vector product called with the
+  handle's =user_data=, or =nullptr= to clear it.
+- Units :: those of the wrapped potential.
+- Outputs :: none; =RGPOT_HVP_AD= calls it, and =RGPOT_HVP_EXACT= when no
+  analytic product is registered.
+- Errors :: throws =rgpot::Error= ("invalid parameter") when the handle is NULL.
+
+*** =rgpot::PotentialHandle::set_hessian_callback=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+void set_hessian_callback(HessianCallback callback) const;
+#+end_src
+
+- Inputs :: =callback=, an analytic dense Hessian called with the handle's
+  =user_data=, or =nullptr= to clear it.
+- Units :: those of the wrapped potential.
+- Outputs :: none; =RGPOT_HESSIAN_ANALYTIC= and =RGPOT_HESSIAN_EXACT= call it.
+- Errors :: throws =rgpot::Error= ("invalid parameter") when the handle is NULL.
+
+*** =rgpot::PotentialHandle::set_ad_hessian_callback=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+void set_ad_hessian_callback(HessianCallback callback) const;
+#+end_src
+
+- Inputs :: =callback=, a dual-number dense Hessian called with the handle's
+  =user_data=, or =nullptr= to clear it.
+- Units :: those of the wrapped potential.
+- Outputs :: none; =RGPOT_HESSIAN_AD= calls it, and =RGPOT_HESSIAN_EXACT= when
+  no analytic Hessian is registered.
+- Errors :: throws =rgpot::Error= ("invalid parameter") when the handle is NULL.
+
+*** =rgpot::PotentialHandle::derivative_caps=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+rgpot_derivative_caps_t derivative_caps() const;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: an
+  =rgpot_derivative_caps_t= from =rgpot_potential_derivative_caps=: which
+  analytic, dual-number and finite-difference schemes the handle has for
+  products and Hessians, and the force calls of the differenced ones.
+- Errors :: throws =rgpot::Error= ("invalid parameter") when the handle is NULL.
+
+*** =rgpot::PotentialHandle::derivative_counts=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+rgpot_derivative_counts_t derivative_counts() const;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: an
+  =rgpot_derivative_counts_t= with the products and Hessians each scheme answered, and the force calls of central Hessians, since creation or the last =reset_hvp_counts=.
 - Errors :: throws =rgpot::Error= ("invalid parameter") when the handle is NULL.
 
 *** =rgpot::PotentialHandle::invalidate_hvp=
@@ -371,8 +527,69 @@ void reset_hvp_counts() const;
 
 - Inputs :: none.
 - Units :: none.
-- Outputs :: none; zeroes the counters and keeps the cached centre.
+- Outputs :: none; zeroes the counters, those of =derivative_counts= included,
+  and keeps the cached centre.
 - Errors :: none; a NULL handle is a no-op.
+
+*** =rgpot::PotentialHandle::set_fused_settings=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+void set_fused_settings(const FusedSettingsSpec &spec) const;
+#+end_src
+
+- Inputs :: =spec=, the settings of the engine that change its answer at a fixed
+  geometry.
+- Units :: =charge= in elementary charges, =electronicTemperature= in kelvin.
+- Outputs :: none; the settings key the fused cache of the handle (see the C ABI
+  reference).
+  A request under other settings runs the engine even at positions whose
+  outcome, a failure included, is stored.
+  A failed energy is not retried at the same bits, so a warm-start retry after a
+  failure needs a changed setting.
+- Errors :: throws =rgpot::Error= when the core refuses the settings.
+
+*** =rgpot::PotentialHandle::sync_fused_settings=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+template <ProvidesFusedSettings Impl>
+void sync_fused_settings(const Impl &impl) const;
+#+end_src
+
+- Inputs :: =impl=, an object whose =fusedSettings()= returns a
+  =FusedSettingsSpec=.
+- Units :: as =set_fused_settings=.
+- Outputs :: none; installs =impl.fusedSettings()=.
+  =from_impl= does this once for an =Impl= that has =fusedSettings()= (=XTBPot=
+  and =XTBDlopen= do).
+  After a setter of the potential, such as =XTBPot::setMaxIterations=, call it:
+  the changed setting is a new key.
+  Without the call the handle keeps returning the stored failure.
+- Errors :: throws =rgpot::Error= when the core refuses the settings.
+
+*** =rgpot::PotentialHandle::fused_error_kind=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+[[nodiscard]] rgpot_fused_error_kind_t fused_error_kind() const;
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the kind of the failure the fused cache stores,
+  =RGPOT_FUSED_SCC_NOT_CONVERGED=,
+  =RGPOT_FUSED_ENGINE_FAILED= or =RGPOT_FUSED_INVALID_RESULT=, or
+  =RGPOT_FUSED_OK= when it stores none.
+- Errors :: none.
+
+An =Impl= whose =forceImpl= throws =rgpot::SccNotConverged= has the failure
+typed: the trampoline stores the message with
+=rgpot_set_last_error= and returns =RGPOT_SCC_NOT_CONVERGED=.
+Another =std::exception= returns =RGPOT_INTERNAL_ERROR= with its =what()=.
+=rgpot::HessianVectorCache= is the same cache for potentials used without the
+Rust core: it stores the exception a force call threw and throws it again, the
+same type and message, for the same bits and settings.
 
 *** =rgpot::PotentialHandle::raw=
 
@@ -421,6 +638,19 @@ CalcResult calculate(const InputSpec &input);
 - Errors :: throws =rgpot::Error= when =rgpot_rpc_calculate= returns a
   non-success status, for example "RPC error" on a transport or server failure.
 
+*** =rgpot::RpcClient::select_orbitals=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+void select_orbitals(std::int64_t key);
+#+end_src
+
+- Inputs :: =key=, a signed image or bead identifier.
+- Units :: none.
+- Outputs :: none; following =calculate= calls carry the key.
+- Errors :: throws =rgpot::Error= when =rgpot_rpc_client_select_orbitals=
+  returns a non-success status.
+
 ** CppCore/rgpot/Potential.hpp: rgpot::PotentialBase
 
 *** =rgpot::PotentialBase=
@@ -447,9 +677,70 @@ explicit PotentialBase(PotType inp_type);
 - Inputs :: none.
 - Units :: none.
 - Outputs :: a =PotCaps= with the reentrancy, per-image, batched, periodic,
-  group-collective and stress flags; the default is a value-initialised
-  =PotCaps= (=SharedInstance=, periodic, nothing else set).
+  group-collective, stress, analytic-HVP, analytic-Hessian, dual-number Hessian
+  and dual-number HVP flags; the default is a value-initialised =PotCaps=
+  (=SharedInstance=, periodic, nothing else set).
 - Errors :: none; the method is =noexcept=.
+
+*** =rgpot::PotentialBase::hessianVectorImpl=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+virtual void hessianVectorImpl(const ForceInput &, const double *,
+                               double *) const;
+#+end_src
+
+- Inputs :: =in= and =direction=, with =3 * in.nAtoms= Cartesian entries.
+- Units :: the energy Hessian times a direction, so eV/Angstrom when the
+  coordinates and direction are in Angstrom.
+- Outputs :: =product= receives =H direction=.
+- Errors :: the base throws =std::runtime_error=.
+  Potentials whose =caps().analyticHvp= is true override this method.
+
+*** =rgpot::PotentialBase::hessianImpl=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+virtual void hessianImpl(const ForceInput &, double *) const;
+#+end_src
+
+- Inputs :: =in=, a geometry of =in.nAtoms= atoms.
+- Units :: the energy Hessian, eV/Angstrom^2 when the coordinates are in
+  Angstrom.
+- Outputs :: =hessian= receives the dense =3 * in.nAtoms= by =3 * in.nAtoms=
+  matrix, row-major, with coordinate =3 * i + k= for axis =k= of atom =i=.
+  It is written symmetric.
+- Errors :: the base throws =std::runtime_error=.
+  Potentials whose =caps().analyticHessian= is true override this method.
+
+*** =rgpot::PotentialBase::hessianAdImpl=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+virtual void hessianAdImpl(const ForceInput &, double *) const;
+#+end_src
+
+- Inputs :: as for =hessianImpl=.
+- Units :: as for =hessianImpl=.
+- Outputs :: the dense Hessian of =hessianImpl=, computed by evaluating the
+  energy kernel on dual numbers instead of from closed-form derivatives.
+- Errors :: the base throws =std::runtime_error=.
+  Potentials whose =caps().adHessian= is true override this method.
+
+*** =rgpot::PotentialBase::hessianVectorAdImpl=
+
+#+attr_rgpot: signature
+#+begin_src cpp
+virtual void hessianVectorAdImpl(const ForceInput &, const double *,
+                                 double *) const;
+#+end_src
+
+- Inputs :: as for =hessianVectorImpl=.
+- Units :: as for =hessianVectorImpl=.
+- Outputs :: =product= receives =H direction=, computed by evaluating the energy
+  kernel on dual numbers.
+- Errors :: the base throws =std::runtime_error=.
+  Potentials whose =caps().adHvp= is true override this method.
 
 *** =rgpot::PotentialBase::forceBatch=
 
@@ -547,9 +838,23 @@ virtual void forceBatchImpl(const ForceBatch &batch) const;
 - Inputs :: =batch=, =batch.nSystems= systems with parallel arrays =batch.in=
   and =batch.out=.
 - Units :: as =forceImpl=.
-- Outputs :: fills =batch.out[i]= from =batch.in[i]= for every i; the default
-  calls =forceImpl= once per system.
-- Errors :: the default propagates any exception from =forceImpl=.
+- Outputs :: fills =batch.out[i]= from =batch.in[i]= for every i.
+  The default calls =forceImpl= once per system.
+  A potential whose =caps().reentrancy= is =Reentrancy::SharedInstance=, and
+  whose caps do not set =perImageInstances= or =groupCollective=, spreads those
+  systems across the threads =OMP_NUM_THREADS= requests when =teamSize= would
+  leave every system on one thread.
+  The counts are the potential's =kTeamMinAtoms= and =kTeamFrom=, or
+  =rgpot::kTeamMinAtoms= when it publishes neither, and a call already inside a
+  team does not spread.
+  One requested thread, one system, or any system that would open a team keeps
+  the serial loop, so that system can take the team itself.
+  Each system is evaluated whole, and the bits match that loop.
+  Any other potential keeps the serial loop, so per-instance scratch is not
+  shared.
+- Errors :: the default propagates an exception from =forceImpl=.
+  When several slices run, the exception from the lowest numbered slice is the
+  one rethrown, after the team joins.
 
 An override must treat the systems as independent and set =caps().batched=.
 
@@ -567,6 +872,7 @@ void forceBatch(const ForceBatch &batch) override;
   Every slot is zeroed first.
   With =RGPOT_HAS_CACHE= and a cache set, hits are served from the cache and
   only the misses reach =forceBatchImpl=.
+  The lookup and the miss batch are built on the calling thread.
 - Errors :: propagates any exception from =forceBatchImpl=; the slots stay
   zeroed or partly written.
 
@@ -665,7 +971,9 @@ The systems are independent: each has its own atom count, cell and species.
   =TersoffSi=, =EAMAl=, =FeHe=, =WaterH=, =D3=, =D4=, =Expr=, =Uma=, =Skala=,
   =MOPAC=, =EMT=, =EAMCell=, =TIP4P=, =SPCE=, =TIP4PPt=, =IPI=, =SuttonChen=,
   =SWSi1985=, =EAMTable=, =Lammps=, =Gromacs=, =OpenMM=, =CP2K=, =LrCoulomb=,
-  =LrDispersion=, =LrNlh=, =LrSum=, numbered in that order.
+  =LrDispersion=, =LrNlh=, =LrSum=, =Eckart=, =MullerBrown=,
+  =ModifiedMullerBrown=, =LepsHH2=, =LepsHCl2=, =LepsFH2=, =DoubleWell=,
+  =CoupledProtonWell=, =CBE=, =D2=, =D2Cpmd=, numbered in that order.
 - Errors :: none.
 
 Every enumerator is declared in every build; whether the potential behind it is

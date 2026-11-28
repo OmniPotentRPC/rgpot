@@ -25,12 +25,14 @@ branch_whitelist = ["main", "master", "release/**"]
 # One release version: potctl writes Cargo.toml [workspace.package], cogapp
 # regenerates every copy in ci/version/files.txt, and cargo rewrites Cargo.lock.
 # potctl is built via `cargo build -p potctl` (workspace root); use release binary when present.
+# towncrier runs before release-cog because the citation files take their
+# date-released from the CHANGELOG.md heading it writes.
 pre_bump_hooks = [
     "cargo run -q -p potctl --bin potctl -- release sync {{version}}",
-    "pixi r -e version release-cog",
-    "cargo update --workspace --offline",
     # Curated notes from docs/newsfragments/ into CHANGELOG.md (Keep a Changelog).
     "uvx towncrier build --yes --version {{version}}",
+    "pixi r -e version release-cog",
+    "cargo update --workspace --offline",
     # Fail the bump if surfaces diverged or CHANGELOG section is missing.
     "cargo run -q -p potctl --bin potctl -- release assert --require-changelog {{version}}",
 ]
@@ -66,6 +68,7 @@ doc  = { changelog_title = "Documentation" }
 tst  = { changelog_title = "Tests" }
 bld  = { changelog_title = "Buildsystem" }
 gen  = { changelog_title = "Generated" }
+dev  = { changelog_title = "Developer" }
 # Cosmo potctl spike commit on feat/direct-metatomic-export (before promotion to feat/ci).
 experiment = { changelog_title = "Experiments" }
 # Subjects already in the history this release carries.

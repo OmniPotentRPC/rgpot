@@ -116,8 +116,11 @@ program test_fehe
    call fehe_energy_forces(positions, atomic_numbers, cell, par, table, &
                            energy, forces, status, errmsg)
    call require(status /= 0, "unsupported atomic number was accepted", failed)
-   call require(len(errmsg) > 0, "unsupported atomic number carries no "// &
-                "message", failed)
+   call require(len(errmsg) > 0, "unsupported atomic number carries no message", failed)
+
+   call table%release()
+   deallocate (positions, forces, analytic, moved, atomic_numbers)
+   if (allocated(errmsg)) deallocate (errmsg)
 
    if (failed) then
       error stop "test_fehe: failures above"

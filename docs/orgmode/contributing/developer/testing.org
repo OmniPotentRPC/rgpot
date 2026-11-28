@@ -13,6 +13,13 @@ meson compile -C bbdir
 meson test -C bbdir --print-errorlogs
 #+end_src
 
+The =pixi= environments supply all build and test tools.
+In a manual toolchain outside =pixi=, the top-level Meson configure tests need
+=ninja=, =pkg-config=, =cmake=, the Python =venv= module, and a Fortran compiler
+(=gfortran= or =flang=) for =fortran_sw_module_order=.
+=eigen_subproject_fallback= also needs network access or a populated
+=subprojects/packagecache= from =meson subprojects download eigen=.
+
 =cmake= works as well.
 CMake's =RGPOT_WITH_CACHE= defaults to =ON= and needs RocksDB, unlike Meson's
 =with_cache=false=, so the command below turns it off.
@@ -105,6 +112,14 @@ slice.
 =forEachSlice= and =forEachSlicePhase= run each slice once on the threads that
 start, several to a thread on a short team, and the caller adds the buffers in
 slice order, so the slice count fixes the bits and the team only the speed.
+A potential takes its slice count from =teamSize(n, from, team)=, which is one
+below the atoms the =kTeamFrom= of its class asks of the thread count.
+The one-argument =teamSize(std::size_t)= overload is deprecated and remains
+exported as a compatibility wrapper forwarding to
+=teamSize(n, rgpot::kTeamMinAtoms, {})=.
+From =kTeamMinAtoms=, the least of those counts, it adds its sums atom by atom
+in index order on any thread count, so neither the slice count nor the team
+changes its bits.
 Ranks that wait for each other use =onFullTeam=, which runs them only when each
 has its own thread; otherwise it returns false and the caller does the same work
 through =forEachSlice=.
@@ -113,9 +128,15 @@ The test suite fails when an OpenMP pragma, a runtime call, the OpenMP header or
 the OpenMP macro appears anywhere else in the library sources.
 That check is =CppCore/tests/test_openmp_confined.py=.
 
-=ThreadTeamTest= requires the bits of the full team from the threaded potentials
-and neighbour tables under =rgpot::TeamCap= short teams, dynamic teams and
-nested regions.
+=ThreadTeamTest= requires the one-thread bits from every threaded potential at
+1, 2, 3 and 8 threads and under =rgpot::TeamCap= short teams, dynamic teams and
+nested regions, one atom below and at each atom count in each potential's
+=kTeamFrom=, and on a system above =rgpot::kTeamMinAtoms= atoms, whose neighbour
+build opens a team too.
+Through =rgpot::teamsOpened= it checks that a call opens a region in the
+potential's own sums exactly when it has at least the atoms =kTeamFrom= asks of
+its thread count.
+Neighbour tables must keep the bits of the full team under the same teams.
 The test suite runs it again under =OMP_THREAD_LIMIT=1= and
 =OMP_THREAD_LIMIT=2=, and the =thread_limit= CI job runs the whole suite at both
 limits:
@@ -126,11 +147,48 @@ OMP_THREAD_LIMIT=1 meson test -C bbdir --print-errorlogs
 OMP_THREAD_LIMIT=2 meson test -C bbdir --print-errorlogs
 #+end_src
 
+=BatchSpreadTest= requires the one-thread bits from a batch of 16 configurations
+of 4 atoms, for =StillingerWeberSi=, =TersoffSiC= and =LJPot=, at 1, 2 and 4
+threads.
+The two and four thread calls each open one team.
+A batch that contains =rgpot::kTeamMinAtoms= atoms opens none.
+Systems between a class floor and =rgpot::kTeamMinAtoms=, for =LJPot= and
+=StillingerWeberSi=, match serial single evaluations in energy and force bits at
+4 threads with =OMP_MAX_ACTIVE_LEVELS= of 1 and of 2.
+The batch opens one region per system, the same count as those evaluations, so a
+spread worker does not walk each pair from both atoms.
+
+=TersoffZblBuildTest= requires those bits from Tersoff and ZBL at 1, 2, 4 and 8
+threads, below and above =rgpot::kTeamMinAtoms=, on a fresh list, a Verlet reuse
+and a rebuild.
+
+Under ThreadSanitizer, neither an uninstrumented =libgomp= nor a stock =libomp=
+annotates OpenMP barriers, so both report false races across sequential regions;
+an Archer-enabled =libomp= built with ThreadSanitizer support is needed instead
+of adding suppressions.
+Under AddressSanitizer and LeakSanitizer, =libomp= retains a known 128-byte
+process-lifetime allocation in =___kmp_allocate_align=.
+The OpenMP test binaries compile the suppression from
+=CppCore/tests/lsan_libomp.hpp=, so only that runtime allocation is suppressed
+and leak checks remain active for library and test code.
+The suppression matches function names, so the frames must be symbolized.
+Under pixi, Ubuntu's =llvm-symbolizer= can fail to start against the pixi
+library path, which leaves libomp frames as bare =libomp.so= offsets and the 128
+bytes unsuppressed.
+Set =ASAN_SYMBOLIZER_PATH= to =tools/lsan/llvm-symbolizer=, which runs the
+system symbolizer with =LD_LIBRARY_PATH= cleared.
+=tools/check_lsan_libomp.sh= uses it by default, leaks 137 bytes from =main= and
+53 bytes from inside an OpenMP region on purpose, and fails unless LeakSanitizer
+reports those two and no libomp allocation.
+
 ** Rust Tests
 
 =rust-test-all= enables every feature of =rgpot-core= (=schema=, =profile=,
 =rpc=, =cache=, =gen-header=).
 =gen-header= makes the build rewrite =rgpot-core/include/rgpot.h=.
+A build rewrites the header without failing, so the
+=rust_tests= job also runs =tools/check_header_drift.sh=, which fails when the
+rewrite differs from the committed header.
 
 #+attr_rgpot: syntax compiles the Rust crate
 #+begin_src bash

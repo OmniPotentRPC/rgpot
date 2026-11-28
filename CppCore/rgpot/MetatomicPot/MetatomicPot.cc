@@ -2,10 +2,12 @@
 // Copyright 2023--present rgpot developers
 
 #include "rgpot/MetatomicPot/MetatomicPot.hpp"
+#include "rgpot/MetatomicPot/ForceVariance.hpp"
 #include "rgpot/MetatomicPot/vesin_compat.hpp"
+#include "rgpot/ParamHash.hpp"
 #include "rgpot/nlist/NeighbourList.hpp"
-#include <ATen/CPUGeneratorImpl.h>
 #include "vesin.h"
+#include <ATen/CPUGeneratorImpl.h>
 
 #include <torch/csrc/jit/runtime/graph_executor.h>
 
@@ -175,8 +177,45 @@ void apply_torch_determinism_policy(TorchDeterminismPolicy policy) {
   ctx.setAllowTF32CuDNN(false);
 }
 
+namespace {
+
+// Bump when the way a model's output is produced changes without a change to
+// the settings below.
+constexpr uint64_t kMetatomicKernelVersion = 1;
+
+// Check consistency and the engine path do not change what the model returns,
+// so they stay out of the key. Everything else the model sees is in it.
+uint64_t metatomic_params_key(const MetatomicConfig &c) {
+  Fnv1a fp;
+  fp.u64(kMetatomicKernelVersion);
+  fp.str(c.model_path);
+  fp.str(c.device);
+  fp.str(c.length_unit);
+  fp.str(c.extensions_directory);
+  fp.f64(c.uncertainty_threshold);
+  fp.str(c.dtype_override);
+  fp.b8(c.random_rotation);
+  fp.i64(c.n_symmetry_rotations);
+  fp.b8(c.so3_probe_scatter);
+  fp.i64(static_cast<int64_t>(c.torch_determinism));
+  fp.str(c.task_name);
+  fp.i64(c.charge);
+  fp.i64(c.spin);
+  fp.b8(c.attach_system_extras);
+  return fp.h;
+}
+
+} // namespace
+
+void MetatomicPot::setChargeSpin(int charge, int spin) {
+  m_config.charge = charge;
+  m_config.spin = spin;
+  m_params_key.store(metatomic_params_key(m_config), std::memory_order_release);
+}
+
 MetatomicPot::MetatomicPot(const MetatomicConfig &config)
     : Potential(PotType::Metatomic), m_config(config),
+      m_params_key(metatomic_params_key(config)),
       m_model(torch::jit::Module()),
       m_device(torch::Device(c10::DeviceType::CPU)) {
 
@@ -378,7 +417,7 @@ void MetatomicPot::forceImpl(const ForceInput &in, ForceOut *out) const {
   if (n_passes > 1) {
     force_samples.reserve(static_cast<size_t>(n_passes));
   }
-  double model_uq_variance = 0.0;
+  double model_uq_mean = 0.0;
   bool have_model_uq = false;
 
   for (long i_pass = 0; i_pass < n_passes; ++i_pass) {
@@ -471,7 +510,7 @@ void MetatomicPot::forceImpl(const ForceInput &in, ForceOut *out) const {
         auto flat_uncertainty =
             uncertainty_block->values().reshape({-1}).to(torch::kCPU);
         if (flat_uncertainty.numel() > 0) {
-          model_uq_variance =
+          model_uq_mean =
               flat_uncertainty.to(torch::kFloat64).mean().item<double>();
           have_model_uq = true;
         }
@@ -517,24 +556,25 @@ void MetatomicPot::forceImpl(const ForceInput &in, ForceOut *out) const {
               in.nAtoms * 3 * sizeof(double));
 
   if (have_model_uq) {
-    // Model energy_uncertainty mean (eV); callers may use as force floor at
-    // unit length (angstrom) — that is an explicit energy->force scale choice.
-    out->variance = model_uq_variance;
+    // energy_uncertainty is an RMS-like energy scale (eV). The variance slot
+    // stores its square, so one square root recovers the reported scale.
+    out->variance = modelUncertaintyVariance(model_uq_mean);
   } else if (n_passes > 1 && !force_samples.empty()) {
-    // RMS force residual over orientations (eV/A): proper force-scale
-    // uncertainty for criterion smearing. Energy orientation scatter can be
-    // several eV on non-invariant evaluations and must not raise force tol.
+    // Mean-square force residual over orientations (eV^2/A^2). The square
+    // root is the force-scale uncertainty used for criterion smearing.
+    // Energy orientation scatter can be several eV on non-invariant
+    // evaluations and must not raise the force tolerance.
     double acc2 = 0.0;
     const double n_comp = static_cast<double>(nAtoms) * 3.0 *
                           static_cast<double>(force_samples.size());
     // Deviation reference: the output force -- the orientation-average in
     // averaging mode, the unrotated force in probe mode. Either way the
-    // RMS measures how much orientation moves the force actually used.
+    // residual measures how much orientation moves the force actually used.
     for (const auto &F_i : force_samples) {
       auto d = F_i - forces_acc;
       acc2 += d.square().sum().item<double>();
     }
-    out->variance = (n_comp > 0.0) ? std::sqrt(acc2 / n_comp) : 0.0;
+    out->variance = forceScatterVariance(acc2, n_comp);
   } else {
     out->variance = 0.0;
   }

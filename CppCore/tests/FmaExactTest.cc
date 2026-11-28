@@ -4,6 +4,7 @@
 #include <catch2/catch_all.hpp>
 
 #include "rgpot/simd/api.hpp"
+#include "rgpot/simd/exact_fma.hpp"
 #include "rgpot/simd/exp.hpp"
 
 #include <cmath>
@@ -22,10 +23,24 @@ std::uint64_t bits_of(double x) {
   return u;
 }
 
+// mingw-w64's fma is not fused (see fma_fallback), so it is no reference
+// there: the instruction is, or fma_soft on a CPU without one.
+double ref_fma(double a, double b, double c) {
+#if defined(__MINGW32__) && defined(__x86_64__)
+  static const bool hw = rgpot::simd::detail::cpuid_fma_usable();
+  if (hw) {
+    return rgpot::simd::exact_fma_hw(a, b, c);
+  }
+  return rgpot::simd::detail::fma_soft(a, b, c);
+#else
+  return std::fma(a, b, c);
+#endif
+}
+
 void check_one(double a, double b, double c, const char *where) {
   const double got = rgpot::simd::exact_fma(a, b, c);
   const double via = rgpot::simd::mul_add(a, b, c);
-  const double ref = std::fma(a, b, c);
+  const double ref = ref_fma(a, b, c);
   INFO(std::string(where) << " a=" << bits_of(a) << " b=" << bits_of(b)
                           << " c=" << bits_of(c));
   REQUIRE(bits_of(got) == bits_of(ref));
@@ -109,7 +124,7 @@ TEST_CASE("exact fma matches hardware fma", "[fma]") {
   check_one(tie_a, tie_a, tie_c, "classic-tie");
   {
     const double trunc = rgpot::simd::fma_trunc(tie_a, tie_a, tie_c);
-    const double ref = std::fma(tie_a, tie_a, tie_c);
+    const double ref = ref_fma(tie_a, tie_a, tie_c);
     REQUIRE(bits_of(rgpot::simd::fma_quick(tie_a, tie_a, tie_c)) == bits_of(ref));
     REQUIRE(bits_of(trunc) != bits_of(ref));
   }
@@ -126,9 +141,30 @@ TEST_CASE("exact fma matches hardware fma", "[fma]") {
         std::numeric_limits<double>::quiet_NaN(),
         700.0, -800.0, 0x1p-40, -0x1p-40, 20.0, -20.0,
     };
-    auto check_exp = [](double x) {
+    // The Hw body must run under target("fma"); called from here its
+    // __builtin_fma becomes a libm call, and mingw-w64's fma is not fused.
+    bool hw_only = false;
+    bool compare = true;
+#if defined(__x86_64__) && defined(__GNUC__) && !defined(__FMA__)
+    hw_only = rgpot::simd::detail::cpuid_fma_usable();
+#if defined(__MINGW32__)
+    if (!hw_only) {
+      WARN("no hardware FMA: the exp Hw body is unreachable, not compared");
+      compare = false;
+    }
+#endif
+#endif
+    auto check_exp = [hw_only, compare](double x) {
+      if (!compare) {
+        return;
+      }
       const double soft = rgpot::simd::exp_fast<false>(x);
-      const double hard = rgpot::simd::exp_fast<true>(x);
+      double hard = 0.0;
+      if (hw_only) {
+        rgpot::simd::exp_hw_n(&x, &hard, 1);
+      } else {
+        hard = rgpot::simd::exp_fast<true>(x);
+      }
       INFO(bits_of(x));
       REQUIRE(bits_of(soft) == bits_of(hard));
     };
@@ -156,7 +192,7 @@ TEST_CASE("exact fma matches hardware fma", "[fma]") {
     for (std::size_t n : widths) {
       rgpot::simd::fma_array(as.data(), bs.data(), cs.data(), out.data(), n);
       for (std::size_t i = 0; i < n; ++i) {
-        const double ref = std::fma(as[i], bs[i], cs[i]);
+        const double ref = ref_fma(as[i], bs[i], cs[i]);
         INFO(name << " n=" << n << " i=" << i);
         REQUIRE(bits_of(out[i]) == bits_of(ref));
       }

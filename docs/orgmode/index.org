@@ -79,21 +79,34 @@ meson compile -C bbdir && meson test -C bbdir
 
    howto/pip-python
    howto/ase
+   howto/lammps-fix-external
    howto/engine-lammps
    howto/engine-gromacs
    howto/engine-gromacs-qmmm
    howto/engine-openmm
+   howto/engine-nblib
    howto/engine-plumed
    howto/engine-metatomic
    howto/uma-export
    howto/embedding
    howto/exprpot
+   howto/dft-plus-dispersion
    howto/ipi
+   howto/orca
    howto/integration
    howto/add-potential
    howto/engine-plugins
+   howto/potlibc-engine
+   howto/coupled-well-engine
    howto/eindir-anneal
    howto/eon-rgpot
+   howto/potentials-pair
+   howto/potentials-metals
+   howto/potentials-silicon
+   howto/potentials-water
+   howto/potentials-model
+   howto/potentials-quantum
+   howto/potentials-composite
    howto/sutton-chen-stress
    howto/cpu-scaling
 
@@ -109,10 +122,13 @@ meson compile -C bbdir && meson test -C bbdir
 
    reference/architecture
    reference/python_api
+   reference/lammps_fix_external
    reference/cpp_api
    reference/cpp_potentials
    reference/cpp_backends
+   reference/cpp_support
    reference/ipi_driver
+   reference/cli
    reference/build_options
    reference/potential_config
    reference/sw_si
@@ -122,12 +138,16 @@ meson compile -C bbdir && meson test -C bbdir
    reference/nlist_abi
    reference/fast_nlist
    reference/engine_abi
+   reference/quantum_abi
+   reference/capnp_schema
    reference/gromacs_dropin
    reference/plugin_abi
    reference/external_abi
    reference/simd_exp
    reference/sutton_chen
+   reference/gupta
    reference/eam_table
+   reference/meam
    reference/fortran_potentials
    reference/potential_names
    api/index
@@ -139,6 +159,18 @@ meson compile -C bbdir && meson test -C bbdir
 
    contributing/index
    code_of_conduct
+
+.. toctree::
+   :maxdepth: 1
+   :caption: Notes
+
+   notes/xckernel
+   notes/xtb_backends
+   notes/neighbour_layer
+   notes/eam_cell
+   notes/eon_nlist
+   notes/eon_pkgconfig
+   notes/neighbour_api_design
 #+end_export
 
 * License

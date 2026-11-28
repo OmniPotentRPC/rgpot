@@ -20,13 +20,24 @@ The =rgpot.has_*= entries below name the flag for each one.
 | =rgpot.ase.AnnealRunner= | Portfolio relaxation, not an ASE optimizer |
 | =rgpot.ase.AnnealOptimizer= | Deprecated alias of =AnnealRunner=   |
 | =rgpot.ase.available_kinds()= | Kind strings =RgpotCalculator= accepts in this build |
+| =rgpot.lammps.FixExternal= | LAMMPS =fix external= frontend |
+
+Importing =rgpot.ase= registers =RgpotCalculator= as ="rgpot"= and
+=RgpotRpcCalculator= as ="rgpot_rpc"= in ASE's calculator registry.
+Thus =ase.calculators.calculator.get_calculator_class("rgpot")= and the
+=rgpot_rpc= lookup return those classes.
+Installed wheels also expose =rgpot.ase= through the =ase.plugins= entry-point
+group.
+On ASE 3.29 its lazy =__ase_plugins__= set contains a =CalculatorPlugin= for
+each class; earlier ASE releases keep the set empty.
 
 =RgpotCalculator.calculate_many(frames)= returns one dict per frame.
 =threads= selects the worker count; 0 uses the hardware concurrency.
 Results for energy and forces match one call per frame, bit for bit.
 The worker count is not part of the result.
 
-See the [[file:../howto/ase.org][ASE how-to]] and the
+See the [[file:../howto/ase.org][ASE how-to]], the
+[[file:../howto/lammps-fix-external.org][LAMMPS how-to]], and the
 [[file:../explanation/thread-safety.org][thread-safety]] page.
 
 ** Conventions
@@ -64,8 +75,8 @@ The checks run in this order and raise these exceptions:
   =std::invalid_argument= raises =ValueError=; a kernel that fails with =std::runtime_error=
   raises =RuntimeError=.
   The message is the kernel's own text.
-- A non-finite energy raises =rgpot.NumericalError=, except where an entry says
-  otherwise.
+- A non-finite energy or a kernel =std::domain_error= raises
+  =rgpot.NumericalError=, except where an entry says otherwise.
 
 #+attr_rgpot: run
 #+begin_src python
@@ -117,7 +128,7 @@ except rgpot.NumericalError as err:
 TypeError
 positions: expected shape (N, 3), got (2, 2)
 atom_types: expected shape (2,), got (1,)
-energy is not finite
+LJPot force is undefined for coincident atoms
 #+end_example
 
 ** Module attributes
@@ -155,6 +166,15 @@ energy is not finite
   =rgpot.D4Pot= is a class and =ExprPot= accepts the ="d4"= kind.
 - Errors :: none.
 
+*** =rgpot.has_eam_table=
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: =True= when the extension was compiled with =RGPOT_HAS_EAM_TABLE=,
+  so =rgpot.EAMTablePot= is a class.
+  The wheel build sets =-Dwith_eam_table=true=.
+- Errors :: none.
+
 *** =rgpot.has_expr=
 
 - Inputs :: none.
@@ -185,8 +205,11 @@ energy is not finite
 
 - Inputs :: none.
 - Units :: none.
-- Outputs :: =True= when the extension was compiled with =RGPOT_HAS_METATOMIC=,
-  so =rgpot.evaluate_metatomic_dlopen= is a function.
+- Outputs :: =True= in every build.
+  =MetatomicDlopen= is linked into every =librgpot=, so
+  =rgpot.evaluate_metatomic_dlopen= is a function.
+  The flag does not follow =RGPOT_HAS_METATOMIC=, which records the torch link.
+  The engine plugin stays optional and is opened at runtime.
 - Errors :: none.
 
 *** =rgpot.has_xckernel=
@@ -220,11 +243,37 @@ energy is not finite
 - Inputs :: the message string.
 - Units :: none.
 - Outputs :: an exception class, a subclass of =ArithmeticError=.
-  Potential calls raise it when the energy is not finite.
+  Potential calls raise it when the energy is not finite or a kernel rejects a
+  singular geometry with =std::domain_error=.
   =hvp= and =hvp_centre= also raise it when a force or a product is not finite.
 - Errors :: none.
 
 ** Functions
+
+*** =rgpot.atomic_number=
+
+#+attr_rgpot: signature
+#+begin_src python
+atomic_number(symbol)
+#+end_src
+
+- Inputs :: a case-sensitive element symbol.
+- Units :: none.
+- Outputs :: its integer atomic number from rgpot's shared element table.
+- Errors :: an unknown symbol raises =ValueError=.
+
+*** =rgpot.unit_conversion_factor=
+
+#+attr_rgpot: signature
+#+begin_src python
+unit_conversion_factor(from_unit, to_unit)
+#+end_src
+
+- Inputs :: two compatible unit-expression strings.
+- Units :: the returned factor converts a value in =from_unit= to =to_unit=.
+- Outputs :: the multiplicative conversion factor as a float, from rgpot's
+  runtime unit parser.
+- Errors :: unknown units or dimensions that do not match raise =ValueError=.
 
 *** =rgpot.evaluate_lj=
 
@@ -305,14 +354,14 @@ evaluate_metatomic(positions, atom_types, box, *, model_path, engine_path=None, 
   =engine_path= =None= uses =rgpot.default_metatomic_engine_path()=, or an empty
   string when that is =None=.
   =device= is the torch device string.
-- Units :: positions and box in Angstrom; energy eV; forces eV/Angstrom.
+- Units :: positions and box in Angstrom; energy eV; forces eV/Angstrom;
+  variance eV^2 from the model uncertainty, else eV^2 per Angstrom squared.
 - Outputs :: the tuple =(energy, forces, variance)= of
   =rgpot.evaluate_metatomic_dlopen=.
   The function imports =torch= first when it is installed, so the engine
   resolves the same =libtorch=.
-- Errors :: =RuntimeError= =this build has no MetatomicDlopen frontend= when
-  =rgpot.has_metatomic_dlopen= is false.
-  Otherwise the errors of =rgpot.evaluate_metatomic_dlopen=.
+- Errors :: the errors of =rgpot.evaluate_metatomic_dlopen=.
+  The frontend is present in every build.
 
 *** =rgpot.evaluate_metatomic_dlopen=
 
@@ -330,11 +379,11 @@ evaluate_metatomic_dlopen(positions, atom_types, box, model_path, engine_path=''
   It does not search the engines bundled with the package;
   =rgpot.evaluate_metatomic= does.
   An empty =device= means ="cpu"=.
-- Units :: positions and box in Angstrom; energy eV; forces eV/Angstrom.
+- Units :: positions and box in Angstrom; energy eV; forces eV/Angstrom;
+  variance eV^2 from the model uncertainty, else eV^2 per Angstrom squared.
 - Outputs :: a tuple =(energy, forces, variance)=: a float, a =(N, 3)= float64
   array and a float.
   Each call builds and drops its own frontend.
-  =None= when =rgpot.has_metatomic_dlopen= is false.
 - Errors :: an empty =model_path= raises =ValueError=.
   No candidate library that opens raises =RuntimeError=
   =MetatomicDlopen: libmetatomic_engine.so not found ...=.
@@ -380,19 +429,34 @@ available_metatomic_engine_abis()
 #+attr_rgpot: signature
 #+begin_src python
 rgpot_lammps_potential(u0=1.0, cutoff=8.0, psi=1.0, engine_path='')
+rgpot_lammps_potential(config_bytes, engine_path='')
 #+end_src
 
-- Inputs :: the shifted 12-6 Lennard-Jones parameters =u0= (well depth),
-  =cutoff= and =psi= (zero crossing), and =engine_path=.
+- Inputs :: two overloads.
+  The shifted 12-6 one takes =u0= (well depth), =cutoff= and =psi= (zero
+  crossing), and =engine_path=.
   An empty =engine_path= tries =RGPOT_LAMMPS_ENGINE=, =LAMMPS_ENGINE=,
   =liblammps_engine.so= and =liblj_engine.so=, in that order.
+  The lammpc one takes
+  =config_bytes=, a flat =PotentialConfig= with the =lammps= arm, and =engine_path=.
+  A non-empty =engine_path= is the only library tried.
+  An empty =engine_path= tries =LAMMPC_LIBRARY= and =RGPOT_LAMMPC_ENGINE= when
+  either is set and not empty, and nothing after them; with neither set it tries
+  =liblammpc.so=.
 - Units :: =u0= eV; =cutoff= and =psi= Angstrom.
-- Outputs :: a =rgpot.LammpsPot= whose backend is the engine plugin the
-  constructor opened.
+  The lammpc overload uses the units of =LammpsParams.unitsStyle=.
+- Outputs :: a =rgpot.LammpsPot=.
+  The first overload keeps the engine plugin it opened.
+  The second keeps one lammpc session.
 - Errors :: =u0=, =cutoff= or =psi= that is not positive and finite raises
   =ValueError=.
   No engine library that opens and exports =rgpot_engine_force= raises
   =RuntimeError= =engine library was not opened: ...=, listing each path tried.
+  The lammpc overload raises =ValueError= for =config_bytes= that are missing,
+  misaligned, truncated, or not a =PotentialConfig= with the =lammps= arm.
+  It raises =RuntimeError= when =liblammpc= does not load, fails the
+  =Capabilities= handshake, reports unavailable, or refuses the session.
+  A non-empty =engine_path= that does not open raises =RuntimeError= naming it.
 
 *** =rgpot.rgpot_gromacs_potential=
 
@@ -456,13 +520,14 @@ OpenMMPot -0.3203213355 96.48533212331002 0.8 0.1
 Each class entry gives the constructor.
 The methods are in the shared-method entries further down, and each lists the
 classes that have it.
-Only the fourteen classes =LJPot=, =LJClusterPot=, =MorsePot=, =SWPot=,
-=EDIPPot=, =LenoskyPot=, =TersoffPot=, =EAMAlPot=, =FeHePot=, =CuH2Pot=,
-=WaterHPot=, =D3Pot=, =D4Pot= and =ExprPot= have =hvp= and =evaluate_batch=.
+Only the twenty classes =LJPot=, =LJClusterPot=, =MorsePot=, =MullerBrownPot=,
+=D2Pot=, =D2CpmdPot=, =SWPot=, =EDIPPot=, =LenoskyPot=, =TersoffPot=,
+=EAMAlPot=, =EAMTablePot=, =FeHePot=, =CuH2Pot=, =WaterHPot=, =D3Pot=, =D4Pot=,
+=ExprPot=, =SumPot= and =EMTPot= have =hvp= and =evaluate_batch=.
 =StillingerWeberSi=, =TersoffSiC=, =IPIPot=, =LammpsPot=, =GromacsPot= and
-=OpenMMPot= do not.
+=OpenMMPot= do not have =evaluate_batch= or =hvp=.
 
-The fourteen classes build their kernel in the constructor.
+The twenty classes build their kernel in the constructor.
 A constructor argument the kernel rejects raises there, not at the first call.
 They keep one kernel instance per calling thread, except for kernels that share
 one instance.
@@ -484,8 +549,10 @@ rgpot.LJPot(u0=1.0, cutoff=15.0, psi=1.0, switch_width=0.0)
 - Units :: =u0= eV; =cutoff=, =psi= and =switch_width= Angstrom.
 - Outputs :: a periodic Lennard-Jones potential.
   =evaluate= returns the stress.
+  It has an analytic Hessian-vector product: =has_analytic_hvp()= is true.
 - Errors :: a nonzero =switch_width= outside =0 < switch_width <= cutoff= raises
   =ValueError= =QuinticSwitch: switch width must satisfy 0 < width <= cutoff=.
+  Coincident atoms raise =rgpot.NumericalError=.
 
 *** =rgpot.LJClusterPot=
 
@@ -516,11 +583,148 @@ rgpot.MorsePot(De=0.7102, a=1.6047, re=2.897, cutoff=9.5, switch_width=0.0)
   =switch_width= works as for =rgpot.LJPot=.
   Atom types are not used by the kernel.
 - Units :: =De= eV; =a= 1/Angstrom; =re=, =cutoff= and =switch_width= Angstrom.
-- Outputs :: a periodic shifted Morse pair potential.
+- Outputs :: a periodic shifted Morse pair potential on an orthogonal or sheared
+  cell (on a diagonal cell only axes with a positive diagonal entry wrap, and
+  each distinct atom pair contributes at most one minimum image).
   =evaluate= returns the stress.
-  It is the only class here with an analytic Hessian-vector product:
-  =has_analytic_hvp()= is true.
-- Errors :: as =rgpot.LJPot=.
+  It has an analytic Hessian-vector product: =has_analytic_hvp()= is true.
+- Errors :: as =rgpot.LJPot=; on a sheared cell a singular or non-finite =box=
+  raises =ValueError=.
+
+*** =rgpot.D2Pot=
+
+#+attr_rgpot: signature
+#+begin_src python
+rgpot.D2Pot(s6=1.2, d=20.0, sr=1.1, cutoff=150.0, functional=None)
+#+end_src
+
+- Inputs :: the parameters of =rgpot::D2Config=.
+  The defaults are BLYP.
+  A =functional= (a dftd3 =-func= name, as for =rgpot::d2_config_for=) takes
+  =s6= and =d= from dftd3's D2 table and ignores the two arguments.
+  Atom types are atomic numbers, 1 to 86.
+  An all-zero =box= is a molecule.
+- Units :: =cutoff= Angstrom; the others none.
+- Outputs :: Grimme's DFT-D2 dispersion as a lattice sum over every image within
+  =cutoff=, as =rgpot::D2Pot=.
+  =evaluate= returns the stress.
+- Errors :: =ValueError= for an unknown =functional=, a =cutoff= that is not
+  positive and finite, or =sr= not positive and finite; a call raises
+  =ValueError= for an atomic number outside 1 to 86, a singular non-zero cell or
+  a cutoff that reaches more than 256 lattice images along a cell vector.
+
+*** =rgpot.D2CpmdPot=
+
+#+attr_rgpot: signature
+#+begin_src python
+rgpot.D2CpmdPot(s6=1.2, alpha=20.0, vdweps=0.01, functional=None, symmetry=-1)
+#+end_src
+
+- Inputs :: the parameters of =rgpot::D2CpmdConfig=.
+  The defaults are CPMD's for BLYP.
+  A =functional= (=BLYP=, =B3LYP=, =BP86=, =TPSS=, =PBE=, =REVPBE= or =PBE0=)
+  takes =s6= from CPMD's =set_s6= and ignores the argument.
+  =symmetry= is the =SYMMETRY= code of the run (1 to 8, 12 or 14), which picks
+  the branch of CPMD's =pbc3=; -1 reads the branch from the box, which cannot
+  name 12.
+  Atom types are atomic numbers, 1 to 99.
+- Units :: none.
+- Outputs :: OpenCPMD's empirical D2 with its minimum image, as
+  =rgpot::D2CpmdPot=, for subtracting it from a CPMD run.
+  =evaluate= returns the stress when the box is not all zero.
+- Errors :: =ValueError= for an unknown =functional=, a =vdweps= that is not
+  positive or a =symmetry= that is not -1, 1 to 8, 12 or 14; a call raises
+  =ValueError= for an atomic number outside 1 to 99, a singular non-zero cell or
+  a box that does not have the shape of =symmetry=.
+
+*** =rgpot.EAMTablePot=
+
+#+attr_rgpot: signature
+#+begin_src python
+rgpot.EAMTablePot(file, format, periodic=True, stress=False, skin=1.0)
+#+end_src
+
+- Inputs :: =file= is a DYNAMO table path.
+  =format= is ="funcfl"= (or ="eam"=), ="setfl"= (="alloy"=,
+  ="eam/alloy"=) or ="fs"= (="eam/fs"=, ="finnis-sinclair"=); it has no default,
+  as a wrong guess gives wrong energies.
+  =periodic= takes the nearest image on the cell, and =False= makes the atoms a
+  free cluster.
+  =stress= makes =evaluate= return the stress, and =skin= is the pair-list skin
+  of =rgpot::EAMTableConfig=.
+  An atom takes its element from its atomic number, which =atom_types= carries.
+- Units :: energy eV, lengths Angstrom, =skin= Angstrom; =cutoff= is read in the
+  length unit of the table.
+- Outputs :: the tabulated embedded-atom or Finnis-Sinclair potential of
+  [[file:eam_table.org][Tabulated EAM and Finnis-Sinclair potentials]], in
+  process, with the interpreter released during the kernel.
+  The =cutoff= property is the radial cutoff of the table.
+  It agrees with LAMMPS =pair_style eam=, =eam/alloy= and =eam/fs= to rounding.
+- Errors :: =ValueError= for an unknown =format=, an unreadable or malformed
+  file, a negative or non-finite =skin=, a periodic call whose cell has a face
+  spacing not above twice the cutoff, or an atomic number that is in no element
+  line.
+  A non-finite energy raises =rgpot.NumericalError=.
+
+*** =rgpot.MullerBrownPot=
+
+#+attr_rgpot: signature
+#+begin_src python
+rgpot.MullerBrownPot(amplitude=[-200, -100, -170, 15], a=[-1, -1, -6.5, 0.7], b=[0, 0, 11, 0.6], c=[-10, -10, -6.5, 0.7], x0=[1, 0, -0.5, -1], y0=[0, 0.5, 1.5, 1])
+#+end_src
+
+- Inputs :: each parameter is four finite numbers or an empty sequence.
+  The [[file:potential_config.org][Muller-Brown arm]] has the rule.
+  Positions need at least one atom; only its x and y coordinates are active.
+  Defaults are =amplitude=(-200, -100, -170, 15)=, =a=(-1, -1, -6.5, 0.7)=,
+  =b=(0, 0, 11, 0.6)=, =c=(-10, -10, -6.5, 0.7)=, =x0=(1, 0, -0.5, -1)= and
+  =y0=(0, 0.5, 1.5, 1)=.
+- Units :: reduced surface coordinates and energies.
+  The generic rgpot interface carries them as Angstrom and eV.
+- Outputs :: the standard Muller-Brown surface.
+  The first atom's z force and every force on later atoms are zero.
+  =hvp= uses the analytic product.
+- Errors :: a length other than 0 or 4 raises =ValueError=.
+  So does a non-finite value.
+
+*** =rgpot.EMTPot=
+
+#+attr_rgpot: signature
+#+begin_src python
+rgpot.EMTPot(rasmussen=False)
+#+end_src
+
+- Inputs :: =rasmussen= selects the parameter provider.
+  False is the Asap default provider, which covers H (1), Mg (12), Al (13), Ni
+  (28), Cu (29), Pd (46), Ag (47), Pt (78) and Au (79).
+  True is the Rasmussen provider, which covers Al, Cu, Ag and Au.
+  =atom_types= are atomic numbers and the kernel uses them.
+- Units :: energy eV, forces eV/Angstrom, lengths Angstrom.
+- Outputs :: the effective-medium theory energy and forces of the vendored Asap
+  kernel, on a cell that is periodic in every direction.
+  Each cell height has to exceed twice 1.1 times 1.045 times the Fermi cutoff of
+  the widest element present: 10.97 Angstrom for copper and 13.71 Angstrom for
+  magnesium.
+  =RgpotCalculator= tiles a narrower cell, and the kernel refuses it.
+  =evaluate= returns =stress= =None=, and =caps()["stress"]= is false.
+  The kernel keeps its neighbour list for one cell and one list of atomic
+  numbers, reuses it while atoms only move, and builds a new one when either
+  changes.
+  The four-atom copper cluster of =EMTPotTest= gives 5.129167 eV and a largest
+  force norm of 1.914263 eV/Angstrom with the default provider.
+  ASE's =EMT= has the same parameters for the elements both cover, and agrees to
+  1e-6 when it is built with =asap_cutoff=True=.
+- Errors :: an element the provider does not cover, and a cell too thin for the
+  kernel, raise =ValueError= with a message that starts =EMTPot:= and drop the
+  cached kernel.
+  A singular or non-finite cell, and positions that are not finite, raise
+  =ValueError= with a message that starts =EMTPot:= before the kernel runs, and
+  keep a kernel cached by an earlier successful call.
+  No atoms raises =ValueError= (=invalid parameter: nAtoms must be positive=)
+  and keeps that kernel too.
+  Two atoms at the same position raise =rgpot.NumericalError=, as does a
+  non-finite energy, and both keep the cached kernel.
+  Any other failure from the kernel drops the cached kernel.
 
 *** =rgpot.SWPot=
 
@@ -585,10 +789,22 @@ rgpot.TersoffPot()
   =rgpot.TersoffSiC=, which accepts 6 and 14.
 - Units :: energy eV, lengths Angstrom.
 - Outputs :: a Tersoff potential.
-  No path writes a stress; =evaluate= returns =stress= =None=.
+  =caps()["stress"]= is true.
+  A call with a positive cell volume returns stress from the gather path or the
+  silicon-carbon path.
+  A mixed-species call with a zero-volume orthorhombic cell returns =stress=
+  =None=.
 - Errors :: an atomic number other than 6 or 14 raises =ValueError=
   =TersoffSiC: atomic number Z is neither carbon (6) nor silicon (14)=.
-  A failure of the silicon kernel raises =RuntimeError=
+  An all-silicon call with a zero-volume or non-finite cell raises
+  =RuntimeError=
+  =Tersoff potential failed (status 4): rgpot_neighbors: box must be finite, and a periodic box must have positive volume=.
+  A mixed-species call with a non-finite cell raises =ValueError=
+  =periodic cell must be finite=.
+  A mixed-species call with a singular skewed cell raises =ValueError=
+  =periodic cell must be nonsingular=.
+  No atoms raises =ValueError= =invalid parameter: nAtoms must be positive=.
+  Any other failure of the silicon kernel raises =RuntimeError=
   =Tersoff potential failed (status K): ...=.
 
 *** =rgpot.EAMAlPot=
@@ -634,6 +850,7 @@ rgpot.CuH2Pot()
 - Units :: energy eV, lengths Angstrom.
 - Outputs :: the Fortran copper-hydrogen embedded-atom kernel.
   No stress.
+  It has an analytic Hessian-vector product: =has_analytic_hvp()= is true.
 - Errors :: any other atomic number raises =RuntimeError=
   =CuH2 potential failed (status 2): rgpot_cuh2: atom K has atomic number Z; ...=.
   Two atoms at the same position also raise =RuntimeError=.
@@ -690,8 +907,8 @@ rgpot.TersoffSiC()
 - Units :: energy eV, lengths Angstrom.
 - Outputs :: the 1989 Tersoff silicon-carbon kernel, Phys.
   Rev. B 39, 5566 (1989), with the 1990 erratum.
-  It has only =__call__= and =energy_gradient=: no =caps=, =evaluate=,
-  =evaluate_batch= or =hvp=.
+  =caps= reports analytic stress and =evaluate= returns it.
+  It has no =evaluate_batch= or =hvp=.
   See the [[file:tersoff_sic.org][Tersoff SiC reference]].
 - Errors :: another atomic number raises =ValueError=
   =TersoffSiC: atomic number Z is neither carbon (6) nor silicon (14)=.
@@ -725,16 +942,18 @@ rgpot.D3Pot(damping='bj', functional='pbe', atm=True)
 
 #+attr_rgpot: signature
 #+begin_src python
-rgpot.D4Pot(functional='pbe', charge=0.0, atm=True)
+rgpot.D4Pot(functional='pbe', charge=0.0, atm=True, periodic=False)
 #+end_src
 
-- Inputs :: =functional= is the dftd4 method key for rational damping; =charge=
-  is the total charge of the system; =atm= switches the many-body term.
+- Inputs :: =functional= is the dftd4 method key for rational damping (="blyp"=
+  for BLYP); =charge= is the total charge of the system; =atm= switches the
+  many-body term; =periodic= passes the box as a 3D lattice.
   =atom_types= are atomic numbers.
 - Units :: =charge= in elementary charges; positions in Angstrom, converted to
-  bohr; energy eV; forces eV/Angstrom.
-- Outputs :: Grimme DFT-D4 dispersion, non-periodic as for =rgpot.D3Pot=.
-  No stress.
+  bohr; energy eV; forces eV/Angstrom; stress eV/Angstrom^3.
+- Outputs :: Grimme DFT-D4 dispersion.
+  Without =periodic= the box is ignored, as for =rgpot.D3Pot=, and there is no
+  stress; with it =evaluate= returns the stress from dftd4's virial.
   =None= when =rgpot.has_dftd4= is false.
 - Errors :: an empty =functional= raises =ValueError=; dftd4 errors raise
   =RuntimeError=.
@@ -748,15 +967,20 @@ rgpot.ExprPot(expression, terms)
 
 - Inputs :: =expression= is a Lepton expression over the term names, for example
   ="a + 0.5*b"=.
-  =terms= maps each name to a kind string, ="lj"=, ="morse"=, ="d3"= or ="d4"=,
-  or to a dict with a ="kind"= key (or ="type"=) plus that kind's fields.
+  =terms= maps each name to a kind string, ="lj"=, ="morse"=, ="d2"=,
+  ="d2cpmd"=, ="d3"= or ="d4"=, or to a dict with a ="kind"= key (or ="type"=)
+  plus that kind's fields.
   The fields are =u0=, =cutoff=, =psi=,
   =switch_width= for ="lj"=; =De=, =a=, =re=, =cutoff=, =switch_width= for
-  ="morse"=; =functional=, =damping=, =atm= for ="d3"=; =functional=, =charge=,
-  =atm= for ="d4"=.
+  ="morse"=; =s6=, =d=, =sr=, =cutoff=, =functional= for ="d2"=, where a
+  =functional= sets =s6= and =d= first and the other keys then override them;
+  =s6=, =alpha=, =vdweps=, =functional=, =symmetry= for ="d2cpmd"=, in the same
+  way; =functional=, =damping=, =atm= for ="d3"=; =functional=, =charge=, =atm=,
+  =periodic= for ="d4"=.
   A missing field keeps the default of that kind's class.
-- Units :: the fields have the units of =LJPot=, =MorsePot=, =D3Pot= and
-  =D4Pot=; the expression combines child energies in eV.
+- Units :: the fields have the units of =LJPot=, =MorsePot=, =D2Pot=,
+  =D2CpmdPot=, =D3Pot= and =D4Pot=; the expression combines child energies in
+  eV.
 - Outputs :: the energy =f(E_a, E_b, ...)= with forces from the chain rule.
   ="d3"= and ="d4"= are available only when =has_dftd3= and =has_dftd4= are
   true.
@@ -780,6 +1004,51 @@ print(pot.expression, pot.d_energy_d_term("a"), pot.d_energy_d_term("b"))
 #+attr_rgpot: output printed by the block above
 #+begin_example
 a + 0.5*b 1.0 0.5
+#+end_example
+
+*** =rgpot.SumPot=
+
+#+attr_rgpot: signature
+#+begin_src python
+rgpot.SumPot(terms)
+#+end_src
+
+- Inputs :: =terms= is a list.
+  Each item is a kind string, as for =ExprPot=, or a dict with ="kind"= plus
+  that kind's fields and three more keys: ="name"= (default ="term<i>"=, the
+  index in the list), ="weight"= (default 1.0, any finite value, the sign
+  allowed) and ="enabled"= (default =True=).
+- Units :: the fields have the units of the kind's class; =weight= has none.
+- Outputs :: the sum of weight times energy over the enabled terms, with the
+  same weights on the forces and the stress, as =rgpot::SumPot=.
+  A disabled term is not built and not evaluated, so its kind need not be
+  available.
+  =caps()= is the intersection of the enabled terms, and =stress= is false when
+  none are enabled.
+  =evaluate= returns =stress= when at least one term ran and every evaluated
+  term reports one.
+- Errors :: =ValueError= for a term that is not a string or a dict with
+  ="kind"=, an unknown kind on an enabled term, or a weight that is not finite.
+  A term that raises during a call stops the call with its own error.
+
+#+attr_rgpot: run
+#+begin_src python
+import numpy as np
+import rgpot
+
+pot = rgpot.SumPot([
+    {"kind": "lj", "name": "lj", "weight": 2.0},
+    {"kind": "morse", "name": "morse", "enabled": False},
+])
+positions = np.array([[0.0, 0.0, 0.0], [1.5, 0.0, 0.0]])
+energy, forces, _ = pot(positions, [18, 18], np.eye(3) * 40.0)
+parts = pot.components()
+print(energy == 2.0 * parts[0]["energy"], [p["evaluated"] for p in parts])
+#+end_src
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+True [True, False]
 #+end_example
 
 *** =rgpot.IPIPot=
@@ -816,11 +1085,15 @@ rgpot.IPIPot(address, timeout_s=30.0)
   raises =TypeError=.
   =rgpot.rgpot_lammps_potential= returns instances.
 - Units :: positions and box in Angstrom, energy eV, forces eV/Angstrom.
-- Outputs :: a shifted 12-6 Lennard-Jones potential evaluated by the engine
-  plugin.
-  It has only =__call__=.
+- Outputs :: the potential of the overload that built it.
+  The shifted 12-6 overload evaluates a shifted 12-6 Lennard-Jones potential in
+  the engine plugin.
+  The lammpc overload evaluates the =pair_style= of its =PotentialConfig= in one
+  lammpc session.
+  Dropping the last instance on a lammpc backend calls its =lammpc_finalize=.
+  It has only =__call__=, which returns no stress.
 - Errors :: =TypeError= on direct construction; calls raise as the conventions
-  list, and an engine failure raises =RuntimeError=.
+  list, and an engine or lammpc failure raises =RuntimeError=.
 
 *** =rgpot.GromacsPot=
 
@@ -854,11 +1127,13 @@ rgpot.IPIPot(address, timeout_s=30.0)
 __call__(positions, atom_types, box)
 #+end_src
 
-- Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot, rgpot.SWPot,
+- Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot,
+  rgpot.MullerBrownPot, rgpot.D2Pot, rgpot.D2CpmdPot, rgpot.SWPot,
   rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot, rgpot.EAMAlPot,
-  rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot, rgpot.D4Pot,
-  rgpot.ExprPot, rgpot.StillingerWeberSi, rgpot.TersoffSiC, rgpot.IPIPot,
-  rgpot.LammpsPot, rgpot.GromacsPot, rgpot.OpenMMPot
+  rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot,
+  rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot, rgpot.StillingerWeberSi,
+  rgpot.TersoffSiC, rgpot.IPIPot, rgpot.LammpsPot, rgpot.GromacsPot,
+  rgpot.OpenMMPot, rgpot.EMTPot
 - Inputs :: =positions= =(N, 3)=, =atom_types= (=N= integers) and =box=
   =(3, 3)=, as in the conventions.
 - Units :: positions and box in Angstrom; energy eV; forces eV/Angstrom;
@@ -876,10 +1151,12 @@ __call__(positions, atom_types, box)
 caps()
 #+end_src
 
-- Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot, rgpot.SWPot,
+- Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot,
+  rgpot.MullerBrownPot, rgpot.D2Pot, rgpot.D2CpmdPot, rgpot.SWPot,
   rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot, rgpot.EAMAlPot,
-  rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot, rgpot.D4Pot,
-  rgpot.ExprPot, rgpot.StillingerWeberSi
+  rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot,
+  rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot, rgpot.StillingerWeberSi,
+  rgpot.TersoffSiC, rgpot.EMTPot
 - Inputs :: none.
 - Units :: none.
 - Outputs :: a dict with the keys =reentrancy= (="shared"=,
@@ -896,13 +1173,19 @@ caps()
 config()
 #+end_src
 
-- Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot
+- Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot,
+  rgpot.MullerBrownPot, rgpot.D2Pot, rgpot.D2CpmdPot, rgpot.D4Pot, rgpot.EMTPot
 - Inputs :: none.
 - Units :: as the constructor: eV for =u0= and =De=, 1/Angstrom for =a=,
   Angstrom for the lengths.
 - Outputs :: a dict of the constructor parameters.
   =LJPot= and =LJClusterPot= give =u0=, =cutoff=, =psi=,
-  =switch_width=; =MorsePot= gives =De=, =a=, =re=, =cutoff=, =switch_width=.
+  =switch_width=; =MorsePot= gives =De=, =a=, =re=, =cutoff=, =switch_width=;
+  =D2Pot= gives =s6=, =d=, =sr=, =cutoff= and =D2CpmdPot= gives =s6=, =alpha=,
+  =vdweps=, =symmetry=, after any functional was applied; =D4Pot= gives
+  =functional=, =charge=, =atm=, =periodic=.
+  =MullerBrownPot= gives =amplitude=, =a=, =b=, =c=, =x0= and =y0=.
+  =EMTPot= gives =rasmussen=.
 - Errors :: none.
 
 *** =.evaluate=
@@ -912,10 +1195,12 @@ config()
 evaluate(positions, atom_types, box)
 #+end_src
 
-- Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot, rgpot.SWPot,
+- Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot,
+  rgpot.MullerBrownPot, rgpot.D2Pot, rgpot.D2CpmdPot, rgpot.SWPot,
   rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot, rgpot.EAMAlPot,
-  rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot, rgpot.D4Pot,
-  rgpot.ExprPot, rgpot.StillingerWeberSi
+  rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot,
+  rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot, rgpot.StillingerWeberSi,
+  rgpot.TersoffSiC, rgpot.EMTPot
 - Inputs :: =positions=, =atom_types= and =box= as in the conventions.
 - Units :: energy eV; forces eV/Angstrom; variance eV^2; stress eV/Angstrom^3,
   the Cauchy stress (1/V) dE/dε.
@@ -928,6 +1213,19 @@ evaluate(positions, atom_types, box)
 - Errors :: the conventions list; a non-finite energy raises
   =rgpot.NumericalError=.
 
+*** =.cutoff=
+
+#+attr_rgpot: signature
+#+begin_src python
+cutoff
+#+end_src
+
+- Applies to :: rgpot.EAMTablePot
+- Inputs :: none; a read-only property.
+- Units :: the length unit of the table, Angstrom for the tables of LAMMPS.
+- Outputs :: the radial cutoff of the table as a float.
+- Errors :: none.
+
 *** =.evaluate_per_atom=
 
 #+attr_rgpot: signature
@@ -935,7 +1233,8 @@ evaluate(positions, atom_types, box)
 evaluate_per_atom(positions, atom_types, box)
 #+end_src
 
-- Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot
+- Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot,
+  rgpot.EAMTablePot
 - Inputs :: =positions=, =atom_types= and =box= as in the conventions.
 - Units :: as =evaluate=; =energies= and =virials= eV.
 - Outputs :: the dict of =evaluate=, with =energies= a =(N,)= float64 array,
@@ -980,10 +1279,11 @@ True True
 evaluate_batch(positions, atom_types, box, n_threads=0)
 #+end_src
 
-- Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot, rgpot.SWPot,
+- Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot,
+  rgpot.MullerBrownPot, rgpot.D2Pot, rgpot.D2CpmdPot, rgpot.SWPot,
   rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot, rgpot.EAMAlPot,
-  rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot, rgpot.D4Pot,
-  rgpot.ExprPot
+  rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot,
+  rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot, rgpot.EMTPot
 - Inputs :: three lists of equal length: =positions= arrays, =atom_types=
   sequences and =box= arrays, one entry per configuration, each as in the
   conventions.
@@ -1030,23 +1330,28 @@ print(sorted(rows[0]), [r["energy"] for r in rows] == serial)
 hvp(positions, atom_types, box, direction, step=0.0, scheme='auto')
 #+end_src
 
-- Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot, rgpot.SWPot,
+- Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot,
+  rgpot.MullerBrownPot, rgpot.D2Pot, rgpot.D2CpmdPot, rgpot.SWPot,
   rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot, rgpot.EAMAlPot,
-  rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot, rgpot.D4Pot,
-  rgpot.ExprPot
+  rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot,
+  rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot, rgpot.EMTPot
 - Inputs :: =positions=, =atom_types= and =box= as in the conventions;
   =direction= is a float64 C-contiguous =(N, 3)= array.
   =step= is the length of the displacement along the unit direction; 0 means
   1e-3 Angstrom.
-  =scheme= is ="forward"=, ="central"=, ="analytic"= or ="auto"=.
+  =scheme= is ="forward"=, ="central"=, ="analytic"=, ="ad"=, ="exact"= or
+  ="auto"=.
   ="forward"= displaces once and reuses the forces of the centre, the last
   geometry this object evaluated through =hvp= or =hvp_centre=; it is first
   order in =step=.
   ="central"= displaces both ways, two force calls a product, second order in
   =step=.
-  ="analytic"= uses the kernel's own product, which only =MorsePot= has.
+  ="analytic"= uses the kernel's own product, available for =MorsePot=,
+  =MullerBrownPot=, =LJPot= and =CuH2Pot=.
+  ="ad"= uses the kernel's dual-number product, available for =LJPot=.
+  ="exact"= is ="analytic"=, else ="ad"=, and never differences.
   ="auto"= is ="analytic"= when =has_analytic_hvp()= is true and ="forward"=
-  otherwise.
+  otherwise; =hvp_resolved= reports which ran.
 - Units :: positions, box and =step= in Angstrom.
   The product is linear in =direction=: H is
   eV/Angstrom^2, so a direction in Angstrom gives eV/Angstrom.
@@ -1055,9 +1360,9 @@ hvp(positions, atom_types, box, direction, step=0.0, scheme='auto')
   The kernel runs with the interpreter released.
 - Errors :: =direction= not of shape =(N, 3)= raises =ValueError=
   =direction: expected shape (N, 3), got ...=.
-  An unknown =scheme=, ="analytic"= on a class without the analytic product, a
-  negative or non-finite =step=, or non-finite positions or direction raise
-  =ValueError=.
+  An unknown =scheme=, ="analytic"=, ="ad"= or ="exact"= on a class without what
+  it needs, a negative or non-finite =step=, or non-finite positions or
+  direction raise =ValueError=.
   A non-finite energy, force or product raises =rgpot.NumericalError=.
   The conventions list the other input errors.
 
@@ -1094,8 +1399,63 @@ print(pot.has_analytic_hvp(), rgpot.MorsePot().has_analytic_hvp())
 #+begin_example
 {'products': 3, 'force_calls': 4, 'centre_reused': 3, 'analytic': 0}
 {'products': 1, 'force_calls': 2, 'centre_reused': 0, 'analytic': 0}
-False True
+True True
 #+end_example
+
+*** =.hvp_resolved=
+
+#+attr_rgpot: signature
+#+begin_src python
+hvp_resolved(positions, atom_types, box, direction, step=0.0, scheme='auto')
+#+end_src
+
+- Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot,
+  rgpot.MullerBrownPot, rgpot.D2Pot, rgpot.D2CpmdPot, rgpot.SWPot,
+  rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot, rgpot.EAMAlPot,
+  rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot,
+  rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot, rgpot.EMTPot
+- Inputs :: those of =hvp=.
+- Units :: those of =hvp=.
+- Outputs :: a tuple =(product, scheme)=: the product of =hvp=, and the name of
+  the scheme that computed it.
+  ="auto"= reports ="analytic"= or ="forward"=, ="exact"= reports ="analytic"=
+  or ="ad"=, and any other scheme reports itself.
+  The product is counted under that scheme in =derivative_counts()=.
+- Errors :: those of =hvp=.
+
+*** =.hessian=
+
+#+attr_rgpot: signature
+#+begin_src python
+hessian(positions, atom_types, box, scheme, step=0.0)
+#+end_src
+
+- Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot,
+  rgpot.MullerBrownPot, rgpot.D2Pot, rgpot.D2CpmdPot, rgpot.SWPot,
+  rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot, rgpot.EAMAlPot,
+  rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot,
+  rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot, rgpot.EMTPot
+- Inputs :: =positions=, =atom_types= and =box= as in the conventions.
+  =scheme= has no default: ="analytic"= uses the kernel's closed-form Hessian,
+  available for =LJPot= and =MorsePot=; ="ad"= its dual-number Hessian,
+  available for =LJPot=; ="exact"= is ="analytic"=, else ="ad"=; ="central"=
+  differences the forces at =x +- step= along every coordinate.
+  =step= is that displacement; 0 means 1e-3 Angstrom.
+- Units :: positions, box and =step= in Angstrom; the Hessian in eV/Angstrom^2.
+- Outputs :: a tuple =(hessian, scheme)=: a new float64 array of shape
+  =(3N, 3N)=, row and column =3 i + k= for axis =k= of atom =i=, and the name of
+  the scheme that computed it, ="exact"= reporting ="analytic"= or ="ad"=.
+  ="central"= makes =6 N= force calls, which bypass the centre of =hvp= and are
+  counted in =derivative_counts()=, and returns a symmetric matrix.
+  The kernel runs with the interpreter released.
+- Errors :: an unknown =scheme=, ="analytic"=, ="ad"= or ="exact"= on a class
+  without what it needs, or a negative or non-finite =step= raise =ValueError=
+  before any force call; a missing =scheme= raises =TypeError=.
+  A non-finite energy, force or Hessian raises =rgpot.NumericalError=.
+  The conventions list the other input errors.
+
+The Hessians follow =rgpot_potential_hessian=; see the
+[[file:c_abi.org][C ABI reference]].
 
 *** =.hvp_centre=
 
@@ -1104,15 +1464,18 @@ False True
 hvp_centre(positions, atom_types, box)
 #+end_src
 
-- Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot, rgpot.SWPot,
+- Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot,
+  rgpot.MullerBrownPot, rgpot.D2Pot, rgpot.D2CpmdPot, rgpot.SWPot,
   rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot, rgpot.EAMAlPot,
-  rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot, rgpot.D4Pot,
-  rgpot.ExprPot
+  rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot,
+  rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot, rgpot.EMTPot
 - Inputs :: =positions=, =atom_types= and =box= as in the conventions.
 - Units :: energy eV; forces eV/Angstrom; variance eV^2.
 - Outputs :: a tuple =(energy, forces, variance)= at the geometry.
   The geometry becomes the centre that forward =hvp= products reuse; a geometry
   equal to the current centre is served without a force call.
+  A force call that raised is stored like a result: the same bits raise the same
+  error without another call, until =invalidate_hvp= or a new geometry.
 - Errors :: non-finite positions raise =ValueError=; a non-finite energy or
   force raises =rgpot.NumericalError=; the conventions list the other input
   errors.
@@ -1124,10 +1487,11 @@ hvp_centre(positions, atom_types, box)
 invalidate_hvp()
 #+end_src
 
-- Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot, rgpot.SWPot,
+- Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot,
+  rgpot.MullerBrownPot, rgpot.D2Pot, rgpot.D2CpmdPot, rgpot.SWPot,
   rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot, rgpot.EAMAlPot,
-  rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot, rgpot.D4Pot,
-  rgpot.ExprPot
+  rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot,
+  rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot, rgpot.EMTPot
 - Inputs :: none.
 - Units :: none.
 - Outputs :: =None=; the next =hvp= or =hvp_centre= call computes a new centre.
@@ -1141,10 +1505,11 @@ invalidate_hvp()
 hvp_counts()
 #+end_src
 
-- Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot, rgpot.SWPot,
+- Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot,
+  rgpot.MullerBrownPot, rgpot.D2Pot, rgpot.D2CpmdPot, rgpot.SWPot,
   rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot, rgpot.EAMAlPot,
-  rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot, rgpot.D4Pot,
-  rgpot.ExprPot
+  rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot,
+  rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot, rgpot.EMTPot
 - Inputs :: none.
 - Units :: none; the values are counts.
 - Outputs :: a dict with =products= (products answered),
@@ -1160,13 +1525,15 @@ hvp_counts()
 reset_hvp_counts()
 #+end_src
 
-- Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot, rgpot.SWPot,
+- Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot,
+  rgpot.MullerBrownPot, rgpot.D2Pot, rgpot.D2CpmdPot, rgpot.SWPot,
   rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot, rgpot.EAMAlPot,
-  rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot, rgpot.D4Pot,
-  rgpot.ExprPot
+  rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot,
+  rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot, rgpot.EMTPot
 - Inputs :: none.
 - Units :: none.
-- Outputs :: =None=; every =hvp_counts()= value becomes 0.
+- Outputs :: =None=; every =hvp_counts()= and =derivative_counts()= value
+  becomes 0.
   The centre stays.
 - Errors :: none.
 
@@ -1177,15 +1544,65 @@ reset_hvp_counts()
 has_analytic_hvp()
 #+end_src
 
-- Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot, rgpot.SWPot,
+- Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot,
+  rgpot.MullerBrownPot, rgpot.D2Pot, rgpot.D2CpmdPot, rgpot.SWPot,
   rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot, rgpot.EAMAlPot,
-  rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot, rgpot.D4Pot,
-  rgpot.ExprPot
+  rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot,
+  rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot, rgpot.EMTPot
 - Inputs :: none.
 - Units :: none.
 - Outputs :: =True= when the kernel has its own Hessian-vector product, so
   =scheme='auto'= uses it.
-  Of these classes only =MorsePot= returns =True=.
+  Of these classes =MorsePot=, =MullerBrownPot=, =LJPot= and =CuH2Pot= return
+  =True=.
+  The query is read-only and reads =primary().caps()=, as for =caps()=.
+- Errors :: none.
+
+*** =.derivative_caps=
+
+#+attr_rgpot: signature
+#+begin_src python
+derivative_caps()
+#+end_src
+
+- Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot,
+  rgpot.MullerBrownPot, rgpot.D2Pot, rgpot.D2CpmdPot, rgpot.SWPot,
+  rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot, rgpot.EAMAlPot,
+  rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot,
+  rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot, rgpot.EMTPot
+- Inputs :: none.
+- Units :: none; flags and counts of force calls.
+- Outputs :: a dict with the flags =hvp_analytic=, =hvp_ad=,
+  =hvp_fd=, =hessian_analytic=, =hessian_ad= and =hessian_fd=, the schemes =hvp=
+  and =hessian= have for this kernel, and the costs
+  =hvp_forward_force_calls= (1, plus 1 for a new centre), =hvp_central_force_calls=
+  (2) and =hessian_central_force_calls_per_atom= (6).
+  The finite-difference flags are always =True=; an analytic or dual-number
+  scheme makes no force call.
+  The query is read-only and reads =primary().caps()=, as for =caps()=.
+- Errors :: none.
+
+*** =.derivative_counts=
+
+#+attr_rgpot: signature
+#+begin_src python
+derivative_counts()
+#+end_src
+
+- Applies to :: rgpot.LJPot, rgpot.LJClusterPot, rgpot.MorsePot,
+  rgpot.MullerBrownPot, rgpot.D2Pot, rgpot.D2CpmdPot, rgpot.SWPot,
+  rgpot.EDIPPot, rgpot.LenoskyPot, rgpot.TersoffPot, rgpot.EAMAlPot,
+  rgpot.EAMTablePot, rgpot.FeHePot, rgpot.CuH2Pot, rgpot.WaterHPot, rgpot.D3Pot,
+  rgpot.D4Pot, rgpot.ExprPot, rgpot.SumPot, rgpot.EMTPot
+- Inputs :: none.
+- Units :: none; the values are counts.
+- Outputs :: a dict with =hvp_forward=, =hvp_central=,
+  =hvp_analytic= and =hvp_ad=, the products each scheme answered, a zero
+  direction under the scheme its request resolved to;
+  =hessian_central=, =hessian_analytic= and
+  =hessian_ad=, the Hessians each scheme answered; and =hessian_force_calls=,
+  the force calls of central Hessians.
+  A refused request counts nowhere.
 - Errors :: none.
 
 *** =.energy_gradient=
@@ -1284,6 +1701,20 @@ native_psi()
 - Outputs :: the expression string given to the constructor.
 - Errors :: none.
 
+*** =rgpot.ExprPot.cutoff=
+
+- Inputs :: none; a read-only property.
+- Units :: Angstrom.
+- Outputs :: the largest cutoff among the terms: the periodic cell width the
+  expression needs to exceed twice for a minimum-image kernel to see every
+  neighbour.
+  A term given as a kind string or as a dict with no ="cutoff"= key counts the
+  default cutoff of its class.
+  A ="d2"=, ="d2cpmd"=, ="d3"= or ="d4"= term needs no wider cell and counts 0.
+  An expression of only those terms reports 0.0.
+- Errors :: none; an unknown kind already raised =ValueError= in the
+  constructor.
+
 *** =rgpot.ExprPot.d_energy_d_term=
 
 #+attr_rgpot: signature
@@ -1300,6 +1731,36 @@ d_energy_d_term(name)
   A call through =evaluate_batch= does not update it.
 - Errors :: a name that is not a term raises =ValueError=
   =ExprPot name 'NAME' is not a term=.
+
+*** =rgpot.SumPot.cutoff=
+
+- Inputs :: none; a read-only property.
+- Units :: Angstrom.
+- Outputs :: the largest cutoff among the enabled terms, counted as for
+  =ExprPot.cutoff=.
+  A disabled term is not counted.
+  A sum with no enabled term, or only terms that need no wider cell, reports
+  0.0.
+- Errors :: none; an unknown kind on an enabled term already raised =ValueError=
+  in the constructor.
+
+*** =rgpot.SumPot.components=
+
+#+attr_rgpot: signature
+#+begin_src python
+components()
+#+end_src
+
+- Inputs :: none.
+- Units :: =energy= eV, =forces=
+  eV/Angstrom, =variance= eV^2, =stress= eV/Angstrom^3, each the term's own
+  value before its weight.
+- Outputs :: a list with one dict per term, in order, from this thread's last
+  call: =name=, =weight=, =enabled=, =evaluated=, =energy=, =forces= (an
+  =(N, 3)= array, =(0, 3)= for a term that was not evaluated), =variance= and
+  =stress= (a =(3, 3)= array, or =None= when the term reported none).
+  A call through =evaluate_batch= does not update it.
+- Errors :: none.
 
 *** =rgpot.IPIPot.stress=
 
@@ -1436,3 +1897,307 @@ fields_from_density(chi, dchi, density, lapl_chi=None, hess_chi=None)
 - Errors :: =density= not =(nbf, nbf)= raises =ValueError=; the shape errors of
   =contract= apply to the other arrays.
   =chi= or =density= of the wrong dtype or order raises =TypeError=.
+
+** ASE module
+
+=rgpot.ase= imports ASE; =import rgpot= does not.
+=RgpotRpcCalculator= is resolved on first access, so the package imports without
+=pycapnp=.
+Units are ASE units: energy in eV, forces in
+eV/Angstrom and stress in eV/Angstrom^3.
+The how-to is [[file:../howto/ase.org][ASE how-to]].
+
+*** =rgpot.ase.RgpotCalculator=
+
+#+attr_rgpot: signature
+#+begin_src python
+rgpot.ase.RgpotCalculator(potential, *, numerical_stress=False, stress_step=1e-6, **kwargs)
+#+end_src
+
+- Inputs :: =potential=, an rgpot potential object or a kind string naming a
+  potential class of this build (see
+  =available_kinds=); other keyword arguments are ASE calculator arguments (=label=, =directory=, ...) or, for a kind string, the constructor arguments of the potential class, for example =u0=, =cutoff=, =psi=, =switch_width=
+  for ="lj"=.
+  =numerical_stress= adds =stress= for a kernel that writes none, from a central difference of the energy under six cell strains of =stress_step=;
+  each stress then costs twelve energy calls.
+- Units :: eV, eV/Angstrom, eV/Angstrom^3; =stress= is ASE Voigt order
+  =(xx, yy, zz, yz, xz, xy)= with ASE's sign, and the per-atom =stresses= sum to
+  =stress=.
+  =free_energy= equals =energy=.
+- Outputs :: an ASE calculator over the potential.
+  =implemented_properties= is =energy=, =free_energy= and =forces=, plus
+  =stress= when the kernel reports one or
+  =numerical_stress= is set, plus =energies= when the potential has =evaluate_per_atom=
+  and =stresses= when it also reports stress.
+  The bound kernels are fully periodic, so the calculator tiles a cell narrower
+  than twice the kernel cutoff, pads an open cell to a cubic box of at least 100
+  Angstrom and orthogonalises a slab or wire cell.
+  The calculator pickles and copies when it was built from a kind string or a
+  bound rgpot potential.
+- Errors :: an unknown kind raises =ValueError= listing the kinds of the build;
+  a constructor argument the class does not accept raises =ValueError= listing
+  the accepted names; keyword arguments with a potential object raise
+  =ValueError=; an object that is neither a potential nor a kind string raises
+  =TypeError=.
+  A non-periodic kernel with a periodic =pbc= raises =ValueError= asking for
+  =pbc=False=.
+  Pickling a calculator over a potential it cannot rebuild raises =TypeError=.
+  =calculate= is not reentrant; only =__rg_evaluate__= may run on several
+  threads.
+
+*** =rgpot.ase.RgpotCalculator.potential=
+
+- Inputs :: none; a read-only property.
+- Units :: none.
+- Outputs :: the rgpot potential object the calculator evaluates.
+- Errors :: none.
+
+*** =rgpot.ase.RgpotCalculator.set=
+
+#+attr_rgpot: signature
+#+begin_src python
+set(**kwargs)
+#+end_src
+
+- Inputs :: ASE calculator keywords, or constructor arguments of the potential.
+- Units :: those of the argument.
+- Outputs :: the dict of changed parameters, as ASE returns.
+  A changed potential argument rebuilds the potential and resets the stored
+  results.
+- Errors :: a potential argument on a calculator that cannot rebuild its
+  potential raises =ValueError=, and so does a new =potential= (build a new
+  calculator to change the kind).
+
+*** =rgpot.ase.RgpotCalculator.calculate=
+
+#+attr_rgpot: signature
+#+begin_src python
+calculate(atoms=None, properties=None, system_changes=all_changes)
+#+end_src
+
+- Inputs :: the =Atoms=, the requested properties and the ASE change flags.
+- Units :: eV, eV/Angstrom, eV/Angstrom^3.
+- Outputs :: nothing; =self.results= holds =energy=, =free_energy= and =forces=
+  and, when reported, =stress=, =energies= and =stresses=.
+- Errors :: a request through
+  =get_property= for =stress= on a kernel without one, with =numerical_stress=
+  off, raises ASE's =PropertyNotImplementedError=.
+  Numerical stress on a cell of zero volume raises =ValueError=.
+
+*** =rgpot.ase.RgpotCalculator.get_hessian=
+
+#+attr_rgpot: signature
+#+begin_src python
+get_hessian(atoms)
+#+end_src
+
+- Inputs :: =atoms=, ignored.
+- Units :: none.
+- Outputs :: nothing; no bound potential reports an analytic Hessian.
+- Errors :: always raises =NotImplementedError= naming the potential class.
+
+*** =rgpot.ase.RgpotCalculator.calculate_many=
+
+#+attr_rgpot: signature
+#+begin_src python
+calculate_many(frames, properties=("energy", "forces"), *, attach=False, threads=0)
+#+end_src
+
+- Inputs :: =frames=, an iterable of =Atoms=; =properties=; =attach=, which
+  writes a =SinglePointCalculator= onto each =Atoms=; =threads=, the
+  =BatchEvaluator= worker count, where 0 selects the hardware concurrency.
+- Units :: eV, eV/Angstrom, eV/Angstrom^3.
+- Outputs :: a list with one dict per frame holding the requested =energy=,
+  =free_energy=, =forces= and, on an analytic kernel, =stress=.
+  Energy and forces match one =calculate= call per frame bit for bit, and the
+  worker count is not part of the result.
+  The frames are not mutated.
+- Errors :: the geometry errors of the constructor, per frame.
+
+*** =rgpot.ase.RgpotRpcCalculator=
+
+#+attr_rgpot: signature
+#+begin_src python
+rgpot.ase.RgpotRpcCalculator(host="localhost", port=12345, *, server_proc=None, orbital_key=None, **kwargs)
+#+end_src
+
+- Inputs :: =host= and =port= of a running =potserv=.
+  =server_proc= is an optional managed process this calculator stops on =close=
+  (prefer =spawn=).
+  =orbital_key= is the optional image or bead key sent with each calculation.
+  Other keywords are ASE calculator arguments.
+- Units :: the =ForceInput= defaults, Angstrom and eV, which are ASE's units.
+  A =Atoms= without a full cell is sent in a 100 Angstrom cubic box.
+- Outputs :: a calculator whose
+  =implemented_properties= are =energy=, =free_energy= and =forces=, plus
+  =stress= when the server potential reports that capability; =free_energy=
+  equals =energy=.
+  The constructor reads the server capabilities once connected, and =calculate=
+  reads them again.
+  It retries the connection 120 times, 0.25 s apart.
+- Errors :: a server that cannot be reached raises =RuntimeError= naming the
+  address; a missing =pycapnp= raises its import error.
+  A second thread that enters =calculate= or =close= while the first is inside
+  raises =RuntimeError=.
+
+*** =rgpot.ase.RgpotRpcCalculator.spawn=
+
+#+attr_rgpot: signature
+#+begin_src python
+spawn(server_bin, potential="CuH2", port=None, *, startup_timeout=30.0, **kwargs)
+#+end_src
+
+- Inputs ::
+  =server_bin=, the =potserv= path, or =None= to read =RGPOT_POTSERV_BIN=; =potential=, the name passed to =potserv=; =port=, or =None= for a free one; =startup_timeout=,
+  accepted and ignored.
+- Units :: none.
+- Outputs :: a calculator bound to a =potserv= it launched; a class method.
+  Closing the calculator kills that process.
+- Errors :: a missing binary raises =FileNotFoundError=; a failed connection
+  kills the process and re-raises.
+
+*** =rgpot.ase.RgpotRpcCalculator.select_orbitals=
+
+#+attr_rgpot: signature
+#+begin_src python
+select_orbitals(key)
+#+end_src
+
+- Inputs :: =key=, the image or bead whose orbitals later calculations use.
+- Units :: none.
+- Outputs :: nothing; the key is sent with each later =ForceInput=.
+  =atoms.info["rgpot_orbital_key"]= overrides it for that calculation.
+- Errors :: conversion of a value that is not integer-like raises =TypeError= or
+  =ValueError=.
+
+*** =rgpot.ase.RgpotRpcCalculator.calculate=
+
+#+attr_rgpot: signature
+#+begin_src python
+calculate(atoms=None, properties=("energy",), system_changes=all_changes)
+#+end_src
+
+- Inputs :: the =Atoms=, properties and change flags, as ASE passes them.
+- Units :: Angstrom in, eV and eV/Angstrom out.
+- Outputs :: nothing; =self.results= holds =energy=, =free_energy= and =forces=.
+  A request that includes =stress= on a server potential that reports it calls
+  =calculateStress=, and =self.results= also holds =stress= in ASE Voigt order,
+  in eV/Angstrom^3.
+  The one reply fills energy, forces and stress together.
+- Errors :: =RuntimeError= when another thread is inside the calculator; an RPC
+  failure propagates.
+  A request for =stress= raises =PropertyNotImplementedError= when the cell is
+  not fully periodic and three-dimensional, or when the server potential does
+  not report stress.
+
+*** =rgpot.ase.RgpotRpcCalculator.get_property=
+
+#+attr_rgpot: signature
+#+begin_src python
+get_property(name, atoms=None, allow_calculation=True)
+#+end_src
+
+- Inputs :: the property =name=, the =Atoms= and the ASE =allow_calculation=
+  flag.
+- Units :: the units of the property: eV for energies,
+  eV/Angstrom for forces, eV/Angstrom^3 for stress.
+- Outputs :: the cached or newly calculated property, as ASE returns it.
+  For =stress= the call first reads the server capabilities again, so a server
+  potential that no longer reports stress is detected before ASE consults its
+  cache.
+- Errors :: =PropertyNotImplementedError= for =stress= when the server potential
+  does not report it; the errors of =calculate= otherwise.
+
+*** =rgpot.ase.RgpotRpcCalculator.close=
+
+#+attr_rgpot: signature
+#+begin_src python
+close()
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: nothing; the connection closes and a managed server is killed.
+  A second call does nothing to the connection.
+  The calculator is also a context manager that calls =close= on exit.
+- Errors :: =RuntimeError= when another thread is inside the calculator.
+
+*** =rgpot.ase.AnnealRunner=
+
+#+attr_rgpot: signature
+#+begin_src python
+rgpot.ase.AnnealRunner(atoms, *, budget=20000, seed=0, pad=3.0, use_forces=True)
+#+end_src
+
+- Inputs :: =atoms=, with a calculator attached; =budget=, the combined
+  objective and gradient evaluation budget; =seed=, the RNG seed; =pad=, the
+  search-box half-width around the starting coordinates in Angstrom;
+  =use_forces=, which passes the calculator forces to the optimizer as the
+  analytic gradient.
+- Units :: =pad= in Angstrom; energies in eV.
+- Outputs :: a runner that relaxes the =Atoms= with the global optimizer of the
+  =anneal= package.
+  It is not an =ase.optimize.Optimizer=.
+  =result= holds the optimizer's result dict after =run=, and is =None= before.
+- Errors :: atoms without a calculator raise =ValueError=.
+
+*** =rgpot.ase.AnnealRunner.run=
+
+#+attr_rgpot: signature
+#+begin_src python
+run()
+#+end_src
+
+- Inputs :: none.
+- Units :: Angstrom positions, eV energies.
+- Outputs :: the =Atoms=, with the best geometry found written back in place.
+- Errors :: a missing =anneal= package raises =ImportError=.
+
+*** =rgpot.ase.AnnealRunner.get_potential_energy=
+
+#+attr_rgpot: signature
+#+begin_src python
+get_potential_energy()
+#+end_src
+
+- Inputs :: none.
+- Units :: eV.
+- Outputs :: the best energy found, a float.
+- Errors :: =RuntimeError= (=call run() first=) before =run=.
+
+*** =rgpot.ase.AnnealRunner.nevals=
+
+- Inputs :: none; a read-only property.
+- Units :: none.
+- Outputs :: the number of objective plus gradient evaluations of the last
+  =run=, and 0 before it.
+- Errors :: none.
+
+*** =rgpot.ase.AnnealOptimizer=
+
+#+attr_rgpot: signature
+#+begin_src python
+rgpot.ase.AnnealOptimizer(atoms, *, budget=20000, seed=0, pad=3.0, use_forces=True)
+#+end_src
+
+- Inputs :: those of =AnnealRunner=.
+- Units :: those of =AnnealRunner=.
+- Outputs :: an =AnnealRunner= under its deprecated name, with the same methods.
+- Errors :: emits =DeprecationWarning= on construction; the errors of
+  =AnnealRunner= otherwise.
+
+*** =rgpot.ase.available_kinds=
+
+#+attr_rgpot: signature
+#+begin_src python
+rgpot.ase.available_kinds()
+#+end_src
+
+- Inputs :: none.
+- Units :: none.
+- Outputs :: the sorted list of kind strings =RgpotCalculator= accepts in this
+  build.
+  Each potential class that is callable is reachable by its lower-case name with
+  or without the =Pot= suffix, ignoring =_=, =-=, =.= and spaces, and
+  =lennardjones= names =LJPot=.
+- Errors :: none.

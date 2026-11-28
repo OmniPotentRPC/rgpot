@@ -16,6 +16,7 @@
 
 #include <catch2/catch_all.hpp>
 
+#include "TestFixtures.hpp"
 #include "rgpot/ExprPot/ExprPot.hpp"
 #include "rgpot/LennardJones/LJClusterPot.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
@@ -24,6 +25,8 @@
 
 using Catch::Matchers::WithinAbs;
 using Catch::Matchers::WithinRel;
+using rgpot::test_fixtures::nebMorseCell;
+using rgpot::test_fixtures::nebMorseCluster;
 using rgpot::types::AtomMatrix;
 
 namespace {
@@ -36,23 +39,6 @@ std::vector<int> twoAtomTypes() { return {18, 18}; }
 
 std::array<std::array<double, 3>, 3> wideCell() {
   return {{{40.0, 0.0, 0.0}, {0.0, 40.0, 0.0}, {0.0, 0.0, 40.0}}};
-}
-
-/// eOn neb_morse reactant (13 hydrogens). Shared Morse/LJ unit fixture.
-AtomMatrix nebMorseCluster() {
-  return AtomMatrix{
-      {50.594227, 52.017165, 52.277482}, {51.578540, 52.642148, 51.195222},
-      {51.243758, 52.919086, 52.218383}, {50.490127, 52.736378, 51.417663},
-      {51.522643, 50.884535, 51.656125}, {50.927263, 51.743087, 51.272643},
-      {51.240676, 50.960436, 50.573042}, {51.275727, 52.061877, 50.284160},
-      {50.434110, 50.976423, 51.879062}, {51.695007, 51.919472, 52.038680},
-      {51.363596, 52.199101, 53.064923}, {52.017483, 51.639074, 51.008389},
-      {51.187843, 51.165217, 52.678225}};
-}
-
-std::array<std::array<double, 3>, 3> nebMorseCell() {
-  return {
-      {{101.942400, 0.0, 0.0}, {0.0, 103.142600, 0.0}, {0.0, 0.0, 102.605500}}};
 }
 
 std::vector<rgpot::ExprPot::Term> oneLj(const char *name = "lj") {
@@ -264,7 +250,8 @@ TEST_CASE("ExprPot product uses child energies in analytic weights", "[expr]") {
   REQUIRE_THAT(maxAbsForceDiff(f_expr, expected), WithinAbs(0.0, 1e-12));
 }
 
-TEST_CASE("ExprPot variance uses the same analytic weights", "[expr]") {
+TEST_CASE("ExprPot variance scales with the square of the analytic weights",
+          "[expr]") {
   const AtomMatrix f_a{{1.0, 0.0, 0.0}, {-1.0, 0.0, 0.0}};
   const AtomMatrix f_b{{0.0, 2.0, 0.0}, {0.0, -2.0, 0.0}};
   const auto positions = twoAtomPositions();
@@ -278,9 +265,32 @@ TEST_CASE("ExprPot variance uses the same analytic weights", "[expr]") {
     rgpot::ExprPot pot("2*a + b", std::move(terms));
     auto [e, f, v] = pot(positions, atmtypes, box);
     REQUIRE_THAT(e, WithinAbs(4.0, 0.0));
-    REQUIRE_THAT(v, WithinAbs(2.0 * 1.5 + 4.0, 0.0));
+    REQUIRE_THAT(v, WithinAbs(2.0 * 2.0 * 1.5 + 1.0 * 1.0 * 4.0, 0.0));
     REQUIRE_THAT(f(0, 0), WithinAbs(2.0, 0.0));
     REQUIRE_THAT(f(0, 1), WithinAbs(2.0, 0.0));
+  }
+  SECTION("a fractional and a negative weight") {
+    std::vector<rgpot::ExprPot::Term> terms;
+    terms.emplace_back("a", std::make_unique<StubPot>(1.0, 1.5, f_a));
+    terms.emplace_back("b", std::make_unique<StubPot>(2.0, 4.0, f_b));
+    rgpot::ExprPot pot("0.5*a - 3*b", std::move(terms));
+    auto [e, f, v] = pot(positions, atmtypes, box);
+    (void)e;
+    (void)f;
+    REQUIRE_THAT(v, WithinAbs(0.5 * 0.5 * 1.5 + 3.0 * 3.0 * 4.0, 1e-12));
+    REQUIRE(v > 0.0);
+  }
+  SECTION("a nonlinear expression weights by the derivative at the energies") {
+    std::vector<rgpot::ExprPot::Term> terms;
+    terms.emplace_back("a", std::make_unique<StubPot>(3.0, 1.5, f_a));
+    terms.emplace_back("b", std::make_unique<StubPot>(2.0, 4.0, f_b));
+    rgpot::ExprPot pot("a*b", std::move(terms));
+    auto [e, f, v] = pot(positions, atmtypes, box);
+    (void)e;
+    (void)f;
+    REQUIRE_THAT(pot.dEnergyDTerm("a"), WithinAbs(2.0, 0.0));
+    REQUIRE_THAT(pot.dEnergyDTerm("b"), WithinAbs(3.0, 0.0));
+    REQUIRE_THAT(v, WithinAbs(2.0 * 2.0 * 1.5 + 3.0 * 3.0 * 4.0, 1e-12));
   }
   SECTION("non-finite child variance is zero") {
     std::vector<rgpot::ExprPot::Term> terms;

@@ -1,5 +1,6 @@
 rgpot_abi_compatible
 rgpot_abi_stamp
+rgpot_ch5_2008_taylor_jet
 rgpot_eindir_abi_compatible
 rgpot_eindir_abi_stamp
 rgpot_force_input_create
@@ -19,6 +20,8 @@ rgpot_potential_new_eindir
 rgpot_potential_reset_eval_counts
 rgpot_potential_reset_hvp_counts
 rgpot_potential_set_hvp_callback
+rgpot_potential_set_taylor_jet
+rgpot_potential_taylor_jet
 rgpot_source_revision
 rgpot_tensor_cpu_f64_2d
 rgpot_tensor_cpu_f64_matrix3
@@ -32,3 +35,16 @@ rgpot_version
 rgpot_version_major
 rgpot_version_minor
 rgpot_version_patch
+rgpot_set_last_error
+rgpot_fused_settings_default
+rgpot_potential_set_fused_settings
+rgpot_potential_fused_error_kind
+rgpot_potential_new_eam_table
+rgpot_potential_hvp_resolved
+rgpot_potential_set_ad_hvp_callback
+rgpot_potential_set_hessian_callback
+rgpot_potential_set_ad_hessian_callback
+rgpot_potential_hessian
+rgpot_potential_derivative_caps
+rgpot_potential_derivative_counts
+rgpot_mdi_server_start

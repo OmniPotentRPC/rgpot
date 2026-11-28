@@ -1,0 +1,22 @@
+# Copyright 2023--present rgpot developers
+# Dynamic exports of an engine plugin. Names match
+# engines/engine_exports_expected.txt. Everything else, including the
+# GCC gcov runtime linked into a coverage build, stays local.
+{
+  global:
+    rgpot_engine_abi_compatible;
+    rgpot_engine_abi_stamp;
+    rgpot_engine_abi_version;
+    rgpot_engine_available;
+    rgpot_engine_caps;
+    rgpot_engine_create;
+    rgpot_engine_destroy;
+    rgpot_engine_force;
+    rgpot_engine_force_batch;
+    rgpot_engine_hvp;
+    rgpot_engine_last_error;
+    rgpot_engine_name;
+    rgpot_engine_version;
+  local:
+    *;
+};

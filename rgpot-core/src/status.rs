@@ -16,7 +16,7 @@
 //!    retrieves it with [`rgpot_last_error()`]. The pointer is valid until
 //!    the next `rgpot_*` call on the same thread.
 //!
-//! 3. **[`catch_unwind`]** — A wrapper used inside every `extern "C"`
+//! 3. **`catch_unwind`** — A wrapper used inside every `extern "C"`
 //!    function to catch Rust panics before they unwind across the FFI
 //!    boundary (which is undefined behaviour). Caught panics become
 //!    `RGPOT_INTERNAL_ERROR` with the panic message stored for retrieval.
@@ -48,6 +48,16 @@ pub enum rgpot_status_t {
     RGPOT_RPC_ERROR = 3,
     /// A buffer was too small for the requested operation.
     RGPOT_BUFFER_SIZE_ERROR = 4,
+    /// The self-consistent field of an electronic-structure engine did not
+    /// converge. A callback returns it so that the core can tell this
+    /// failure from any other; see `rgpot_potential_fused_error_kind`.
+    RGPOT_SCC_NOT_CONVERGED = 5,
+    /// The potential has no exact Taylor jet.
+    RGPOT_NO_JET = 6,
+    /// A branch test of a Taylor jet has an enclosure containing its threshold.
+    RGPOT_JET_BRANCH = 7,
+    /// A Taylor jet left the analytic domain of a function or a division.
+    RGPOT_JET_DOMAIN = 8,
 }
 
 thread_local! {
@@ -57,11 +67,36 @@ thread_local! {
 /// Store an error message in the thread-local slot.
 pub(crate) fn set_last_error(msg: &str) {
     LAST_ERROR.with(|cell| {
-        let c = CString::new(msg).unwrap_or_else(|_| {
-            CString::new("(error message contained interior NUL)").unwrap()
-        });
+        let c = match CString::new(msg) {
+            Ok(c) => c,
+            Err(_) => CString::new("(error message contained interior NUL)").unwrap(),
+        };
         *cell.borrow_mut() = c;
     });
+}
+
+/// The last error message of the current thread, as text.
+pub(crate) fn last_error_message() -> String {
+    LAST_ERROR.with(|cell| cell.borrow().to_string_lossy().into_owned())
+}
+
+/// Set the error message of the current thread from C or C++.
+///
+/// A potential callback calls this before it returns a failure status, so
+/// that the message travels with the failure. A NULL `msg` clears the
+/// message.
+///
+/// # Safety
+///
+/// `msg` must be NULL or point to a NUL-terminated string.
+#[no_mangle]
+pub unsafe extern "C" fn rgpot_set_last_error(msg: *const c_char) {
+    if msg.is_null() {
+        set_last_error("");
+        return;
+    }
+    let text = unsafe { std::ffi::CStr::from_ptr(msg) }.to_string_lossy();
+    set_last_error(&text);
 }
 
 /// Retrieve a pointer to the last error message for the current thread.

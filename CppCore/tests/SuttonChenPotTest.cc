@@ -10,18 +10,24 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <memory>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 #include <string>
 #include <thread>
+#include <tuple>
 #include <vector>
 
 #include <catch2/catch_all.hpp>
 
+#include "lsan_libomp.hpp"
 #include "rgpot/KeptPotential.hpp"
 #include "rgpot/PairTerms.hpp"
 #include "rgpot/SuttonChen/SuttonChenPot.hpp"
 #include "rgpot/SuttonChen/SuttonChenScales.hpp"
+#include "rgpot/SuttonChen/detail/SuttonChenWorkspaceSnapshot.hpp"
+#include "rgpot/nlist/NeighbourList.hpp"
 #include "rgpot/stress.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 
@@ -662,6 +668,159 @@ TEST_CASE("Sutton-Chen force terms read back keep the bits of computing them aga
   setThreads("1");
 }
 
+TEST_CASE("pair-term limit keeps threaded row walks when three-phase is skipped",
+          "[SuttonChen][terms][nlist]") {
+  double box[9] = {};
+  rgpot::SuttonChenConfig cfg = rgpot::sutton_chen_platinum();
+  cfg.cutoff = 1.6 * cfg.a;
+  cfg.periodic = true;
+  const auto pos = fcc_cell(13, cfg.a, box);
+  REQUIRE(pos.size() / 3 >= rgpot::kTeamMinAtoms);
+  const auto n = pos.size() / 3;
+
+  rgpot::nlist::Neighbours cells;
+  rgpot::nlist::updateCells(cells, pos.data(), n, box, cfg.cutoff, cfg.cutoff / 5.0,
+                            rgpot::nlist::Image::Round, rgpot::nlist::Mode::Stored,
+                            std::array<bool, 3>{true, true, true});
+  const auto &off = cells.offsets();
+  const auto &nbr = cells.neighbours();
+  constexpr std::size_t kMinParallelHalfPairs = 4096;
+  std::size_t total_up = 0;
+  for (std::size_t i = 0; i < n; ++i) {
+    const auto lo = off[i];
+    const auto hi = off[i + 1];
+    const auto self = static_cast<std::int32_t>(i);
+    const auto mid = static_cast<std::int32_t>(
+        std::upper_bound(nbr.begin() + lo, nbr.begin() + hi, self) -
+        nbr.begin());
+    total_up += static_cast<std::size_t>(hi - mid);
+  }
+  REQUIRE(total_up > kMinParallelHalfPairs);
+  const std::size_t low_limit = 3;
+  REQUIRE(low_limit < 4);
+  const std::size_t mid_limit =
+      kMinParallelHalfPairs + (total_up - kMinParallelHalfPairs) / 2;
+  REQUIRE(mid_limit > kMinParallelHalfPairs);
+  REQUIRE(mid_limit < total_up);
+
+  auto run_eval = [&](const char *threads, std::size_t limit) {
+    setThreads(threads);
+    rgpot::SuttonChenPot pot(cfg);
+    pot.setNeighbourMode(rgpot::nlist::Mode::Stored);
+    pot.setPairTermLimit(limit);
+    std::vector<double> forces(pos.size(), 0.0);
+    rgpot::ForceOut out{};
+    out.F = forces.data();
+    // First call builds the stored list. Measure the reused call so any team
+    // open comes from the force path itself.
+    pot.forceImpl({pos.size() / 3, pos.data(), nullptr, box}, &out);
+    REQUIRE_FALSE(pot.listReused());
+    std::fill(forces.begin(), forces.end(), 0.0);
+    const auto before = rgpot::teamsOpened();
+    pot.forceImpl({pos.size() / 3, pos.data(), nullptr, box}, &out);
+    REQUIRE(pot.listReused());
+    return std::tuple<double, std::vector<double>, std::uint64_t>{
+        out.energy, std::move(forces), rgpot::teamsOpened() - before};
+  };
+
+  auto [ref_low_energy, ref_low_forces, ref_low_teams] = run_eval("1", low_limit);
+  auto [ref_mid_energy, ref_mid_forces, ref_mid_teams] = run_eval("1", mid_limit);
+  REQUIRE(ref_low_teams == 0);
+  REQUIRE(ref_mid_teams == 0);
+
+  auto [low_energy, low_forces, low_teams] = run_eval("4", low_limit);
+  REQUIRE(std::memcmp(&low_energy, &ref_low_energy, sizeof(double)) == 0);
+  REQUIRE(same_bits(low_forces, ref_low_forces));
+#if defined(_OPENMP)
+  REQUIRE(low_teams > 0);
+#else
+  REQUIRE(low_teams == 0);
+#endif
+
+  auto [mid_energy, mid_forces, mid_teams] = run_eval("4", mid_limit);
+  REQUIRE(std::memcmp(&mid_energy, &ref_mid_energy, sizeof(double)) == 0);
+  REQUIRE(same_bits(mid_forces, ref_mid_forces));
+#if defined(_OPENMP)
+  REQUIRE(mid_teams > 0);
+#else
+  REQUIRE(mid_teams == 0);
+#endif
+
+  // A limit of 0 skips the three-phase workspace and runs the two-pass row
+  // walk with zero kept pair terms.
+  auto [ref_zero_energy, ref_zero_forces, ref_zero_teams] = run_eval("1", 0);
+  REQUIRE(ref_zero_teams == 0);
+  auto [zero_energy, zero_forces, zero_teams] = run_eval("4", 0);
+  REQUIRE(std::memcmp(&zero_energy, &ref_zero_energy, sizeof(double)) == 0);
+  REQUIRE(same_bits(zero_forces, ref_zero_forces));
+#if defined(_OPENMP)
+  REQUIRE(zero_teams > 0);
+#else
+  REQUIRE(zero_teams == 0);
+#endif
+
+  // When the limit is below est_half_pairs, the three-phase workspace is
+  // skipped before buildStoredHalfIndex, leaving the thread-local workspace
+  // unallocated. When the limit accepts the call, the per-call scratch
+  // vectors are released after the region completes while the half-pair index
+  // and slice splits remain cached for Verlet reuse.
+  {
+    setThreads("4");
+    rgpot::detail::releaseSuttonChenWorkspace();
+    REQUIRE(rgpot::detail::suttonChenWorkspaceSnapshot().index_builds == 0);
+    rgpot::SuttonChenPot skipped(cfg);
+    skipped.setNeighbourMode(rgpot::nlist::Mode::Stored);
+    skipped.setPairTermLimit(mid_limit);
+    std::vector<double> forces(pos.size(), 0.0);
+    rgpot::ForceOut out{};
+    out.F = forces.data();
+    skipped.forceImpl({n, pos.data(), nullptr, box}, &out);
+    REQUIRE_FALSE(skipped.listReused());
+    const auto snap_skipped = rgpot::detail::suttonChenWorkspaceSnapshot();
+    CHECK(snap_skipped.index_builds == 0);
+    CHECK(snap_skipped.index_capacity_bytes == 0);
+    CHECK(snap_skipped.scratch_capacity_bytes == 0);
+
+    rgpot::SuttonChenPot accepted(cfg);
+    accepted.setNeighbourMode(rgpot::nlist::Mode::Stored);
+    accepted.setPairTermLimit(total_up);
+    std::vector<double> atom_e(n, 0.0);
+    std::vector<double> atom_v(6 * n, 0.0);
+    accepted.forcePerAtom({n, pos.data(), nullptr, box}, &out,
+                          {atom_e.data(), atom_v.data()});
+    REQUIRE_FALSE(accepted.listReused());
+    const auto snap_built = rgpot::detail::suttonChenWorkspaceSnapshot();
+#if defined(_OPENMP)
+    CHECK(snap_built.index_builds == 1);
+    CHECK(snap_built.total_up == total_up);
+    CHECK(snap_built.index_capacity_bytes > 0);
+#else
+    CHECK(snap_built.index_builds == 0);
+    CHECK(snap_built.total_up == 0);
+    CHECK(snap_built.index_capacity_bytes == 0);
+#endif
+    CHECK(snap_built.scratch_capacity_bytes == 0);
+
+    accepted.forcePerAtom({n, pos.data(), nullptr, box}, &out,
+                          {atom_e.data(), atom_v.data()});
+    REQUIRE(accepted.listReused());
+    const auto snap_reused = rgpot::detail::suttonChenWorkspaceSnapshot();
+#if defined(_OPENMP)
+    CHECK(snap_reused.index_builds == 1);
+#else
+    CHECK(snap_reused.index_builds == 0);
+#endif
+    CHECK(snap_reused.scratch_capacity_bytes == 0);
+
+    rgpot::detail::releaseSuttonChenWorkspace();
+    const auto snap_released = rgpot::detail::suttonChenWorkspaceSnapshot();
+    CHECK(snap_released.index_capacity_bytes == 0);
+    CHECK(snap_released.scratch_capacity_bytes == 0);
+  }
+
+  setThreads("1");
+}
+
 TEST_CASE("pair terms past the room are left for the second pass", "[SuttonChen][terms]") {
   // Pushes `pairs` pairs and reads back what the pass kept.
   auto pass = [](rgpot::PairTerms<2> &terms, int pairs) {
@@ -874,11 +1033,11 @@ TEST_CASE("the C entry point keeps its potential until the parameters or atoms c
   check(cell, pos, box, false);
 }
 
-TEST_CASE("Sutton-Chen with no cutoff splits the atoms across a team",
+TEST_CASE("Sutton-Chen with no cutoff keeps the one-bin bits on any thread count",
           "[SuttonChen][nlist]") {
-  // A one-bin search left its cell to one thread. The unbounded walk gives
-  // each thread a run of atoms, whose densities and forces sum in the same
-  // order. Only the energy is summed by thread.
+  // 38 atoms stay on the calling thread whatever OMP_NUM_THREADS asks for,
+  // and the unbounded walk takes the pairs in the order of the one bin that
+  // a search wider than the cluster gives.
   double epsilon = 0.0;
   double c = 0.0;
   double a = 0.0;
@@ -915,7 +1074,7 @@ TEST_CASE("Sutton-Chen with no cutoff splits the atoms across a team",
       REQUIRE(std::memcmp(&one_bin.energy, &want.energy, sizeof(double)) == 0);
       REQUIRE(same_bits(one_bin.forces, want.forces));
       REQUIRE(same_bits(got.forces, want.forces));
-      REQUIRE(std::abs(got.energy - want.energy) <= 1e-13 * std::abs(want.energy));
+      REQUIRE(std::memcmp(&got.energy, &want.energy, sizeof(double)) == 0);
     }
   }
   setThreads("1");
@@ -1027,4 +1186,445 @@ TEST_CASE("Sutton-Chen pressure vanishes at the fitted lattice parameter",
                               .stress[0];
   REQUIRE(squeezed < 0.0);
   REQUIRE(last < 1.0e-3 * std::abs(squeezed));
+}
+
+namespace {
+
+struct ScThreadGuard {
+  std::string prev;
+  bool had = false;
+
+  ScThreadGuard() {
+    if (const char *v = std::getenv("OMP_NUM_THREADS")) {
+      had = true;
+      prev = v;
+    }
+  }
+
+  ~ScThreadGuard() {
+#if defined(_WIN32)
+    _putenv_s("OMP_NUM_THREADS", had ? prev.c_str() : "");
+#else
+    if (had) {
+      setenv("OMP_NUM_THREADS", prev.c_str(), 1);
+    } else {
+      unsetenv("OMP_NUM_THREADS");
+    }
+#endif
+  }
+};
+
+struct FullScEval {
+  double energy = 0.0;
+  std::vector<double> forces;
+  std::vector<double> stress;
+  int has_stress = 0;
+  double pa_energy = 0.0;
+  std::vector<double> pa_forces;
+  std::vector<double> pa_stress;
+  std::vector<double> atom_energy;
+  std::vector<double> atom_virial;
+};
+
+FullScEval run_full_sc_eval(const rgpot::SuttonChenPot &pot,
+                            const std::vector<double> &pos, const double *box) {
+  const std::size_t n = pos.size() / 3;
+  FullScEval out;
+  out.forces.assign(3 * n, 0.0);
+  out.stress.assign(9, 0.0);
+  rgpot::ForceOut fo{};
+  fo.F = out.forces.data();
+  const rgpot::ForceInput in{n, pos.data(), nullptr, box};
+  pot.forceImpl(in, &fo);
+  out.energy = fo.energy;
+  std::copy(fo.stress, fo.stress + 9, out.stress.begin());
+  out.has_stress = fo.has_stress;
+
+  out.pa_forces.assign(3 * n, 0.0);
+  out.pa_stress.assign(9, 0.0);
+  out.atom_energy.assign(n, 0.0);
+  out.atom_virial.assign(6 * n, 0.0);
+  rgpot::ForceOut pao{};
+  pao.F = out.pa_forces.data();
+  pot.forcePerAtom(in, &pao, {out.atom_energy.data(), out.atom_virial.data()});
+  out.pa_energy = pao.energy;
+  std::copy(pao.stress, pao.stress + 9, out.pa_stress.begin());
+  return out;
+}
+
+std::size_t count_sc_bit_diffs(const FullScEval &a, const FullScEval &b) {
+  std::size_t diffs = 0;
+  auto cmp = [&diffs](double x, double y) {
+    if (std::memcmp(&x, &y, sizeof(double)) != 0) {
+      ++diffs;
+    }
+  };
+  cmp(a.energy, b.energy);
+  cmp(a.pa_energy, b.pa_energy);
+  if (a.has_stress != b.has_stress) {
+    ++diffs;
+  }
+  auto cmp_vec = [&](const std::vector<double> &va, const std::vector<double> &vb) {
+    if (va.size() != vb.size()) {
+      diffs += std::max(va.size(), vb.size());
+      return;
+    }
+    for (std::size_t i = 0; i < va.size(); ++i) {
+      cmp(va[i], vb[i]);
+    }
+  };
+  cmp_vec(a.forces, b.forces);
+  cmp_vec(a.stress, b.stress);
+  cmp_vec(a.pa_forces, b.pa_forces);
+  cmp_vec(a.pa_stress, b.pa_stress);
+  cmp_vec(a.atom_energy, b.atom_energy);
+  cmp_vec(a.atom_virial, b.atom_virial);
+  return diffs;
+}
+
+std::vector<double> jitter_positions(std::vector<double> pos, double amp) {
+  for (std::size_t i = 0; i < pos.size(); ++i) {
+    pos[i] += amp * std::sin(1.7 * static_cast<double>(i) + 0.3);
+  }
+  return pos;
+}
+
+} // namespace
+
+TEST_CASE("Sutton-Chen matches one-thread bits at 1, 2, 4 and 8 threads across Verlet reuse and rebuild",
+          "[SuttonChen][threads]") {
+  ScThreadGuard guard;
+
+  // 864 atoms sit under the neighbour-list default of 8192 and over
+  // Sutton-Chen's own floor of 64. Two threads open no team. Four or more
+  // do, and the Verlet list is reused inside half the skin.
+  {
+    double box[9] = {};
+    rgpot::SuttonChenConfig cfg = rgpot::sutton_chen_platinum();
+    cfg.cutoff = 5.5;
+    cfg.periodic = true;
+    cfg.stress = true;
+    const auto base = fcc_cell(6, cfg.a, box);
+    const auto step0 = jitter_positions(base, 0.04);
+    const auto step1 = jitter_positions(step0, 0.08);
+    auto step2 = step1;
+    step2[0] += 0.70;
+    REQUIRE(step0.size() / 3 < rgpot::kTeamMinAtoms);
+
+    setThreads("1");
+    rgpot::SuttonChenPot ref_pot(cfg);
+    ref_pot.setNeighbourMode(rgpot::nlist::Mode::Stored);
+    const auto ref0 = run_full_sc_eval(ref_pot, step0, box);
+    const auto ref1 = run_full_sc_eval(ref_pot, step1, box);
+    REQUIRE(ref_pot.listReused());
+    std::vector<double> fbuf(step2.size(), 0.0);
+    rgpot::ForceOut probe{};
+    probe.F = fbuf.data();
+    ref_pot.forceImpl({step2.size() / 3, step2.data(), nullptr, box}, &probe);
+    REQUIRE_FALSE(ref_pot.listReused());
+    const auto ref2 = run_full_sc_eval(ref_pot, step2, box);
+    REQUIRE(ref_pot.listReused());
+
+    for (const char *th : {"1", "2", "4", "8"}) {
+      INFO("own floor OMP_NUM_THREADS=" << th);
+      setThreads(th);
+      const auto before = rgpot::teamsOpened();
+      rgpot::SuttonChenPot pot(cfg);
+      pot.setNeighbourMode(rgpot::nlist::Mode::Stored);
+      CHECK(count_sc_bit_diffs(run_full_sc_eval(pot, step0, box), ref0) == 0);
+      CHECK(count_sc_bit_diffs(run_full_sc_eval(pot, step1, box), ref1) == 0);
+      CHECK(pot.listReused());
+      pot.forceImpl({step2.size() / 3, step2.data(), nullptr, box}, &probe);
+      CHECK_FALSE(pot.listReused());
+      CHECK(count_sc_bit_diffs(run_full_sc_eval(pot, step2, box), ref2) == 0);
+      CHECK(pot.listReused());
+#if defined(_OPENMP)
+      const int nth = std::atoi(th);
+      const bool team =
+          nth > 1 && step0.size() / 3 >= rgpot::SuttonChenPot::kTeamFrom.of(nth);
+      if (team) {
+        CHECK(rgpot::teamsOpened() > before);
+      } else {
+        CHECK(rgpot::teamsOpened() == before);
+      }
+#else
+      CHECK(rgpot::teamsOpened() == before);
+#endif
+    }
+  }
+
+  // Above kTeamMinAtoms: 13x13x13 fcc = 8788 atoms >= 8192 for both unit
+  // lattice parameter (a = 1) and platinum (a = 3.92), orthogonal and sheared.
+  for (const bool unit_a : {true, false}) {
+    for (const bool sheared : {false, true}) {
+      double box[9] = {};
+      rgpot::SuttonChenConfig cfg =
+          unit_a ? rgpot::SuttonChenConfig{.cutoff = 1.6, .periodic = true, .stress = true}
+                 : rgpot::sutton_chen_platinum();
+      if (!unit_a) {
+        cfg.cutoff = 1.6 * cfg.a;
+        cfg.periodic = true;
+        cfg.stress = true;
+      }
+      const auto base = fcc_cell(13, cfg.a, box);
+      if (sheared) {
+        box[3] = 0.08 * box[0];
+        box[6] = 0.04 * box[0];
+        box[7] = 0.06 * box[4];
+      }
+      const std::size_t n = base.size() / 3;
+      REQUIRE(n >= rgpot::kTeamMinAtoms);
+
+      // Skin is cutoff / 5; half-skin is cutoff / 10.
+      const double half_skin = cfg.cutoff / 10.0;
+      const auto step0 = jitter_positions(base, 0.01 * cfg.a);
+      const auto within_skin = jitter_positions(step0, 0.15 * half_skin);
+      auto past_skin = within_skin;
+      past_skin[0] += 1.5 * half_skin;
+
+      for (const auto mode : {rgpot::nlist::Mode::Stored, rgpot::nlist::Mode::Auto,
+                              rgpot::nlist::Mode::Stream}) {
+        if (sheared && mode != rgpot::nlist::Mode::Stored) {
+          continue;
+        }
+        INFO("unit_a=" << unit_a << " sheared=" << sheared
+                       << " mode=" << static_cast<int>(mode));
+        setThreads("1");
+        rgpot::SuttonChenPot ref_pot(cfg);
+        ref_pot.setNeighbourMode(mode);
+        const auto ref0 = run_full_sc_eval(ref_pot, step0, box);
+        const auto ref1 = run_full_sc_eval(ref_pot, within_skin, box);
+        if (mode != rgpot::nlist::Mode::Stream) {
+          REQUIRE(ref_pot.listReused());
+        }
+        std::vector<double> fbuf(past_skin.size(), 0.0);
+        rgpot::ForceOut probe{};
+        probe.F = fbuf.data();
+        ref_pot.forceImpl({n, past_skin.data(), nullptr, box}, &probe);
+        if (mode != rgpot::nlist::Mode::Stream) {
+          REQUIRE_FALSE(ref_pot.listReused());
+        }
+        const auto ref2 = run_full_sc_eval(ref_pot, past_skin, box);
+        if (mode != rgpot::nlist::Mode::Stream) {
+          REQUIRE(ref_pot.listReused());
+        }
+
+        const bool full_matrix = mode != rgpot::nlist::Mode::Stream && !sheared;
+        const std::vector<const char *> thread_list =
+            full_matrix ? std::vector<const char *>{"1", "2", "4", "8"}
+                        : std::vector<const char *>{"1", "8"};
+        for (const char *th : thread_list) {
+          INFO("OMP_NUM_THREADS=" << th);
+          setThreads(th);
+          rgpot::SuttonChenPot pot(cfg);
+          pot.setNeighbourMode(mode);
+          CHECK(count_sc_bit_diffs(run_full_sc_eval(pot, step0, box), ref0) == 0);
+
+          const auto before_reuse = rgpot::teamsOpened();
+          CHECK(count_sc_bit_diffs(run_full_sc_eval(pot, within_skin, box), ref1) == 0);
+          if (mode != rgpot::nlist::Mode::Stream) {
+            CHECK(pot.listReused());
+          }
+#if defined(_OPENMP)
+          const int nth = std::atoi(th);
+          const bool team = nth > 1 && n >= rgpot::SuttonChenPot::kTeamFrom.of(nth);
+          if (team) {
+            CHECK(rgpot::teamsOpened() > before_reuse);
+          } else {
+            CHECK(rgpot::teamsOpened() == before_reuse);
+          }
+#else
+          CHECK(rgpot::teamsOpened() == before_reuse);
+#endif
+
+          pot.forceImpl({n, past_skin.data(), nullptr, box}, &probe);
+          if (mode != rgpot::nlist::Mode::Stream) {
+            CHECK_FALSE(pot.listReused());
+          }
+          CHECK(count_sc_bit_diffs(run_full_sc_eval(pot, past_skin, box), ref2) == 0);
+          if (mode != rgpot::nlist::Mode::Stream) {
+            CHECK(pot.listReused());
+          }
+        }
+      }
+    }
+  }
+
+  // Dilute stored system above kTeamMinAtoms (< 4096 upper pairs). The
+  // force kernel stays on the calling thread, as Morse does for a stored
+  // list below kMinParallelHalfPairs. The shared gather may still open
+  // one region: buildStored threads when the 27-cell stencil bound is at
+  // least 4096 and greater than the atom count. Cutoff 5.5 with a skin of
+  // one fifth searches to 6.6, and atoms 12 apart fall in that stencil
+  // even though they fail the cutoff, so the bound exceeds the atom count.
+  // Morse's dilute cutoff of 5.3 does not. A reused call builds no list,
+  // so a team there would be the force kernel.
+  {
+    const std::size_t n = rgpot::kTeamMinAtoms + 16;
+    const double spacing = 12.0;
+    const int grid = 22;
+    const double side = static_cast<double>(grid) * spacing;
+    const double box[9] = {side, 0.0, 0.0, 0.0, side, 0.0, 0.0, 0.0, side};
+    std::vector<double> pos;
+    pos.reserve(3 * n);
+    for (std::size_t a = 0; a < n; ++a) {
+      const std::size_t gx = a % grid;
+      const std::size_t gy = (a / grid) % grid;
+      const std::size_t gz = a / (static_cast<std::size_t>(grid) * static_cast<std::size_t>(grid));
+      pos.push_back((static_cast<double>(gx) + 0.5) * spacing);
+      pos.push_back((static_cast<double>(gy) + 0.5) * spacing);
+      pos.push_back((static_cast<double>(gz) + 0.5) * spacing);
+    }
+    for (std::size_t p = 0; p < 10; ++p) {
+      pos[3 * (2 * p + 1)] = pos[3 * (2 * p)] + 2.6;
+      pos[3 * (2 * p + 1) + 1] = pos[3 * (2 * p) + 1];
+      pos[3 * (2 * p + 1) + 2] = pos[3 * (2 * p) + 2];
+    }
+    rgpot::SuttonChenConfig cfg = rgpot::sutton_chen_platinum();
+    cfg.cutoff = 5.5;
+    cfg.periodic = true;
+    cfg.stress = true;
+
+    setThreads("1");
+    rgpot::SuttonChenPot ref_pot(cfg);
+    ref_pot.setNeighbourMode(rgpot::nlist::Mode::Stored);
+    const auto ref = run_full_sc_eval(ref_pot, pos, box);
+
+    for (const char *th : {"2", "4", "8"}) {
+      setThreads(th);
+      rgpot::SuttonChenPot pot(cfg);
+      pot.setNeighbourMode(rgpot::nlist::Mode::Stored);
+      const auto before = rgpot::teamsOpened();
+      CHECK(count_sc_bit_diffs(run_full_sc_eval(pot, pos, box), ref) == 0);
+      const auto built = rgpot::teamsOpened();
+      // At most the stored-list gather. The force walk itself is serial.
+      CHECK(built - before <= 1);
+      CHECK(count_sc_bit_diffs(run_full_sc_eval(pot, pos, box), ref) == 0);
+      CHECK(pot.listReused());
+      CHECK(rgpot::teamsOpened() == built);
+    }
+  }
+}
+
+TEST_CASE("SuttonChenPot workspace invalidates when a new potential reuses a "
+          "destroyed address",
+          "[SuttonChen][threads][generation]") {
+  ScThreadGuard guard;
+  double box[9] = {};
+  rgpot::SuttonChenConfig cfg = rgpot::sutton_chen_platinum();
+  cfg.cutoff = 1.6 * cfg.a;
+  cfg.periodic = true;
+  cfg.stress = true;
+  const auto sys1 = fcc_cell(13, cfg.a, box);
+  const std::size_t n = sys1.size() / 3;
+  REQUIRE(n >= rgpot::kTeamMinAtoms);
+  // Reorder atoms so sys2 is a different index topology on the same sites
+  // and therefore the same stored slot count.
+  auto sys2 = sys1;
+  std::rotate(sys2.begin(), sys2.begin() + 3 * (n / 3), sys2.end());
+
+  auto slots_of = [&](const std::vector<double> &pos) {
+    rgpot::nlist::Neighbours cells;
+    rgpot::nlist::updateCells(cells, pos.data(), n, box, cfg.cutoff,
+                              cfg.cutoff / 5.0, rgpot::nlist::Image::Round,
+                              rgpot::nlist::Mode::Stored,
+                              std::array<bool, 3>{true, true, true});
+    return cells.slots();
+  };
+  REQUIRE(slots_of(sys1) == slots_of(sys2));
+  REQUIRE(slots_of(sys1) / 2 >= 4096);
+
+  setThreads("1");
+  rgpot::SuttonChenPot ref_pot(cfg);
+  ref_pot.setNeighbourMode(rgpot::nlist::Mode::Stored);
+  const auto want = run_full_sc_eval(ref_pot, sys2, box);
+
+  std::vector<double> fbuf(3 * n, 0.0);
+  rgpot::ForceOut out{};
+  out.F = fbuf.data();
+  const rgpot::ForceInput in1{n, sys1.data(), nullptr, box};
+  const rgpot::ForceInput in2{n, sys2.data(), nullptr, box};
+
+  auto prime = [&](rgpot::SuttonChenPot &pot) {
+    setThreads("4");
+    pot.setNeighbourMode(rgpot::nlist::Mode::Stored);
+#if defined(_OPENMP)
+    const auto teams_before = rgpot::teamsOpened();
+#endif
+    pot.forceImpl(in1, &out);
+    const auto after_first = rgpot::detail::suttonChenWorkspaceSnapshot();
+#if defined(_OPENMP)
+    REQUIRE(after_first.index_builds >= 1);
+    REQUIRE(after_first.generation != 0);
+    REQUIRE(rgpot::teamsOpened() > teams_before);
+#else
+    REQUIRE(after_first.index_builds == 0);
+    REQUIRE(after_first.generation == 0);
+    // countTeam is OpenMP-only, so serial builds keep the counter at zero.
+    REQUIRE(rgpot::teamsOpened() == 0);
+#endif
+    return after_first;
+  };
+
+  setThreads("4");
+  auto pot = std::make_unique<rgpot::SuttonChenPot>(cfg);
+  const void *addr1 = pot.get();
+#if defined(_OPENMP)
+  const auto first_snap = prime(*pot);
+#else
+  prime(*pot);
+#endif
+  pot.reset();
+
+  pot = std::make_unique<rgpot::SuttonChenPot>(cfg);
+  const void *addr2 = pot.get();
+  pot->setNeighbourMode(rgpot::nlist::Mode::Stored);
+  // Build the new list on one thread so the three-phase workspace is not
+  // refreshed, then evaluate on four threads with the list reused.
+  setThreads("1");
+  pot->forceImpl(in2, &out);
+  setThreads("4");
+  const auto got_heap = run_full_sc_eval(*pot, sys2, box);
+  const auto heap_snap = rgpot::detail::suttonChenWorkspaceSnapshot();
+  INFO("heap address1=" << addr1 << " address2=" << addr2
+                        << " reused=" << (addr1 == addr2));
+  CHECK(pot->listReused());
+#if defined(_OPENMP)
+  CHECK(heap_snap.generation != first_snap.generation);
+  CHECK(heap_snap.index_builds == first_snap.index_builds + 1);
+#else
+  CHECK(heap_snap.generation == 0);
+  CHECK(heap_snap.index_builds == 0);
+  CHECK(rgpot::teamsOpened() == 0);
+#endif
+  CHECK(count_sc_bit_diffs(got_heap, want) == 0);
+  pot.reset();
+
+  std::optional<rgpot::SuttonChenPot> inplace;
+  inplace.emplace(cfg);
+  const void *opt_addr = &(*inplace);
+#if defined(_OPENMP)
+  const auto opt_first = prime(*inplace);
+#else
+  prime(*inplace);
+#endif
+  inplace.reset();
+  inplace.emplace(cfg);
+  REQUIRE(&(*inplace) == opt_addr);
+  inplace->setNeighbourMode(rgpot::nlist::Mode::Stored);
+  setThreads("1");
+  inplace->forceImpl(in2, &out);
+  setThreads("4");
+  const auto got_inplace = run_full_sc_eval(*inplace, sys2, box);
+  const auto opt_snap = rgpot::detail::suttonChenWorkspaceSnapshot();
+  CHECK(inplace->listReused());
+#if defined(_OPENMP)
+  CHECK(opt_snap.generation != opt_first.generation);
+  CHECK(opt_snap.index_builds == opt_first.index_builds + 1);
+#else
+  CHECK(opt_snap.generation == 0);
+  CHECK(opt_snap.index_builds == 0);
+  CHECK(rgpot::teamsOpened() == 0);
+#endif
+  CHECK(count_sc_bit_diffs(got_inplace, want) == 0);
 }

@@ -2,6 +2,7 @@
 // Copyright 2023--present rgpot developers
 
 #include "rgpot/CPMDPot/CPMDPot.hpp"
+#include "rgpot/CPMDPot/ConfigMessage.hpp"
 #include "rgpot/CalculatorGroup.hpp"
 
 #include <capnp/message.h>
@@ -9,12 +10,15 @@
 #include <kj/array.h>
 
 #include "rgpot/CPMDPot/cpmd_c_abi.h"
-#include "rgpot/NWChemPot/DynLib.hpp"
 #include "rgpot/ParamHash.hpp"
+#include "rgpot/abi/CapnpParamsHelper.hpp"
+#include "rgpot/abi/EngineDlopen.hpp"
+#include "rgpot/abi/ProfileLoader.hpp"
 #include "rgpot/rpc/PotentialConfigArm.hpp"
 #include "rgpot/units.hpp"
 
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdio>
 #include <cstdlib>
@@ -38,18 +42,13 @@ using EnergyGradientFn = CPMDCResult (*)(int, const double *, const int *,
                                          const void *, size_t, double *);
 using SetParamsFn = int (*)(const void *, size_t);
 using SessionCreateFn = CPMDCSession *(*)(const void *, size_t);
-using SessionDestroyFn = void (*)(CPMDCSession *);
-using PotentialResultSizeFn = size_t (*)(const void *, size_t);
-using SessionCalculateResultFn = CPMDCResult (*)(CPMDCSession *, const void *,
-                                                 size_t, void *, size_t,
-                                                 size_t *);
-using VersionFn = const char *(*)(void);
-using AvailableFn = int (*)(void);
 using FeatureCountFn = size_t (*)(void);
 using FeatureTableFn = const CPMDCFeatureEntry *(*)(void);
 using FeatureFindFn = const CPMDCFeatureEntry *(*)(const char *);
 using AdoptCommFn = int (*)(const void *, std::size_t, int);
 using SelectOrbitalsFn = int (*)(CPMDCSession *, long long);
+using CopyOrbitalsFn = int (*)(CPMDCSession *, long long, long long);
+using LastErrorFn = const char *(*)(void);
 
 // Layout matches cpmdc CPMDCStressTensor: int valid, then nine doubles.
 struct CPMDCStressTensor {
@@ -60,30 +59,6 @@ using LastStressFn = int (*)(CPMDCStressTensor *);
 static_assert(offsetof(CPMDCStressTensor, values) == 8,
               "CPMDCStressTensor values follow the valid flag");
 
-struct ParamsView {
-  const void *data = nullptr;
-  size_t size = 0;
-};
-
-std::vector<std::string>
-engine_lib_candidates(const std::string &explicit_path) {
-  std::vector<std::string> out;
-  if (!explicit_path.empty())
-    out.emplace_back(explicit_path);
-  if (const char *e = std::getenv("CPMDC_LIBRARY"); e && *e)
-    out.emplace_back(e);
-  if (const char *e = std::getenv("RGPOT_CPMDC_ENGINE"); e && *e)
-    out.emplace_back(e);
-  if (const char *e = std::getenv("RGPOT_CPMD_ENGINE"); e && *e)
-    out.emplace_back(e);
-  out.emplace_back("libcpmdc.so");
-  out.emplace_back("./libcpmdc.so");
-  out.emplace_back("libcpmdc.dylib");
-  out.emplace_back("./libcpmdc.dylib");
-  out.emplace_back("cpmdc.dll");
-  return out;
-}
-
 void apply_env_hints(const std::string &cpmd_root) {
   if (!cpmd_root.empty()) {
 #if !defined(_WIN32)
@@ -93,93 +68,51 @@ void apply_env_hints(const std::string &cpmd_root) {
 }
 
 struct EngineBundle {
-  DynLib engine_lib;
+  abi::ProfileLoader profile;
   EnergyGradientFn energy_gradient = nullptr;
   SetParamsFn set_params = nullptr;
   SessionCreateFn session_create = nullptr;
-  SessionDestroyFn session_destroy = nullptr;
-  PotentialResultSizeFn potential_result_size_for_force_input = nullptr;
-  SessionCalculateResultFn session_calculate_result = nullptr;
-  VersionFn version = nullptr;
-  AvailableFn available = nullptr;
   FeatureCountFn feature_count = nullptr;
   FeatureTableFn feature_table = nullptr;
   FeatureFindFn feature_find = nullptr;
   LastStressFn last_stress = nullptr;
   SelectOrbitalsFn select_orbitals = nullptr;
+  CopyOrbitalsFn copy_orbitals = nullptr;
+  LastErrorFn last_error = nullptr;
   AdoptCommFn adopt_comm = nullptr;
-  std::string loaded_path;
   std::string load_error;
   bool loaded = false;
 };
 
 bool try_load_engine(EngineBundle &b, const std::string &engine_path) {
-  b.load_error.clear();
-  b.loaded_path.clear();
-  b.loaded = false;
-  b.energy_gradient = nullptr;
-  b.set_params = nullptr;
-  b.session_create = nullptr;
-  b.session_destroy = nullptr;
-  b.potential_result_size_for_force_input = nullptr;
-  b.session_calculate_result = nullptr;
-  b.version = nullptr;
-  b.available = nullptr;
-  b.feature_count = nullptr;
-  b.feature_table = nullptr;
-  b.feature_find = nullptr;
-  b.last_stress = nullptr;
-  b.select_orbitals = nullptr;
-  b.adopt_comm = nullptr;
-
-  bool eng_ok = false;
+  b = EngineBundle{};
+  const auto cands = abi::engine_candidates(
+      "cpmdc", engine_path,
+      {"CPMDC_LIBRARY", "RGPOT_CPMDC_ENGINE", "RGPOT_CPMD_ENGINE"});
   std::string eng_err;
-  for (const auto &cand : engine_lib_candidates(engine_path)) {
-    try {
-      b.engine_lib.open(cand);
-      b.loaded_path = cand;
-      eng_ok = true;
-      break;
-    } catch (const std::exception &ex) {
-      eng_err = ex.what();
-    }
-  }
-  if (!eng_ok) {
+  if (!b.profile.open_candidates("cpmdc", cands, &eng_err)) {
     b.load_error = "libcpmdc not loaded: " + eng_err;
     return false;
   }
 
-  b.energy_gradient =
-      b.engine_lib.sym_optional<EnergyGradientFn>("cpmdc_energy_gradient");
-  b.adopt_comm =
-      b.engine_lib.sym_optional<AdoptCommFn>("cpmdc_adopt_calculator_comm");
-  b.set_params = b.engine_lib.sym_optional<SetParamsFn>("cpmdc_set_params");
-  b.session_create =
-      b.engine_lib.sym_optional<SessionCreateFn>("cpmdc_session_create");
-  b.session_destroy =
-      b.engine_lib.sym_optional<SessionDestroyFn>("cpmdc_session_destroy");
-  b.potential_result_size_for_force_input =
-      b.engine_lib.sym_optional<PotentialResultSizeFn>(
-          "cpmdc_potential_result_size_for_force_input");
-  b.session_calculate_result =
-      b.engine_lib.sym_optional<SessionCalculateResultFn>(
-          "cpmdc_session_calculate_result");
-  b.version = b.engine_lib.sym_optional<VersionFn>("cpmdc_version");
-  b.available = b.engine_lib.sym_optional<AvailableFn>("cpmdc_available");
-  b.feature_count =
-      b.engine_lib.sym_optional<FeatureCountFn>("cpmdc_feature_count");
-  b.feature_table =
-      b.engine_lib.sym_optional<FeatureTableFn>("cpmdc_feature_table");
-  b.feature_find =
-      b.engine_lib.sym_optional<FeatureFindFn>("cpmdc_feature_find");
-  b.last_stress = b.engine_lib.sym_optional<LastStressFn>("cpmdc_last_stress");
-  b.select_orbitals = b.engine_lib.sym_optional<SelectOrbitalsFn>(
-      "cpmdc_session_select_orbitals");
+  auto &lib = b.profile.lib();
+  b.energy_gradient = lib.sym_optional<EnergyGradientFn>("cpmdc_energy_gradient");
+  b.adopt_comm = lib.sym_optional<AdoptCommFn>("cpmdc_adopt_calculator_comm");
+  b.set_params = lib.sym_optional<SetParamsFn>("cpmdc_set_params");
+  b.session_create = lib.sym_optional<SessionCreateFn>("cpmdc_session_create");
+  b.feature_count = lib.sym_optional<FeatureCountFn>("cpmdc_feature_count");
+  b.feature_table = lib.sym_optional<FeatureTableFn>("cpmdc_feature_table");
+  b.feature_find = lib.sym_optional<FeatureFindFn>("cpmdc_feature_find");
+  b.last_stress = lib.sym_optional<LastStressFn>("cpmdc_last_stress");
+  b.select_orbitals =
+      lib.sym_optional<SelectOrbitalsFn>("cpmdc_session_select_orbitals");
+  b.copy_orbitals =
+      lib.sym_optional<CopyOrbitalsFn>("cpmdc_session_copy_orbitals");
+  b.last_error = lib.sym_optional<LastErrorFn>("cpmdc_last_error");
 
   const bool has_one_shot = b.energy_gradient && b.set_params;
-  const bool has_session_result = b.session_create && b.session_destroy &&
-                                  b.potential_result_size_for_force_input &&
-                                  b.session_calculate_result;
+  const bool has_session_result =
+      b.session_create && b.profile.has_session_result_profile();
   const bool has_feature_discovery =
       b.feature_count && b.feature_table && b.feature_find;
   if (!has_feature_discovery) {
@@ -196,93 +129,36 @@ bool try_load_engine(EngineBundle &b, const std::string &engine_path) {
 }
 
 bool register_engine_adopter(const EngineBundle &b) {
-  if (!b.adopt_comm)
-    return true;
-  struct PinnedEngine {
-    DynLib library;
-    AdoptCommFn callback;
-  };
-  // The registry retains one handle per callback through the MPI exit
-  // handler. Availability probes never enter it. Instance destruction
-  // and enginePath changes cannot unload a registered callback.
-  static auto *engines = new std::vector<PinnedEngine>;
-  static std::mutex mutex;
-  std::lock_guard<std::mutex> lock(mutex);
-  for (const auto &engine : *engines) {
-    if (engine.callback == b.adopt_comm)
-      return addCalculatorCommAdopter(engine.callback);
-  }
-  DynLib library(b.loaded_path);
-  if (library.sym_optional<AdoptCommFn>("cpmdc_adopt_calculator_comm") !=
-      b.adopt_comm)
-    throw std::runtime_error(
-        "CPMD communicator callback changed while loading");
-  engines->push_back({std::move(library), b.adopt_comm});
-  return addCalculatorCommAdopter(b.adopt_comm);
+  return abi::register_calculator_adopter(
+      b.profile.loaded_path(), "cpmdc_adopt_calculator_comm", b.adopt_comm,
+      "CPMD communicator callback changed while loading");
 }
 
 bool has_session_result_abi(const EngineBundle &b) {
-  return b.session_create && b.session_destroy &&
-         b.potential_result_size_for_force_input && b.session_calculate_result;
+  return b.session_create && b.profile.has_session_result_profile();
 }
 
 void publishForceError(const std::string &message) {
   publishCalculatorError(message);
 }
 
-std::vector<::capnp::word>
-serialize_params(const ::CPMDParams::Reader &params) {
-  ::capnp::MallocMessageBuilder msg;
-  msg.setRoot(params);
-  auto words = ::capnp::messageToFlatArray(msg);
-  std::vector<::capnp::word> out(words.size());
-  std::memcpy(out.data(), words.begin(), words.size() * sizeof(::capnp::word));
-  return out;
-}
-
-std::vector<::capnp::word> default_params() {
-  ::capnp::MallocMessageBuilder msg;
-  auto params = msg.initRoot<::CPMDParams>();
-  return serialize_params(params.asReader());
-}
-
-ParamsView params_view(const std::vector<::capnp::word> &words) {
-  ParamsView view;
-  if (!words.empty()) {
-    view.data = words.data();
-    view.size = words.size() * sizeof(::capnp::word);
-  }
-  return view;
-}
-
 bool push_params_to_engine(EngineBundle &b,
                            const std::vector<::capnp::word> &params_words) {
   if (!b.set_params)
     return false;
-  const ParamsView view = params_view(params_words);
+  const abi::BytesView view = abi::words_view(params_words);
   return b.set_params(view.data, view.size) == 0;
 }
 
-std::vector<::capnp::word> serialize_force_input(const ForceInput &in) {
-  ::capnp::MallocMessageBuilder msg;
-  auto force_input = msg.initRoot<::ForceInput>();
-  const unsigned int coord_count = static_cast<unsigned int>(in.nAtoms * 3u);
-  auto pos = force_input.initPos(coord_count);
-  auto atmnrs = force_input.initAtmnrs(static_cast<unsigned int>(in.nAtoms));
-  auto box = force_input.initBox(9);
-  for (unsigned int i = 0; i < coord_count; ++i)
-    pos.set(i, in.pos[i]);
-  for (unsigned int i = 0; i < in.nAtoms; ++i)
-    atmnrs.set(i, in.atmnrs[i]);
-  for (unsigned int i = 0; i < 9; ++i)
-    box.set(i, in.box[i]);
-  force_input.setLengthUnit("angstrom");
-  force_input.setEnergyUnit("eV");
-  auto words = ::capnp::messageToFlatArray(msg);
-  std::vector<::capnp::word> out(words.size());
-  std::memcpy(out.data(), words.begin(), words.asBytes().size());
-  return out;
+std::string read_engine_last_error(const EngineBundle &b) {
+  if (!b.last_error)
+    return "";
+  const char *msg = b.last_error();
+  if (!msg || !*msg)
+    return "";
+  return msg;
 }
+
 
 std::string params_summary(const ::CPMDParams::Reader &params) {
   std::string out = "functional=" + std::string(params.getFunctional().cStr()) +
@@ -335,17 +211,33 @@ read_params_words(const std::vector<::capnp::word> &params_words,
 // capnp::word forbids copying, so the params a live session was created
 // from are kept as bytes and compared bytewise.
 std::vector<unsigned char> words_bytes(const std::vector<::capnp::word> &w) {
-  const ParamsView view = params_view(w);
+  const abi::BytesView view = abi::words_view(w);
   const auto *p = static_cast<const unsigned char *>(view.data);
   return std::vector<unsigned char>(p, p + view.size);
 }
 
 bool same_words(const std::vector<::capnp::word> &w,
                 const std::vector<unsigned char> &bytes) {
-  const ParamsView view = params_view(w);
+  const abi::BytesView view = abi::words_view(w);
   return view.size == bytes.size() &&
          (view.size == 0 ||
           std::memcmp(view.data, bytes.data(), view.size) == 0);
+}
+
+// cpmdc latches a session to the atom count and the element counts.
+// Slots 1..118 are the atomic numbers; slot 0 is unused.
+constexpr int kElementCountSlots = 119;
+
+bool element_counts(const ForceInput &in,
+                    std::array<int, kElementCountSlots> *counts) {
+  counts->fill(0);
+  for (size_t i = 0; i < in.nAtoms; ++i) {
+    const int z = in.atmnrs[i];
+    if (z < 1 || z > 118)
+      return false;
+    (*counts)[static_cast<size_t>(z)] += 1;
+  }
+  return true;
 }
 
 std::mutex g_probe_mu;
@@ -370,11 +262,21 @@ struct CPMDPot::Impl {
   // The calculation the next force belongs to, see selectOrbitals.
   bool has_orbital_key = false;
   int64_t orbital_key = 0;
+  // Set when configure leaves the engine loaded but no live session.
+  std::string unavailable_reason;
+  // Topology the live session has been asked to evaluate. cpmdc refuses
+  // a later change of atom count or element counts.
+  bool accepted_topology = false;
+  size_t accepted_n_atoms = 0;
+  std::array<int, kElementCountSlots> accepted_counts{};
 
   void destroySession();
   bool configure();
   void recomputeParamsKey();
   void forceSession(const ForceInput &in, ForceOut *out);
+  bool applySelectedOrbitalKey();
+  bool topologyDiffers(const ForceInput &in) const;
+  void acceptTopology(const ForceInput &in);
 };
 
 void CPMDPot::Impl::recomputeParamsKey() {
@@ -382,21 +284,43 @@ void CPMDPot::Impl::recomputeParamsKey() {
   // hashing its bytes covers every field the engine sees.
   Fnv1a fp;
   fp.u64(CPMDPot::kKernelVersion);
-  const ParamsView view = params_view(params_words);
+  const abi::BytesView view = abi::words_view(params_words);
   fp.u64(view.size);
   fp.bytes(view.data, view.size);
   params_key = fp.h;
 }
 
 void CPMDPot::Impl::destroySession() {
-  if (session && bundle.session_destroy)
-    bundle.session_destroy(session);
+  if (session && bundle.profile.session_destroy)
+    bundle.profile.session_destroy(session);
   session = nullptr;
   session_params.clear();
   session_engine_path.clear();
+  accepted_topology = false;
+  accepted_n_atoms = 0;
+  accepted_counts.fill(0);
+}
+
+bool CPMDPot::Impl::topologyDiffers(const ForceInput &in) const {
+  if (!session || !accepted_topology)
+    return false;
+  std::array<int, kElementCountSlots> counts{};
+  if (!element_counts(in, &counts))
+    return false;
+  return in.nAtoms != accepted_n_atoms || counts != accepted_counts;
+}
+
+void CPMDPot::Impl::acceptTopology(const ForceInput &in) {
+  std::array<int, kElementCountSlots> counts{};
+  if (!element_counts(in, &counts))
+    return;
+  accepted_n_atoms = in.nAtoms;
+  accepted_counts = counts;
+  accepted_topology = true;
 }
 
 bool CPMDPot::Impl::configure() {
+  unavailable_reason.clear();
   if (!register_engine_adopter(bundle)) {
     bundle.load_error = "engine refused calculator communicator";
     bundle.loaded = false;
@@ -411,10 +335,27 @@ bool CPMDPot::Impl::configure() {
         same_words(params_words, session_params))
       return true;
     destroySession();
-    const ParamsView view = params_view(params_words);
+    const abi::BytesView view = abi::words_view(params_words);
     session = bundle.session_create(view.data, view.size);
-    if (!session)
+    if (!session) {
+      unavailable_reason = "CPMD engine refused the session create";
+      const std::string detail = read_engine_last_error(bundle);
+      if (!detail.empty())
+        unavailable_reason += ": " + detail;
       return false;
+    }
+    // The params are the identity of this session. Commit them only
+    // after the remembered orbital key is on it. A refusal drops the
+    // session, so a later setParams with the same bytes tries again
+    // instead of taking the identical-session return above.
+    if (!applySelectedOrbitalKey()) {
+      unavailable_reason = "CPMD engine refused the orbital key";
+      const std::string detail = read_engine_last_error(bundle);
+      if (!detail.empty())
+        unavailable_reason += ": " + detail;
+      destroySession();
+      return false;
+    }
     session_params = words_bytes(params_words);
     session_engine_path = engine_path;
     return true;
@@ -424,7 +365,7 @@ bool CPMDPot::Impl::configure() {
 }
 
 CPMDPot::CPMDPot() : Potential(PotType::CPMD), impl_(new Impl) {
-  impl_->params_words = default_params();
+  impl_->params_words = abi::default_capnp_words<::CPMDParams>();
   impl_->recomputeParamsKey();
   apply_env_hints(impl_->cpmd_root);
   if (try_load_engine(impl_->bundle, impl_->engine_path))
@@ -433,7 +374,7 @@ CPMDPot::CPMDPot() : Potential(PotType::CPMD), impl_(new Impl) {
 
 CPMDPot::CPMDPot(const ::CPMDParams::Reader &params)
     : Potential(PotType::CPMD), impl_(new Impl) {
-  impl_->params_words = serialize_params(params);
+  impl_->params_words = abi::serialize_capnp(params);
   impl_->recomputeParamsKey();
   impl_->engine_path = params.getEnginePath().cStr();
   impl_->cpmd_root = params.getCpmdRoot().cStr();
@@ -445,6 +386,11 @@ CPMDPot::CPMDPot(const ::CPMDParams::Reader &params)
 void CPMDPot::selectOrbitals(int64_t key) {
   if (!impl_)
     return;
+  if (impl_->session && impl_->bundle.select_orbitals &&
+      impl_->bundle.select_orbitals(impl_->session,
+                                    static_cast<long long>(key)) != 0) {
+    throw std::runtime_error("CPMD engine refused the orbital key");
+  }
   impl_->has_orbital_key = true;
   impl_->orbital_key = key;
 }
@@ -452,6 +398,16 @@ void CPMDPot::selectOrbitals(int64_t key) {
 bool CPMDPot::keepsOrbitalsPerKey() const {
   return impl_ && impl_->bundle.loaded && impl_->bundle.select_orbitals &&
          has_session_result_abi(impl_->bundle);
+}
+
+bool CPMDPot::copyOrbitals(int64_t from_key, int64_t to_key) {
+  if (!impl_ || !impl_->bundle.loaded ||
+      !has_session_result_abi(impl_->bundle) || !impl_->session ||
+      !impl_->bundle.copy_orbitals)
+    return false;
+  return impl_->bundle.copy_orbitals(impl_->session,
+                                     static_cast<long long>(from_key),
+                                     static_cast<long long>(to_key)) == 0;
 }
 
 uint64_t CPMDPot::paramsKey() const noexcept {
@@ -474,7 +430,7 @@ bool CPMDPot::setParams(const ::CPMDParams::Reader &params) {
   const bool need_reload =
       !impl_->bundle.loaded || next_engine_path != impl_->engine_path;
 
-  impl_->params_words = serialize_params(params);
+  impl_->params_words = abi::serialize_capnp(params);
   impl_->recomputeParamsKey();
   impl_->engine_path = next_engine_path;
   impl_->cpmd_root = next_cpmd_root;
@@ -520,14 +476,9 @@ bool CPMDPot::setPotentialConfig(const ::PotentialConfig::Reader &cfg,
     const auto cp = cfg.getCpmd();
     const bool ok = setParams(cp);
     if (message_out) {
-      const std::string sum = params_summary(cp);
-      if (ok)
-        *message_out = "rgpot params applied (cpmd arm): " + sum;
-      else if (!available())
-        *message_out =
-            "rgpot params cpmd arm failed (engine not loaded): " + sum;
-      else
-        *message_out = "rgpot params cpmd arm rejected by embed: " + sum;
+      *message_out = formatCpmdConfigMessage(
+          params_summary(cp), ok, impl_ && impl_->bundle.loaded,
+          impl_ ? impl_->unavailable_reason : std::string{});
     }
     return ok;
   }
@@ -557,29 +508,20 @@ int CPMDPot::bindCalculators(int ranks_per_calc) {
 }
 
 bool CPMDPot::probeAvailable() {
-  std::lock_guard<std::mutex> lock(g_probe_mu);
-  if (g_probe_done)
-    return g_probe_ok;
-  EngineBundle tmp;
-  g_probe_ok = try_load_engine(tmp, "");
-  g_probe_done = true;
-  return g_probe_ok;
+  return abi::probe_once(g_probe_mu, g_probe_done, g_probe_ok, [] {
+    EngineBundle tmp;
+    return try_load_engine(tmp, "");
+  });
 }
 
 bool CPMDPot::abiAvailable() {
-  std::lock_guard<std::mutex> lock(g_probe_mu);
-  if (g_abi_probe_done)
-    return g_abi_probe_ok;
-  EngineBundle tmp;
-  if (!try_load_engine(tmp, "")) {
-    g_abi_probe_ok = false;
-  } else if (tmp.available) {
-    g_abi_probe_ok = tmp.available() != 0;
-  } else {
-    g_abi_probe_ok = false;
-  }
-  g_abi_probe_done = true;
-  return g_abi_probe_ok;
+  return abi::probe_once(g_probe_mu, g_abi_probe_done, g_abi_probe_ok, [] {
+    EngineBundle tmp;
+    if (!try_load_engine(tmp, "")) {
+      return false;
+    }
+    return tmp.profile.available != nullptr && tmp.profile.available() != 0;
+  });
 }
 
 void CPMDPot::forceImpl(const ForceInput &in, ForceOut *out) const {
@@ -601,8 +543,16 @@ void CPMDPot::forceImplOrThrow(const ForceInput &in, ForceOut *out) const {
   if (thisCalculator().index < 0)
     fail_force("CPMDPot: calculator binding was refused");
   if (!available()) {
-    fail_force(std::string("CPMD engine (libcpmdc) not loaded: ") +
-               (impl_ ? impl_->bundle.load_error : "no impl"));
+    if (impl_ && impl_->bundle.loaded) {
+      if (!impl_->unavailable_reason.empty())
+        fail_force(impl_->unavailable_reason);
+      fail_force("CPMD engine session not ready");
+    }
+    const std::string detail =
+        impl_ ? impl_->bundle.load_error : std::string("no impl");
+    if (detail.empty())
+      fail_force("CPMD engine (libcpmdc) not loaded");
+    fail_force(std::string("CPMD engine (libcpmdc) not loaded: ") + detail);
   }
 
   const int n = static_cast<int>(in.nAtoms);
@@ -615,13 +565,26 @@ void CPMDPot::forceImplOrThrow(const ForceInput &in, ForceOut *out) const {
   ::rgpot::finalizeMpiAtExit();
 
   if (has_session_result_abi(impl_->bundle) && impl_->session) {
+    // A different atom count or element counts is refused on this
+    // session. Drop it and open another with the same parameters
+    // before the call. That next SCF is cold. The same counts keep
+    // the converged wavefunction.
+    if (impl_->topologyDiffers(in)) {
+      impl_->destroySession();
+      if (!impl_->configure() || !impl_->session) {
+        if (!impl_->unavailable_reason.empty())
+          fail_force(impl_->unavailable_reason);
+        fail_force("CPMD engine session not ready");
+      }
+    }
+    impl_->acceptTopology(in);
     impl_->forceSession(in, out);
     return;
   }
 
   std::vector<double> &grad = impl_->grad_scratch;
   grad.assign(static_cast<size_t>(n) * 3u, 0.0);
-  const ParamsView params = params_view(impl_->params_words);
+  const abi::BytesView params = abi::words_view(impl_->params_words);
   CPMDCResult res = impl_->bundle.energy_gradient(
       n, in.pos, in.atmnrs, params.data, params.size, grad.data());
 
@@ -646,9 +609,9 @@ void CPMDPot::forceImplOrThrow(const ForceInput &in, ForceOut *out) const {
 }
 
 void CPMDPot::Impl::forceSession(const ForceInput &in, ForceOut *out) {
-  const auto force_words = serialize_force_input(in);
-  const ParamsView force_view = params_view(force_words);
-  const size_t required = bundle.potential_result_size_for_force_input(
+  const auto force_words = abi::serialize_force_input_ev(in);
+  const abi::BytesView force_view = abi::words_view(force_words);
+  const size_t required = bundle.profile.potential_result_size_for_force_input(
       force_view.data, force_view.size);
   if (required == 0)
     fail_force("CPMD engine rejected ForceInput sizing");
@@ -661,7 +624,7 @@ void CPMDPot::Impl::forceSession(const ForceInput &in, ForceOut *out) {
   if (has_orbital_key && bundle.select_orbitals &&
       bundle.select_orbitals(session, static_cast<long long>(orbital_key)) != 0)
     fail_force("CPMD engine refused the orbital key");
-  CPMDCResult res = bundle.session_calculate_result(
+  abi::ProfileResult res = bundle.profile.session_calculate_result(
       session, force_view.data, force_view.size, result_words.data(),
       result_words.size() * sizeof(::capnp::word), &written);
   if (!res.ok)
@@ -689,6 +652,13 @@ void CPMDPot::Impl::forceSession(const ForceInput &in, ForceOut *out) {
       out->stress[i] = stress[i];
     out->has_stress = 1;
   }
+}
+
+bool CPMDPot::Impl::applySelectedOrbitalKey() {
+  if (!session || !has_orbital_key || !bundle.select_orbitals)
+    return true;
+  return bundle.select_orbitals(session, static_cast<long long>(orbital_key)) ==
+         0;
 }
 
 } // namespace rgpot

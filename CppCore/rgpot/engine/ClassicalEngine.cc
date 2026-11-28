@@ -2,7 +2,9 @@
 // BuiltinParams names the potential: lj, ljcluster, morse, zbl and, when the
 // water option is on, tip4p, spce, tip4p_pt. When the Fortran kernels are
 // built: sw, edip, lenosky, tersoff, eamal, fehe, cuh2, waterh. Every
-// potential takes its default parameters.
+// potential takes its default parameters, except muller_brown, which reads
+// BuiltinParams.config.mullerBrown. An arm that names another potential is
+// an error.
 
 #include "rgpot/engine/BuiltinParams.hpp"
 #include "rgpot/engine/EngineTable.hpp"
@@ -10,7 +12,11 @@
 #include "rgpot/LennardJones/LJClusterPot.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/Morse/MorsePot.hpp"
+#include "rgpot/Models/ModelPots.hpp"
 #include "rgpot/ZBL/ZBLPot.hpp"
+#ifdef RGPOT_HAS_CBE
+#include "rgpot/CBEPot/CBEPot.hpp"
+#endif
 #ifdef RGPOT_HAS_WATER
 #include "rgpot/Water/WaterPots.hpp"
 #endif
@@ -28,6 +34,15 @@ Created create(const void *config, std::size_t config_len) {
     const Builtin builtin = read_builtin(config, config_len);
     std::unique_ptr<PotentialBase> pot;
     const std::string &n = builtin.name;
+    if (builtin.mullerBrown && n != "muller_brown") {
+      throw std::invalid_argument(
+          "BuiltinParams.config arm mullerBrown does not match potential '" +
+          n + "'");
+    }
+    if (builtin.xtb) {
+      throw std::invalid_argument(
+          "BuiltinParams.config arm xtb does not match potential '" + n + "'");
+    }
     if (n == "lj") {
       pot = std::make_unique<LJPot>();
     } else if (n == "ljcluster") {
@@ -36,6 +51,27 @@ Created create(const void *config, std::size_t config_len) {
       pot = std::make_unique<MorsePot>();
     } else if (n == "zbl") {
       pot = std::make_unique<ZBLPot>();
+    } else if (n == "eckart") {
+      pot = std::make_unique<EckartPot>();
+    } else if (n == "muller_brown") {
+      pot = std::make_unique<MullerBrownPot>(
+          builtin.mullerBrown.value_or(MullerBrownConfig{}));
+    } else if (n == "modified_muller_brown") {
+      pot = std::make_unique<ModifiedMullerBrownPot>();
+    } else if (n == "leps_hh2") {
+      pot = std::make_unique<LepsPot>(LepsSystem::HH2);
+    } else if (n == "leps_hcl2") {
+      pot = std::make_unique<LepsPot>(LepsSystem::HCl2);
+    } else if (n == "leps_fh2") {
+      pot = std::make_unique<LepsPot>(LepsSystem::FH2);
+    } else if (n == "double_well") {
+      pot = std::make_unique<DoubleWellPot>(1, 1.0, 5.0, 0.0, 0.0);
+    } else if (n == "coupled_proton_well") {
+      pot = std::make_unique<CoupledProtonWellPot>(1.0, 5.0, 0.32);
+#ifdef RGPOT_HAS_CBE
+    } else if (n == "cbe") {
+      pot = std::make_unique<CBEPot>();
+#endif
 #ifdef RGPOT_HAS_WATER
     } else if (n == "tip4p") {
       pot = std::make_unique<TIP4PPot>();

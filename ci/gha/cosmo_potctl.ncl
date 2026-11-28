@@ -43,7 +43,7 @@ if [ "$need_build" -eq 1 ]; then
   cd "${GITHUB_WORKSPACE}"
 else
   echo "Using cached .cosmo-build (cosmo CC present)"
-  ls -la .cosmo-build | head -8
+  find .cosmo-build -maxdepth 1 -ls | head -8
 fi
 echo "COSMO=${COSMO_ROOT}" >> "$GITHUB_ENV"
 CC_FOUND=""
@@ -69,7 +69,7 @@ if [ -n "$CC_FOUND" ]; then
   BINDIR="$(dirname "$CC_FOUND")"
   echo "${BINDIR}" >> "$GITHUB_PATH"
   # Do NOT set LIBRARY_PATH globally — breaks host cc for build scripts.
-  ls -la "${BINDIR}" | head -15 || true
+  find "${BINDIR}" -maxdepth 1 -ls | head -15 || true
   find "${COSMO_ROOT}/.cosmocc" \( -name 'crt1.o' -o -name 'crti.o' -o -name 'libc.a' -o -name 'crt.o' \) 2>/dev/null | head -15 || true
 else
   echo "ERROR: no cosmo CC after toolchain install"
@@ -112,13 +112,13 @@ fi
 export COSMOCC_ARCHES="${COSMOCC_ARCHES:-x86_64}"
 export COSMO_CC=""
 if [ -d "${COSMO}/.cosmocc" ]; then
-  export COSMO_CC="$(find "${COSMO}/.cosmocc" -type f -name cosmocc -executable 2>/dev/null | head -1 || true)"
+  COSMO_CC="$(find "${COSMO}/.cosmocc" -type f -name cosmocc -executable 2>/dev/null | head -1 || true)"
 fi
 if [ -z "${COSMO_CC:-}" ] && [ -x "${COSMO}/bin/cosmocc" ]; then
-  export COSMO_CC="${COSMO}/bin/cosmocc"
+  COSMO_CC="${COSMO}/bin/cosmocc"
 fi
 if [ -z "${COSMO_CC:-}" ]; then
-  export COSMO_CC="$(find "${COSMO}/.cosmocc" -type f -name 'x86_64-linux-cosmo-gcc' -executable 2>/dev/null | head -1 || true)"
+  COSMO_CC="$(find "${COSMO}/.cosmocc" -type f -name 'x86_64-linux-cosmo-gcc' -executable 2>/dev/null | head -1 || true)"
 fi
 echo "COSMO_CC=${COSMO_CC:-<unset>} COSMOCC_ARCHES=${COSMOCC_ARCHES}"
 test -n "${COSMO_CC:-}" && test -x "${COSMO_CC}"
@@ -149,9 +149,9 @@ in
   on = {
     pull_request = { paths = cosmo_paths },
     workflow_dispatch = {},
-    push = { branches = ["main"], paths = cosmo_paths },
+    push = { branches = ["main", "develop"], tags = ["*"], paths = cosmo_paths },
   },
-  concurrency = S.concurrency_ref "cosmo-potctl",
+  concurrency = S.concurrency_cancel,
   permissions = { contents = "read" },
   env = { COSMO_REF = "master" },
   jobs = {

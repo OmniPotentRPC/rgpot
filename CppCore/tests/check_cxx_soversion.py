@@ -6,7 +6,8 @@ Meson and CMake read that constant. kCxxSoversionTable records
 header_stamp().hash for each platform tag, without RGPOT_HAS_CACHE.
 The ledger records the soversion and a fingerprint of the stamp's inputs.
 The fingerprint is platform-independent. Shipped ledger lines are
-immutable: a layout change appends a higher soversion.
+immutable: a layout change appends a higher soversion. A line is shipped
+once it is on main, whatever branch a pull request targets.
 
 A live stamp is checked only when its tag is in the table and features
 is 0. An unlisted platform prints the stamp and passes. Cache builds
@@ -18,7 +19,11 @@ librgpot_mpi stays at soversion 3 (RGPOT_MPI_ABI_VERSION 1).
 
 Usage:
   check_cxx_soversion.py [soversion-from-meson] [path-to-librgpot|-]
-                         [print_cxx_layout_stamp]
+                         [print_cxx_layout_stamp [engine ...]
+                          [--exe-wrapper WORD ...]]
+
+A cross build passes its exe_wrapper last, after --exe-wrapper, and the
+printer then runs under it.
 """
 from __future__ import annotations
 
@@ -33,6 +38,7 @@ LAYOUT = ROOT / "CppCore" / "rgpot" / "abi" / "CxxLayout.hpp"
 LEDGER = ROOT / "CppCore" / "rgpot" / "abi" / "cxx_soversion_ledger.txt"
 MESON = ROOT / "CppCore" / "meson.build"
 CMAKE = ROOT / "CMakeLists.txt"
+NEIGHBOURS = ROOT / "CppCore" / "rgpot" / "nlist" / "Neighbours.hpp"
 
 # POD types whose sizeof or offsetof the stamp folds in. Method bodies of
 # the potential classes are not included: a comment there is not a layout
@@ -47,6 +53,11 @@ STRUCTS = (
     ("CppCore/rgpot/LennardJones/LJClusterPot.hpp", "LJClusterConfig"),
     ("CppCore/rgpot/Morse/MorsePot.hpp", "MorseConfig"),
     ("CppCore/rgpot/ZBL/ZBLPot.hpp", "ZBLConfig"),
+    ("CppCore/rgpot/SuttonChen/SuttonChenPot.hpp", "SuttonChenConfig"),
+    ("CppCore/rgpot/D2Pot/D2Pot.hpp", "D2Config"),
+    ("CppCore/rgpot/D2Pot/D2CpmdPot.hpp", "D2CpmdConfig"),
+    ("CppCore/rgpot/D4Pot/D4Config.hpp", "D4Config"),
+    ("CppCore/rgpot/Models/MullerBrownConfig.hpp", "MullerBrownConfig"),
 )
 
 # Classes whose sizeof the stamp folds. Only instance data members are
@@ -58,7 +69,13 @@ CLASSES = (
     ("CppCore/rgpot/LennardJones/LJClusterPot.hpp", "LJClusterPot"),
     ("CppCore/rgpot/Morse/MorsePot.hpp", "MorsePot"),
     ("CppCore/rgpot/ZBL/ZBLPot.hpp", "ZBLPot"),
+    ("CppCore/rgpot/SuttonChen/SuttonChenPot.hpp", "SuttonChenPot"),
+    ("CppCore/rgpot/SumPot/SumPot.hpp", "SumPot"),
+    ("CppCore/rgpot/D2Pot/D2Pot.hpp", "D2Pot"),
+    ("CppCore/rgpot/D2Pot/D2CpmdPot.hpp", "D2CpmdPot"),
     ("CppCore/rgpot/nlist/Neighbours.hpp", "Neighbours"),
+    ("CppCore/rgpot/nlist/NeighbourList.hpp", "Builder"),
+    ("CppCore/rgpot/nlist/NeighbourList.hpp", "Walk"),
     ("CppCore/rgpot/simd/from_cache.hpp", "CachedPairs"),
 )
 
@@ -291,13 +308,9 @@ def git_show(rev: str, path: str) -> str | None:
 
 
 def base_rev() -> str | None:
-    candidates = []
     import os
 
-    if os.environ.get("GITHUB_BASE_REF"):
-        candidates.append("origin/" + os.environ["GITHUB_BASE_REF"])
-    candidates.extend(["origin/main", "main"])
-    for rev in candidates:
+    for rev in ["origin/main", "main"]:
         if (
             subprocess.run(
                 ["git", "-C", str(ROOT), "rev-parse", "--verify", "--quiet", rev],
@@ -308,7 +321,15 @@ def base_rev() -> str | None:
             return rev
     if os.environ.get("CI") == "true":
         subprocess.run(
-            ["git", "-C", str(ROOT), "fetch", "--depth=1", "origin", "main"],
+            [
+                "git",
+                "-C",
+                str(ROOT),
+                "fetch",
+                "--depth=1",
+                "origin",
+                "+refs/heads/main:refs/remotes/origin/main",
+            ],
             capture_output=True,
         )
         if (
@@ -388,6 +409,74 @@ def check_soname(lib: Path, soversion: int) -> None:
     print(f"SONAME {match.group(1)}")
 
 
+def is_elf(path: Path) -> bool:
+    with path.open("rb") as handle:
+        return handle.read(4) == b"\x7fELF"
+
+
+def defined_generation_symbols(lib: Path) -> list[str]:
+    try:
+        symbols = subprocess.run(
+            ["nm", "-D", "--defined-only", "--demangle", str(lib)],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+    except FileNotFoundError:
+        fail("nm is required to check the Neighbours generation symbol")
+        return []
+    names = (
+        "rgpot::nlist::Neighbours::nextGeneration()",
+        "rgpot::nlist::Neighbours::assignGeneration() const",
+        "rgpot::nlist::Neighbours::exchangeGenerationCounter(unsigned long)",
+    )
+    return [
+        line
+        for line in symbols.splitlines()
+        if any(line.endswith(" " + name) for name in names)
+    ]
+
+
+def check_generation_symbol(lib: Path, engines: list[Path]) -> None:
+    header = NEIGHBOURS.read_text()
+    if re.search(r"nextGeneration\(\)\s*(?:noexcept\s*)?\{", header):
+        fail("Neighbours.hpp must not define nextGeneration")
+    if not sys.platform.startswith("linux"):
+        return
+    # The check reads ELF dynamic symbols. A cross build's DLLs have none.
+    if lib.suffix not in {".a", ".lib"} and not is_elf(lib):
+        return
+    # A static umbrella keeps the generation counter in rgpot_nlist, so
+    # the three-export check applies only to the shared library. Plugins
+    # are still checked: a static link used to copy that counter into
+    # librgpot_cuh2 and the composite engine.
+    if lib.suffix not in {".a", ".lib"}:
+        definitions = defined_generation_symbols(lib)
+        if len(definitions) != 3:
+            fail(
+                "librgpot must export exactly three Neighbours generation symbols, "
+                f"found {len(definitions)}"
+            )
+        print("three exported Neighbours generation symbols")
+    checked = 0
+    for engine in engines:
+        if not engine.is_file():
+            fail(f"engine library not found: {engine}")
+        if engine.suffix in {".a", ".lib"} or not is_elf(engine):
+            continue
+        engine_defs = defined_generation_symbols(engine)
+        if engine_defs:
+            fail(
+                f"{engine.name} must not define Neighbours generation symbols, "
+                f"found {len(engine_defs)}"
+            )
+        checked += 1
+    if checked:
+        print(
+            f"zero defined Neighbours generation symbols in {checked} engines"
+        )
+
+
 def check_install_name(lib: Path, soversion: int) -> None:
     try:
         otool = subprocess.run(
@@ -446,11 +535,13 @@ STAMP_RE = re.compile(
 )
 
 
-def check_stamp(binary: Path, table: list[tuple[str, int]]) -> None:
+def check_stamp(
+    binary: Path, table: list[tuple[str, int]], wrapper: list[str]
+) -> None:
     if not binary.is_file():
         fail(f"layout stamp printer not found: {binary}")
     run = subprocess.run(
-        [str(binary)],
+        [*wrapper, str(binary)],
         capture_output=True,
         text=True,
         check=False,
@@ -510,10 +601,18 @@ def main() -> None:
         )
     check_against_base(rows, layout_text)
     check_build_files(soversion)
+    rest = sys.argv[4:]
+    wrapper: list[str] = []
+    if "--exe-wrapper" in rest:
+        at = rest.index("--exe-wrapper")
+        rest, wrapper = rest[:at], rest[at + 1 :]
     if len(sys.argv) > 2 and sys.argv[2] != "-":
-        check_soname(Path(sys.argv[2]), soversion)
+        library = Path(sys.argv[2])
+        check_soname(library, soversion)
+        engines = [Path(arg) for arg in rest if arg != "-"]
+        check_generation_symbol(library, engines)
     if len(sys.argv) > 3:
-        check_stamp(Path(sys.argv[3]), table)
+        check_stamp(Path(sys.argv[3]), table, wrapper)
     tags = ", ".join(tag for tag, _ in table) or "none yet"
     print(f"cxx soversion {soversion} platforms [{tags}]")
 

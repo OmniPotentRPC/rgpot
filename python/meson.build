@@ -132,7 +132,7 @@ _core_sources = files('bind/bind_module.cpp') + [_nb_combined]
 if _nb_free_threaded
     _nb_cpp_args += ['-DNB_FREE_THREADED']
     message('rgpot python: FREE_THREADED build; stable ABI skipped')
-    py.extension_module(
+    _py_core = py.extension_module(
         '_core',
         sources: _core_sources,
         dependencies: [py_dep, nanobind_dep, dl_dep] + _py_hdr_deps,
@@ -150,7 +150,7 @@ else
     _use_abi3 = py.language_version().version_compare('>=3.12')
     if _use_abi3
         message('rgpot python: STABLE_ABI build (abi3, Py_LIMITED_API=3.12)')
-        py.extension_module(
+        _py_core = py.extension_module(
             '_core',
             sources: _core_sources,
             dependencies: [py_dep, nanobind_dep, dl_dep] + _py_hdr_deps,
@@ -169,7 +169,7 @@ else
         warning(
             'rgpot python: Python < 3.12 — version-specific extension ' + '(stable ABI requires 3.12+)',
         )
-        py.extension_module(
+        _py_core = py.extension_module(
             '_core',
             sources: _core_sources,
             dependencies: [py_dep, nanobind_dep, dl_dep] + _py_hdr_deps,
@@ -190,35 +190,24 @@ py.install_sources(
     files(
         'rgpot/__init__.py',
         'rgpot/_core.pyi',
+        'rgpot/_schema.py',
+        'rgpot/lammps.py',
         'rgpot/py.typed',
     ),
     pure: false,
     subdir: 'rgpot',
 )
-# rgpot.ase speaks the schema the server serves: the vendored copy with the
-# rgpot-local series applied.
-custom_target(
-    'ase_effective_schema',
-    input: '../CppCore/rgpot/rpc/Potentials.capnp',
-    output: 'Potentials.capnp',
-    command: [
-        py,
-        files('../CppCore/rgpot/rpc/schema_ledger.py'),
-        'apply',
-        '--root',
-        meson.project_source_root(),
-        '--schema',
-        '@INPUT@',
-        '--out',
-        '@OUTPUT@',
-    ],
-    depend_files: rgpot_schema_inputs,
-    install: true,
-    install_dir: py.get_install_dir() / 'rgpot' / 'ase',
+# rgpot.ase speaks the schema the server serves: the vendored
+# Potentials.capnp and the common.capnp it imports, side by side.
+py.install_sources(
+    rgpot_schema_files,
+    pure: false,
+    subdir: 'rgpot' / 'ase',
 )
 py.install_sources(
     files(
         'rgpot/ase/__init__.py',
+        'rgpot/ase/_registry.py',
         'rgpot/ase/anneal.py',
         'rgpot/ase/calculator.py',
         'rgpot/ase/claim.py',
@@ -231,5 +220,51 @@ py.install_sources(
 if is_variable('metatomic_engine')
     message(
         'metatomic_engine installs into the wheel; multi-ABI pack via scripts/rgpot_pack_multi_abi_engines.sh',
+    )
+endif
+
+# The extension NEEDs the librgpot SONAME. Meson installs the versioned
+# library and a SONAME symlink. meson-python records the versioned file,
+# and a wheel has no symlink, so a direct wheel or an sdist install cannot
+# open the SONAME. Copy the library this build linked to a regular file in
+# the build directory and install that file on the Python platlib. The
+# directory is the one meson-python already uses for vendored libraries.
+# The name is kCxxSoversion, checked against the built library. The source
+# tree is not written.
+if host_machine.system() == 'linux'
+    _readelf = find_program('readelf', required: true)
+    _librgpot_soname = 'librgpot.so.' + rgpot_cxx_soversion
+    librgpot_soname = custom_target(
+        'librgpot_soname',
+        input: rgpot,
+        output: _librgpot_soname,
+        command: [
+            py,
+            '-c',
+            '''
+import pathlib, shutil, subprocess, sys
+readelf, src_arg, dst_arg = sys.argv[1:4]
+src = pathlib.Path(src_arg).resolve()
+dst = pathlib.Path(dst_arg)
+text = subprocess.check_output([readelf, "-d", str(src)], text=True)
+soname = ""
+for line in text.splitlines():
+    if "(SONAME)" in line and "[" in line:
+        soname = line.split("[", 1)[1].split("]", 1)[0]
+        break
+if soname != dst.name:
+    raise SystemExit("SONAME is %r, expected %r" % (soname, dst.name))
+shutil.copyfile(src, dst)
+''',
+            _readelf.full_path(),
+            '@INPUT@',
+            '@OUTPUT@',
+        ],
+        install: true,
+        install_dir: py.get_install_dir(
+            pure: false,
+            subdir: '.rgpot.mesonpy.libs',
+        ),
+        build_by_default: true,
     )
 endif

@@ -56,11 +56,11 @@ pub unsafe extern "C" fn rgpot_potential_new(
             callback,
             user_data,
             free_fn,
-            0,                   // n_atoms = 0
-            std::ptr::null(),    // atomic_numbers
-            std::ptr::null(),    // box_matrix
-            std::ptr::null(),    // bounds_low
-            std::ptr::null(),    // bounds_high
+            0,                // n_atoms = 0
+            std::ptr::null(), // atomic_numbers
+            std::ptr::null(), // box_matrix
+            std::ptr::null(), // bounds_low
+            std::ptr::null(), // bounds_high
         )
     }
 }
@@ -73,6 +73,14 @@ pub unsafe extern "C" fn rgpot_potential_new(
 /// # Safety
 ///
 /// A NULL `pot`, `input` or `output` returns `RGPOT_INVALID_PARAMETER`.
+/// A missing positions tensor, shape or data, a non-positive atom count,
+/// or a missing species tensor or data also returns
+/// `RGPOT_INVALID_PARAMETER` and does not call the callback.
+/// A missing cell, either a NULL tensor or a tensor with NULL data, is a
+/// valid call for a molecular potential, so it reaches the callback. A
+/// periodic callback reports its own `RGPOT_INVALID_PARAMETER`.
+/// A non-positive atom count is reported on its own, before any force
+/// buffer is considered. A successful call does not clear `rgpot_last_error`.
 /// Otherwise `pot` must be a live handle from `rgpot_potential_new` or
 /// `rgpot_potential_new_eindir`, `input` must point to a valid
 /// `rgpot_force_input_t` whose tensors stay alive for the call, and `output`
@@ -101,8 +109,50 @@ pub unsafe extern "C" fn rgpot_potential_calculate(
             set_last_error(&why);
             return rgpot_status_t::RGPOT_INVALID_PARAMETER;
         }
+        if let Some(why) = unsafe { force_input_defect(input) } {
+            set_last_error(why);
+            return rgpot_status_t::RGPOT_INVALID_PARAMETER;
+        }
         unsafe { (p.callback)(p.pot_user_data, input, output) }
     }))
+}
+
+/// Missing buffer in a force input, or `None` when the callback may run.
+///
+/// A non-positive row count is decided before the species or the output
+/// forces. An empty call has no force allocation, and that null must not
+/// become the reported error. The cell is not checked here: the handle
+/// does not know whether its callback is periodic, and a molecular
+/// potential takes no cell. A usable input returns `None` and leaves
+/// `rgpot_last_error` unchanged.
+///
+/// # Safety
+///
+/// `input` must be a non-null `rgpot_force_input_t`.
+pub(crate) unsafe fn force_input_defect(input: *const rgpot_force_input_t) -> Option<&'static str> {
+    let input = unsafe { &*input };
+    if input.positions.is_null() {
+        return Some("invalid parameter: positions is null");
+    }
+    let positions = unsafe { &(*input.positions).dl_tensor };
+    if positions.ndim < 1 || positions.shape.is_null() {
+        return Some("invalid parameter: positions is null");
+    }
+    let rows = unsafe { *positions.shape };
+    if rows <= 0 {
+        return Some("invalid parameter: nAtoms must be positive");
+    }
+    if positions.data.is_null() {
+        return Some("invalid parameter: positions is null");
+    }
+    if input.atomic_numbers.is_null() {
+        return Some("invalid parameter: atomic numbers are null");
+    }
+    let species = unsafe { &(*input.atomic_numbers).dl_tensor };
+    if species.data.is_null() {
+        return Some("invalid parameter: atomic numbers are null");
+    }
+    None
 }
 
 /// Free a potential handle previously obtained from `rgpot_potential_new` or
@@ -180,15 +230,14 @@ mod tests {
         rgpot_status_t::RGPOT_SUCCESS
     }
 
-    fn make_test_input() -> (
-        [f64; 6],
-        [i32; 2],
-        [f64; 9],
-        rgpot_force_input_t,
-    ) {
-        let mut pos = [0.0_f64, 0.0, 0.0, 1.0, 0.0, 0.0];
-        let mut atmnrs = [1_i32, 1];
-        let mut box_ = [10.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 10.0];
+    /// The input borrows `pos`, `atmnrs` and `box_`, which are returned with
+    /// it. They live on the heap so moving them out of this function keeps
+    /// the pointers in the input valid; fixed-size arrays would be copied
+    /// and leave the input pointing at this frame.
+    fn make_test_input() -> (Vec<f64>, Vec<i32>, Vec<f64>, rgpot_force_input_t) {
+        let mut pos = vec![0.0_f64, 0.0, 0.0, 1.0, 0.0, 0.0];
+        let mut atmnrs = vec![1_i32, 1];
+        let mut box_ = vec![10.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 10.0];
         let input = unsafe {
             crate::c_api::types::rgpot_force_input_create(
                 2,
@@ -228,9 +277,7 @@ mod tests {
             energy: 0.0,
             variance: 0.0,
         };
-        let status = unsafe {
-            rgpot_potential_calculate(std::ptr::null(), &input, &mut output)
-        };
+        let status = unsafe { rgpot_potential_calculate(std::ptr::null(), &input, &mut output) };
         assert_eq!(status, rgpot_status_t::RGPOT_INVALID_PARAMETER);
         unsafe { crate::c_api::types::rgpot_force_input_free(&mut input) };
     }
@@ -243,9 +290,7 @@ mod tests {
             energy: 0.0,
             variance: 0.0,
         };
-        let status = unsafe {
-            rgpot_potential_calculate(pot, std::ptr::null(), &mut output)
-        };
+        let status = unsafe { rgpot_potential_calculate(pot, std::ptr::null(), &mut output) };
         assert_eq!(status, rgpot_status_t::RGPOT_INVALID_PARAMETER);
         unsafe { rgpot_potential_free(pot as *mut _) };
     }
@@ -254,9 +299,7 @@ mod tests {
     fn calculate_null_output_returns_invalid_parameter() {
         let pot = unsafe { rgpot_potential_new(sum_callback, std::ptr::null_mut(), None) };
         let (_pos, _atmnrs, _box_, mut input) = make_test_input();
-        let status = unsafe {
-            rgpot_potential_calculate(pot, &input, std::ptr::null_mut())
-        };
+        let status = unsafe { rgpot_potential_calculate(pot, &input, std::ptr::null_mut()) };
         assert_eq!(status, rgpot_status_t::RGPOT_INVALID_PARAMETER);
         unsafe {
             crate::c_api::types::rgpot_force_input_free(&mut input);
@@ -285,9 +328,7 @@ mod tests {
 
     #[test]
     fn callback_error_propagates() {
-        let pot = unsafe {
-            rgpot_potential_new(failing_callback, std::ptr::null_mut(), None)
-        };
+        let pot = unsafe { rgpot_potential_new(failing_callback, std::ptr::null_mut(), None) };
         let (_pos, _atmnrs, _box_, mut input) = make_test_input();
         let mut output = rgpot_force_out_t {
             forces: std::ptr::null_mut(),
@@ -308,11 +349,7 @@ mod tests {
     fn user_data_is_forwarded_to_callback() {
         let counter = AtomicU32::new(0);
         let pot = unsafe {
-            rgpot_potential_new(
-                counting_callback,
-                &counter as *const _ as *mut c_void,
-                None,
-            )
+            rgpot_potential_new(counting_callback, &counter as *const _ as *mut c_void, None)
         };
         let (_pos, _atmnrs, _box_, mut input) = make_test_input();
         let mut output = rgpot_force_out_t {
@@ -380,5 +417,140 @@ mod tests {
             unsafe { cleanup(&mut input, &mut output) };
         }
         unsafe { rgpot_potential_free(pot as *mut _) };
+    }
+
+    fn last_error() -> String {
+        unsafe {
+            std::ffi::CStr::from_ptr(crate::status::rgpot_last_error())
+                .to_string_lossy()
+                .into_owned()
+        }
+    }
+
+    fn counting_pot(counter: &AtomicU32) -> *mut rgpot_potential_t {
+        unsafe {
+            rgpot_potential_new(
+                counting_callback,
+                counter as *const AtomicU32 as *mut c_void,
+                None,
+            )
+        }
+    }
+
+    #[test]
+    fn calculate_null_position_data_skips_the_callback() {
+        let counter = AtomicU32::new(0);
+        let pot = counting_pot(&counter);
+        let (_pos, _atmnrs, _box_, mut input) = make_test_input();
+        unsafe {
+            (*input.positions).dl_tensor.data = std::ptr::null_mut();
+        }
+        let mut output = rgpot_force_out_t {
+            forces: std::ptr::null_mut(),
+            energy: 0.0,
+            variance: 0.0,
+        };
+        let status = unsafe { rgpot_potential_calculate(pot, &input, &mut output) };
+        assert_eq!(status, rgpot_status_t::RGPOT_INVALID_PARAMETER);
+        assert_eq!(counter.load(Ordering::SeqCst), 0);
+        assert_eq!(last_error(), "invalid parameter: positions is null");
+        unsafe {
+            crate::c_api::types::rgpot_force_input_free(&mut input);
+            rgpot_potential_free(pot);
+        }
+    }
+
+    #[test]
+    fn calculate_zero_atoms_is_not_a_null_force_buffer() {
+        let counter = AtomicU32::new(0);
+        let pot = counting_pot(&counter);
+        let mut box_ = [10.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 10.0];
+        let mut input = unsafe {
+            crate::c_api::types::rgpot_force_input_create(
+                0,
+                std::ptr::null_mut(),
+                std::ptr::null_mut(),
+                box_.as_mut_ptr(),
+            )
+        };
+        let mut output = rgpot_force_out_t {
+            forces: std::ptr::null_mut(),
+            energy: 0.0,
+            variance: 0.0,
+        };
+        let status = unsafe { rgpot_potential_calculate(pot, &input, &mut output) };
+        assert_eq!(status, rgpot_status_t::RGPOT_INVALID_PARAMETER);
+        assert_eq!(counter.load(Ordering::SeqCst), 0);
+        assert_eq!(last_error(), "invalid parameter: nAtoms must be positive");
+        unsafe {
+            crate::c_api::types::rgpot_force_input_free(&mut input);
+            rgpot_potential_free(pot);
+        }
+    }
+
+    #[test]
+    fn calculate_null_box_data_reaches_the_callback() {
+        let counter = AtomicU32::new(0);
+        let pot = counting_pot(&counter);
+        let (_pos, _atmnrs, _box_, mut input) = make_test_input();
+        unsafe {
+            (*input.box_matrix).dl_tensor.data = std::ptr::null_mut();
+        }
+        let mut output = rgpot_force_out_t {
+            forces: std::ptr::null_mut(),
+            energy: 0.0,
+            variance: 0.0,
+        };
+        let status = unsafe { rgpot_potential_calculate(pot, &input, &mut output) };
+        assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+        assert_eq!(counter.load(Ordering::SeqCst), 1);
+        unsafe {
+            cleanup(&mut input, &mut output);
+            rgpot_potential_free(pot);
+        }
+    }
+
+    #[test]
+    fn calculate_absent_box_tensor_reaches_the_callback() {
+        let counter = AtomicU32::new(0);
+        let pot = counting_pot(&counter);
+        let (_pos, _atmnrs, _box_, mut input) = make_test_input();
+        unsafe {
+            rgpot_tensor_free(input.box_matrix);
+        }
+        input.box_matrix = std::ptr::null_mut();
+        let mut output = rgpot_force_out_t {
+            forces: std::ptr::null_mut(),
+            energy: 0.0,
+            variance: 0.0,
+        };
+        let status = unsafe { rgpot_potential_calculate(pot, &input, &mut output) };
+        assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+        assert_eq!(counter.load(Ordering::SeqCst), 1);
+        unsafe {
+            cleanup(&mut input, &mut output);
+            rgpot_potential_free(pot);
+        }
+    }
+
+    #[test]
+    fn calculate_success_keeps_the_previous_error() {
+        let counter = AtomicU32::new(0);
+        let pot = counting_pot(&counter);
+        crate::status::set_last_error("kept across success");
+        let (_pos, _atmnrs, _box_, mut input) = make_test_input();
+        let mut output = rgpot_force_out_t {
+            forces: std::ptr::null_mut(),
+            energy: 0.0,
+            variance: 0.0,
+        };
+        let status = unsafe { rgpot_potential_calculate(pot, &input, &mut output) };
+        assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+        assert_eq!(counter.load(Ordering::SeqCst), 1);
+        assert_eq!(last_error(), "kept across success");
+        unsafe {
+            cleanup(&mut input, &mut output);
+            rgpot_potential_free(pot);
+        }
     }
 }

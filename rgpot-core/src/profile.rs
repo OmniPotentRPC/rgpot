@@ -73,19 +73,37 @@ impl From<capnp::Error> for ProfileError {
 pub type ProfileResult<T> = Result<T, ProfileError>;
 
 /// Ordered shared-library candidates for a backend prefix.
+///
+/// A non-empty explicit path is the only candidate. Otherwise the non-empty
+/// values of the two hint variables (`CPMDC_LIBRARY` and `RGPOT_CPMDC_ENGINE`
+/// for the prefix `cpmdc`) are the only candidates when either is set, and
+/// the platform default names are tried only when neither is.
 pub fn library_candidates(prefix: &str, explicit_path: Option<&str>) -> Vec<String> {
-    let mut candidates = Vec::new();
+    candidates_with_env(prefix, explicit_path, |variable| {
+        std::env::var_os(variable).and_then(|value| value.into_string().ok())
+    })
+}
+
+fn candidates_with_env(
+    prefix: &str,
+    explicit_path: Option<&str>,
+    env: impl Fn(&str) -> Option<String>,
+) -> Vec<String> {
     if let Some(path) = explicit_path.filter(|path| !path.is_empty()) {
-        candidates.push(path.to_owned());
+        return vec![path.to_owned()];
     }
 
+    let mut candidates = Vec::new();
     let upper = prefix.to_ascii_uppercase();
     for variable in [format!("{upper}_LIBRARY"), format!("RGPOT_{upper}_ENGINE")] {
-        if let Some(path) = std::env::var_os(variable).and_then(|value| value.into_string().ok()) {
+        if let Some(path) = env(&variable) {
             if !path.is_empty() && !candidates.contains(&path) {
                 candidates.push(path);
             }
         }
+    }
+    if !candidates.is_empty() {
+        return candidates;
     }
 
     for path in [
@@ -409,7 +427,8 @@ impl ProfileSession {
                 self.prefix
             )));
         }
-        if written == 0 || written > capacity || written % std::mem::size_of::<u64>() != 0 {
+        if written == 0 || written > capacity || !written.is_multiple_of(std::mem::size_of::<u64>())
+        {
             return Err(ProfileError::new(format!(
                 "{}_session_calculate_result wrote invalid size {written} for capacity {capacity}",
                 self.prefix
@@ -428,7 +447,7 @@ impl ProfileSession {
 fn read_capabilities(prefix: &str, f: CapabilitiesResultFn) -> ProfileResult<Vec<u64>> {
     let mut required = 0usize;
     unsafe { f(std::ptr::null_mut(), 0, &mut required) };
-    if required == 0 || required % std::mem::size_of::<u64>() != 0 {
+    if required == 0 || !required.is_multiple_of(std::mem::size_of::<u64>()) {
         return Err(ProfileError::new(format!(
             "{prefix}_capabilities_result reported invalid size {required}"
         )));
@@ -516,9 +535,9 @@ mod tests {
     #[test]
     fn process_lifetime_handle_keeps_library_mapping() {
         let dropped = Arc::new(AtomicBool::new(false));
-        let handle = ProcessLifetime::new(DropProbe(Arc::clone(&dropped)));
-
-        drop(handle);
+        {
+            let _handle = ProcessLifetime::new(DropProbe(Arc::clone(&dropped)));
+        }
 
         assert!(!dropped.load(Ordering::SeqCst));
     }
@@ -548,7 +567,9 @@ mod tests {
         assert_eq!(LIFECYCLE_STEP.load(Ordering::SeqCst), 2);
     }
 
-    fn flat_words(edit: impl FnOnce(&mut crate::Potentials_capnp::capabilities::Builder<'_>)) -> Vec<u64> {
+    fn flat_words(
+        edit: impl FnOnce(&mut crate::Potentials_capnp::capabilities::Builder<'_>),
+    ) -> Vec<u64> {
         use crate::Potentials_capnp::capabilities::{Builder as Caps, Operation};
         let mut msg = Builder::new_default();
         {
@@ -561,8 +582,10 @@ mod tests {
         }
         let bytes = serialize::write_message_to_words(&msg);
         bytes
-            .chunks_exact(8)
-            .map(|c| u64::from_le_bytes(c.try_into().unwrap()))
+            .as_chunks::<8>()
+            .0
+            .iter()
+            .map(|c| u64::from_le_bytes(*c))
             .collect()
     }
 
@@ -577,6 +600,59 @@ mod tests {
                 .to_string();
         assert!(refused.contains("fake backend refused"), "{refused}");
         assert!(refused.contains("DLPack major"), "{refused}");
+    }
+
+    fn env_of<'a>(pairs: &'a [(&'a str, &'a str)]) -> impl Fn(&str) -> Option<String> + 'a {
+        move |variable| {
+            pairs
+                .iter()
+                .find(|(name, _)| *name == variable)
+                .map(|(_, value)| (*value).to_owned())
+        }
+    }
+
+    #[test]
+    fn explicit_path_is_the_only_candidate() {
+        let env = env_of(&[("LAMMPC_LIBRARY", "/env/liblammpc.so")]);
+        assert_eq!(
+            candidates_with_env("lammpc", Some("/opt/liblammpc.so"), env),
+            ["/opt/liblammpc.so"]
+        );
+    }
+
+    #[test]
+    fn set_environment_hints_exclude_the_default_names() {
+        let env = env_of(&[
+            ("LAMMPC_LIBRARY", "/a/liblammpc.so"),
+            ("RGPOT_LAMMPC_ENGINE", "/b/liblammpc.so"),
+        ]);
+        assert_eq!(
+            candidates_with_env("lammpc", None, env),
+            ["/a/liblammpc.so", "/b/liblammpc.so"]
+        );
+        let env = env_of(&[
+            ("LAMMPC_LIBRARY", ""),
+            ("RGPOT_LAMMPC_ENGINE", "/b/liblammpc.so"),
+        ]);
+        assert_eq!(
+            candidates_with_env("lammpc", Some(""), env),
+            ["/b/liblammpc.so"]
+        );
+    }
+
+    #[test]
+    fn default_names_follow_only_when_no_hint_is_set() {
+        let names = candidates_with_env("lammpc", None, env_of(&[("LAMMPC_LIBRARY", "")]));
+        assert_eq!(
+            names,
+            [
+                "liblammpc.so",
+                "./liblammpc.so",
+                "liblammpc.dylib",
+                "./liblammpc.dylib",
+                "lammpc.dll"
+            ]
+        );
     }
 
     #[test]

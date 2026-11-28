@@ -2,7 +2,14 @@
 # holds their options, and meson reads the same file. CMakeLists.txt
 # includes this file in its own directory, so the test executables sit
 # beside librgpot_mpi, where CalculatorGroup.cc looks for it.
+# A test name may hold spaces ("CuH2 Utils Test"). The functions below keep
+# the policies set here, and the loops that read RGPOT_REGISTRY_ENTRIES in
+# the caller's scope need CMP0110 so foreach(IN LISTS) does not split an
+# entry on whitespace.
 include("${CMAKE_CURRENT_LIST_DIR}/../../cmake/RgpotTestRegistry.cmake")
+if(POLICY CMP0110)
+  cmake_policy(SET CMP0110 NEW)
+endif()
 
 enable_testing()
 find_package(Threads REQUIRED)
@@ -80,6 +87,7 @@ macro(rgpot_test_set_feature feature)
   endif()
 endmacro()
 rgpot_test_set_feature(tests RGPOT_BUILD_TESTS)
+rgpot_test_set_feature(examples RGPOT_BUILD_EXAMPLES)
 rgpot_test_set_feature(core NOT RGPOT_RPC_CLIENT_ONLY)
 rgpot_test_set_feature(client RGPOT_RPC_CLIENT_ONLY)
 rgpot_test_set_feature(rpc RGPOT_WITH_RPC)
@@ -87,8 +95,22 @@ rgpot_test_set_feature(fortran NOT RGPOT_RPC_CLIENT_ONLY)
 rgpot_test_set_feature(cache RGPOT_WITH_CACHE)
 rgpot_test_set_feature(ipi RGPOT_WITH_IPI)
 rgpot_test_set_feature(eam_table RGPOT_WITH_EAM_TABLE)
+rgpot_test_set_feature(orca RGPOT_WITH_ORCA)
+rgpot_test_set_feature(eigen RGPOT_WITH_EIGEN)
 rgpot_test_set_feature(xtensor RGPOT_WITH_XTENSOR)
 rgpot_test_set_feature(cp2k RGPOT_WITH_CP2K)
+rgpot_test_set_feature(mdi RGPOT_WITH_MDI)
+set(_rgpot_pymdi FALSE)
+if(RGPOT_WITH_MDI AND Python3_Interpreter_FOUND)
+  execute_process(
+    COMMAND "${Python3_EXECUTABLE}" -c "import mdi"
+    RESULT_VARIABLE _rgpot_pymdi_probe
+    OUTPUT_QUIET ERROR_QUIET)
+  if(_rgpot_pymdi_probe EQUAL 0)
+    set(_rgpot_pymdi TRUE)
+  endif()
+endif()
+rgpot_test_set_feature(pymdi _rgpot_pymdi)
 rgpot_test_set_feature(mpi RGPOT_HAVE_MPI)
 rgpot_test_set_feature(mpiexec MPIEXEC_EXECUTABLE)
 rgpot_test_set_feature(linux CMAKE_SYSTEM_NAME STREQUAL "Linux")
@@ -101,7 +123,7 @@ rgpot_test_set_feature(tsan RGPOT_TEST_TSAN)
 rgpot_test_set_feature(isa_variants RGPOT_ISA_SPECS AND NOT RGPOT_RPC_CLIENT_ONLY)
 rgpot_test_set_feature(toplevel RGPOT_IS_TOP_LEVEL)
 foreach(feature water xtb tblite dftd3 dftd4 xckernel long_range expr
-                metatomic skala rust_core probe)
+                metatomic skala rust_core so_exports fast_beside probe)
   set(RGPOT_TEST_FEATURE_${feature} FALSE)
 endforeach()
 
@@ -174,6 +196,8 @@ add_library(rgpot_halfshell STATIC
   CppCore/rgpot/nlist/HalfShellWalk.cc
   CppCore/rgpot/nlist/NeighbourList.cc
   CppCore/rgpot/nlist/Neighbours.cc)
+set_source_files_properties(CppCore/rgpot/Slices.cc
+  PROPERTIES COMPILE_OPTIONS ${_rgpot_fp_contract_off})
 target_link_libraries(rgpot_halfshell PUBLIC Threads::Threads)
 if(OpenMP_CXX_FOUND)
   target_link_libraries(rgpot_halfshell PUBLIC OpenMP::OpenMP_CXX)
@@ -204,32 +228,75 @@ rgpot_add_test(AotiPublicationStressTest COMMAND AotiPublicationStressTest)
 rgpot_add_test(MolecularFrameTest COMMAND MolecularFrameTest)
 rgpot_add_test(AotiUnpackTest COMMAND aoti_unpack_test)
 
+# Same rule as meson's coverage_serial: RUN_SERIAL only when the compiler
+# flags instrument for gcov. An ordinary build leaves those tests parallel.
+set(RGPOT_COVERAGE FALSE)
+if(CMAKE_BUILD_TYPE STREQUAL "Coverage")
+  set(RGPOT_COVERAGE TRUE)
+endif()
+foreach(_rgpot_cov_flags CMAKE_CXX_FLAGS CMAKE_CXX_FLAGS_DEBUG
+        CMAKE_CXX_FLAGS_RELEASE CMAKE_CXX_FLAGS_RELWITHDEBINFO
+        CMAKE_CXX_FLAGS_MINSIZEREL)
+  if(DEFINED ${_rgpot_cov_flags})
+    if(${_rgpot_cov_flags} MATCHES "(--coverage|-fprofile-arcs|-ftest-coverage)")
+      set(RGPOT_COVERAGE TRUE)
+    endif()
+  endif()
+endforeach()
+
 rgpot_registry_feature_args(_rgpot_features)
+list(POP_FRONT _rgpot_features _rgpot_first_feature)
 rgpot_add_test(test_list_parity
   COMMAND Python3::Interpreter
           "${RGPOT_TEST_ROOT}/CppCore/tests/check_test_registry.py" cmake
-          "${PROJECT_BINARY_DIR}" --ctest "${CMAKE_CTEST_COMMAND}"
-          ${_rgpot_features})
+          "${PROJECT_BINARY_DIR}" "${_rgpot_first_feature}"
+          --ctest "${CMAKE_CTEST_COMMAND}" ${_rgpot_features})
 
 rgpot_registry_tests(unit _rgpot_units)
 foreach(test IN LISTS _rgpot_units)
   rgpot_registry_field("${test}" args _args)
-  list(GET _args 0 _exe)
-  list(GET _args 1 _source)
+  list(POP_FRONT _args _exe _source)
   rgpot_test_executable(${_exe} CppCore/tests/${_source})
   rgpot_registry_field("${test}" unfused _unfused)
   if(_unfused)
     target_compile_options(${_exe} PRIVATE ${_rgpot_fp_contract_off})
   endif()
-  rgpot_add_test("${test}" COMMAND ${_exe})
+  if(test STREQUAL "CalculatorGroupTest" AND TARGET rgpot)
+    get_target_property(_rgpot_lib_type rgpot TYPE)
+    if(_rgpot_lib_type STREQUAL "SHARED_LIBRARY")
+      target_compile_definitions(
+        ${_exe} PRIVATE RGPOT_TEST_SHARED_LIBRARY
+                        "RGPOT_TEST_SHARED_LIBRARY_PATH=\"$<TARGET_FILE:rgpot>\"")
+    else()
+      # No shared object to open: export the linked archive's symbols so
+      # the test can find them with dlsym.
+      set_target_properties(${_exe} PROPERTIES ENABLE_EXPORTS ON)
+    endif()
+  endif()
+  rgpot_add_test("${test}" COMMAND ${_exe} ${_args})
 endforeach()
+# FastNlistTest calls rgpot_water_h_force and rgpot_water_h_image directly, and
+# a shared librgpot hides the Fortran kernel archive behind --exclude-libs.
+if(TARGET fast_nlist_test AND TARGET rgpot_fortran_kernels)
+  target_link_libraries(fast_nlist_test PRIVATE rgpot_fortran_kernels)
+endif()
+# MorsePotTest and SuttonChenPotTest call private workspace snapshot hooks that
+# carry hidden visibility so shared librgpot does not export detail symbols.
+if(TARGET morse_pot_test AND BUILD_SHARED_LIBS)
+  target_sources(morse_pot_test PRIVATE CppCore/rgpot/Morse/MorsePot.cc)
+endif()
+if(TARGET sutton_chen_pot_test AND BUILD_SHARED_LIBS)
+  target_sources(sutton_chen_pot_test PRIVATE
+                 CppCore/rgpot/SuttonChen/SuttonChenPot.cc)
+endif()
 
 rgpot_registry_tests(rerun _rgpot_reruns)
 foreach(test IN LISTS _rgpot_reruns)
-  rgpot_registry_field("${test}" args _base)
+  rgpot_registry_field("${test}" args _rerun_args)
+  list(POP_FRONT _rerun_args _base)
   rgpot_registry_field("${_base}" args _args)
   list(GET _args 0 _exe)
-  rgpot_add_test("${test}" COMMAND ${_exe})
+  rgpot_add_test("${test}" COMMAND ${_exe} ${_rerun_args})
 endforeach()
 
 rgpot_registry_tests(fortran _rgpot_fortran)
@@ -263,21 +330,21 @@ foreach(test IN LISTS _rgpot_py)
     COMMAND Python3::Interpreter "${RGPOT_TEST_ROOT}/${_script}" ${_args})
 endforeach()
 
-# The neighbour C ABI over Cap'n Proto and from Rust. The neighbour
-# structs exist only in the effective schema, which CMakeLists.txt writes.
+# The neighbour C ABI over Cap'n Proto and from Rust, against the vendored
+# schema.
 rgpot_test_enabled(nlist_stream _on)
 if(_on)
   add_executable(nlist_stream CppCore/examples/nlist_stream.cc)
   target_link_libraries(nlist_stream PRIVATE ${_rgpot_nlist_link}
                                              CapnProto::capnp CapnProto::capnpc)
-  rgpot_add_test(nlist_stream COMMAND nlist_stream "${RGPOT_EFFECTIVE_SCHEMA}")
+  rgpot_add_test(nlist_stream COMMAND nlist_stream "${RGPOT_POTENTIALS_SCHEMA}")
 endif()
 rgpot_test_enabled(nlist_capnp_roundtrip _on)
 if(_on)
   rgpot_add_test(nlist_capnp_roundtrip
     COMMAND Python3::Interpreter
             "${RGPOT_TEST_ROOT}/CppCore/tests/test_nlist_capnp.py"
-            "${RGPOT_TEST_ROOT}" "${RGPOT_CAPNP_TOOL}" "${RGPOT_EFFECTIVE_SCHEMA}")
+            "${RGPOT_TEST_ROOT}" "${RGPOT_CAPNP_TOOL}" "${RGPOT_POTENTIALS_SCHEMA}")
 endif()
 rgpot_test_enabled(nlist_rust _on)
 if(_on)
@@ -300,7 +367,8 @@ if(_on)
   rgpot_add_test(nlist_rust
     COMMAND sh "${RGPOT_TEST_ROOT}/CppCore/examples/nlist_rust_test.sh"
             "${RGPOT_TEST_ROOT}" "${CMAKE_CURRENT_BINARY_DIR}"
-            ${_rgpot_nlist_rust_omp})
+            ${_rgpot_nlist_rust_omp}
+    ENVIRONMENT "CXX=${CMAKE_CXX_COMPILER}")
 endif()
 
 if(RGPOT_RPC_CLIENT_ONLY)
@@ -330,6 +398,12 @@ if(_on)
     COMMAND "${RGPOT_TEST_ROOT}/scripts/audit_fortran_symbols.sh"
             $<TARGET_FILE:rgpot>)
 endif()
+rgpot_test_enabled(FortranStaticAudit _on)
+if(_on)
+  rgpot_add_test(FortranStaticAudit
+    COMMAND "${RGPOT_TEST_ROOT}/scripts/audit_fortran_statics.sh"
+            $<TARGET_FILE:rgpot_fortran_kernels>)
+endif()
 rgpot_test_enabled(CoreLinksNoMpi _on)
 if(_on)
   rgpot_add_test(CoreLinksNoMpi
@@ -343,14 +417,30 @@ if(_on)
             $<TARGET_FILE:rgpot> absent)
 endif()
 
+# The MDI frontend answering a pymdi driver over TCP.
+rgpot_test_enabled(mdi_concrete_potentials _on)
+if(_on)
+  rgpot_add_test(mdi_concrete_potentials
+    COMMAND Python3::Interpreter
+            "${RGPOT_TEST_ROOT}/engines/mdi_roundtrip.py"
+            $<TARGET_FILE:rgpot-mdi> $<TARGET_FILE:rgpot-eval>)
+endif()
+
 add_library(rgpot_layout_fixture SHARED CppCore/tests/layout_fixture.cc)
 target_include_directories(rgpot_layout_fixture PRIVATE CppCore)
 target_compile_definitions(rgpot_layout_fixture PRIVATE ${_rgpot_test_definitions})
 target_link_libraries(rgpot_layout_fixture PRIVATE rgpot::rgpot)
 set_target_properties(rgpot_layout_fixture PROPERTIES PREFIX "lib")
+set_target_properties(rgpot_layout_fixture PROPERTIES
+                      CXX_VISIBILITY_PRESET hidden)
 rgpot_test_executable(cxx_layout_test CppCore/tests/CxxLayoutTest.cc)
-rgpot_add_test(CxxLayoutTest COMMAND cxx_layout_test
-  ENVIRONMENT "RGPOT_LAYOUT_FIXTURE=$<TARGET_FILE:rgpot_layout_fixture>")
+set(_rgpot_layout_env
+    "RGPOT_LAYOUT_FIXTURE=$<TARGET_FILE:rgpot_layout_fixture>")
+if(BUILD_SHARED_LIBS)
+  list(APPEND _rgpot_layout_env "RGPOT_SHARED_LIBRARY=1")
+endif()
+rgpot_add_test(CxxLayoutTest COMMAND cxx_layout_test ENVIRONMENT
+               ${_rgpot_layout_env})
 
 # The stamp program does not link librgpot, but takes its feature macros.
 add_executable(print_cxx_layout_stamp CppCore/tests/print_cxx_layout_stamp.cc)
@@ -358,27 +448,40 @@ target_include_directories(print_cxx_layout_stamp PRIVATE
   $<TARGET_PROPERTY:rgpot,INTERFACE_INCLUDE_DIRECTORIES>)
 target_compile_definitions(print_cxx_layout_stamp PRIVATE
   $<TARGET_PROPERTY:rgpot,INTERFACE_COMPILE_DEFINITIONS>)
+set(_rgpot_soversion_plugins)
+if(TARGET rgpot_cuh2)
+  list(APPEND _rgpot_soversion_plugins $<TARGET_FILE:rgpot_cuh2>)
+endif()
 rgpot_add_test(CxxSoversion
   COMMAND Python3::Interpreter
           "${RGPOT_TEST_ROOT}/CppCore/tests/check_cxx_soversion.py"
           ${RGPOT_CXX_SOVERSION} $<TARGET_FILE:rgpot>
-          $<TARGET_FILE:print_cxx_layout_stamp>)
+          $<TARGET_FILE:print_cxx_layout_stamp>
+          ${_rgpot_soversion_plugins})
 
 rgpot_test_enabled(abi_symbols _on)
 if(_on)
-  # The script has no execute bit. Meson runs it from its #! line.
-  set(_rgpot_abi_script sh "${RGPOT_TEST_ROOT}/scripts/abi_symbols.sh")
+  set(_rgpot_abi_script ${Python3_EXECUTABLE}
+      "${RGPOT_TEST_ROOT}/scripts/abi_symbols.py")
   # The neighbour C ABI is in rgpot_nlist, which a shared librgpot links
-  # and a static one leaves beside it. CMake builds no fast list, so the
-  # fast-list baseline does not apply.
+  # and a static one leaves beside it, so a static build checks the union
+  # of the two archives. CMake builds no fast list, so the fast-list
+  # baseline does not apply.
   if(_rgpot_kind STREQUAL "STATIC_LIBRARY")
-    set(_rgpot_abi_lib $<TARGET_FILE:rgpot_nlist>)
+    set(_rgpot_abi_lib -l $<TARGET_FILE:rgpot_nlist> $<TARGET_FILE:rgpot>)
   else()
     set(_rgpot_abi_lib $<TARGET_FILE:rgpot>)
   endif()
   rgpot_add_test(abi_symbols
     COMMAND ${_rgpot_abi_script} ${_rgpot_abi_lib}
             "${RGPOT_TEST_ROOT}/scripts/abi_baseline.txt")
+endif()
+
+# A DLL has no hidden visibility, so the fixtures are built only off Windows.
+rgpot_test_enabled(abi_symbols_fixture_shared _on)
+if(_on)
+  set(_rgpot_abi_script ${Python3_EXECUTABLE}
+      "${RGPOT_TEST_ROOT}/scripts/abi_symbols.py")
   add_library(rgpot_abi_fixture SHARED engines/abi_fixture.c)
   add_library(rgpot_abi_fixture_a STATIC engines/abi_fixture.c)
   add_library(rgpot_abi_fixture_lib STATIC engines/abi_fixture.c)
@@ -492,15 +595,80 @@ rgpot_add_test(simd-env-avx2 COMMAND simd_env known avx2)
 rgpot_test_enabled(EngineAdapterTest _on)
 if(_on)
   add_library(engine_stub SHARED CppCore/tests/engine_stub.cc
-                                 CppCore/rgpot/engine/EngineTable.cc)
+                                 CppCore/rgpot/engine/EngineTable.cc
+                                 CppCore/rgpot/engine/EngineAbiStamp.cc)
   target_include_directories(engine_stub PRIVATE CppCore include)
   target_compile_definitions(engine_stub PRIVATE ${_rgpot_test_definitions}
+    RGPOT_ENGINE_BUILD
     RGPOT_ENGINE_PROJECT_VERSION="${PROJECT_VERSION}")
   target_link_libraries(engine_stub PRIVATE rgpot::rgpot)
   rgpot_test_executable(engine_adapter_test CppCore/tests/EngineAdapterTest.cc)
   rgpot_add_test(EngineAdapterTest COMMAND engine_adapter_test
     ENVIRONMENT "RGPOT_ENGINE_STUB=$<TARGET_FILE:engine_stub>"
                 "RGPOT_ENGINE_STUB_MODEL=${CMAKE_CURRENT_BINARY_DIR}/engine_stub_model.bin")
+endif()
+
+rgpot_test_enabled(external_engine_refcount _on)
+if(_on)
+  add_library(external_refcount_engine SHARED
+              CppCore/tests/external_refcount_engine.c)
+  target_include_directories(external_refcount_engine PRIVATE
+                             "${RGPOT_TEST_ROOT}/CppCore")
+  target_compile_definitions(external_refcount_engine PRIVATE RGPOT_ENGINE_BUILD)
+  add_library(external_refcount_empty SHARED
+              CppCore/tests/external_refcount_empty.c)
+  add_executable(external_engine_refcount
+                 CppCore/tests/external_engine_refcount.cpp)
+  target_include_directories(external_engine_refcount PRIVATE
+                             "${RGPOT_TEST_ROOT}/CppCore"
+                             "${RGPOT_TEST_ROOT}/include")
+  target_compile_definitions(external_engine_refcount PRIVATE
+                             ${_rgpot_test_definitions})
+  target_compile_features(external_engine_refcount PRIVATE cxx_std_20)
+  target_link_libraries(external_engine_refcount PRIVATE ${_rgpot_test_libs})
+  rgpot_add_test(external_engine_refcount
+    COMMAND external_engine_refcount
+            $<TARGET_FILE:external_refcount_engine>
+            $<TARGET_FILE:external_refcount_empty>)
+
+  add_library(external_reentrant_engine SHARED
+              CppCore/tests/external_reentrant_engine.c)
+  target_include_directories(external_reentrant_engine PRIVATE
+                             "${RGPOT_TEST_ROOT}/CppCore")
+  target_compile_definitions(external_reentrant_engine PRIVATE
+                             RGPOT_ENGINE_BUILD)
+  target_link_libraries(external_reentrant_engine PRIVATE ${CMAKE_DL_LIBS})
+  add_executable(external_constructor_reentry
+                 CppCore/tests/external_constructor_reentry.cpp)
+  target_include_directories(external_constructor_reentry PRIVATE
+                             "${RGPOT_TEST_ROOT}/CppCore"
+                             "${RGPOT_TEST_ROOT}/include")
+  target_compile_definitions(external_constructor_reentry PRIVATE
+                             ${_rgpot_test_definitions})
+  target_compile_features(external_constructor_reentry PRIVATE cxx_std_20)
+  target_link_libraries(external_constructor_reentry PRIVATE
+                        ${_rgpot_test_libs})
+  set_target_properties(external_constructor_reentry
+                        PROPERTIES ENABLE_EXPORTS ON)
+  rgpot_add_test(external_constructor_reentry
+    COMMAND external_constructor_reentry
+            $<TARGET_FILE:external_reentrant_engine>
+            $<TARGET_FILE:external_refcount_engine>)
+
+  add_executable(external_close_unlocked
+                 CppCore/tests/external_close_unlocked.cpp)
+  target_include_directories(external_close_unlocked PRIVATE
+                             "${RGPOT_TEST_ROOT}/CppCore"
+                             "${RGPOT_TEST_ROOT}/include")
+  target_compile_definitions(external_close_unlocked PRIVATE
+                             ${_rgpot_test_definitions})
+  target_compile_features(external_close_unlocked PRIVATE cxx_std_20)
+  target_link_libraries(external_close_unlocked PRIVATE ${_rgpot_test_libs})
+  set_target_properties(external_close_unlocked
+                        PROPERTIES ENABLE_EXPORTS ON)
+  rgpot_add_test(external_close_unlocked
+    COMMAND external_close_unlocked
+            $<TARGET_FILE:external_refcount_engine>)
 endif()
 
 add_subdirectory(CppCore/tests/plugin)
@@ -515,6 +683,54 @@ rgpot_add_test(MOPACPotTest COMMAND mopac_pot_test
                ENVIRONMENT ${_rgpot_mopacc_env})
 rgpot_add_test(MOPACPotEmptyVariable COMMAND mopac_pot_test "[empty-variable]"
                ENVIRONMENT ${_rgpot_mopacc_env} "MOPACC_LIBRARY=")
+
+add_library(mopacc_upstream_stub SHARED CppCore/tests/mopacc_upstream_stub.c)
+rgpot_test_executable(mopac_upstream_abi_test
+                      CppCore/tests/MOPACUpstreamAbiTest.cc)
+set(_rgpot_mopacc_upstream_env
+    "RGPOT_MOPACC_ENGINE=$<TARGET_FILE:mopacc_upstream_stub>")
+rgpot_add_test(MOPACUpstreamAbiTest COMMAND mopac_upstream_abi_test
+               ENVIRONMENT ${_rgpot_mopacc_upstream_env})
+
+set(_rgpot_mopacc_gate_env)
+# name:c abi:lib abi:new layout:result size:params size:set_params status;
+# see CppCore/tests/mopacc_abi_gate_engine.c.
+foreach(_gate IN ITEMS
+        ABI1:1:1:0:0:0:0
+        NO_C_ABI:0:2:1:1:1:0
+        C_ABI1:1:2:1:1:1:0
+        ABI3:3:3:1:1:1:0
+        ABI2_NO_LIB_ABI:2:0:1:1:1:0
+        ABI2_LIB_ABI1:2:1:1:1:1:0
+        ABI2_LIB_ABI3:2:3:1:1:1:0
+        ABI2_OLD_LAYOUT:2:2:0:1:1:0
+        ABI2_NO_RESULT_SIZE:2:2:1:0:1:0
+        ABI2_BAD_RESULT_SIZE:2:2:1:2:1:0
+        ABI2_NO_PARAMS_SIZE:2:2:1:1:0:0
+        ABI2_BAD_PARAMS_SIZE:2:2:1:1:2:0
+        ABI2_SET_PARAMS_FAILS:2:2:1:1:1:7
+        ABI2_OK:2:2:1:1:1:0)
+  string(REPLACE ":" ";" _gate "${_gate}")
+  list(GET _gate 0 _gate_name)
+  list(GET _gate 1 _gate_abi)
+  list(GET _gate 2 _gate_lib_abi)
+  list(GET _gate 3 _gate_layout)
+  list(GET _gate 4 _gate_result_size)
+  list(GET _gate 5 _gate_params_size)
+  list(GET _gate 6 _gate_set_params)
+  string(TOLOWER "mopacc_gate_${_gate_name}" _gate_target)
+  add_library(${_gate_target} SHARED CppCore/tests/mopacc_abi_gate_engine.c)
+  target_compile_definitions(${_gate_target} PRIVATE
+    GATE_C_ABI=${_gate_abi} GATE_LIB_ABI=${_gate_lib_abi}
+    GATE_NEW_LAYOUT=${_gate_layout} GATE_RESULT_SIZE=${_gate_result_size}
+    GATE_PARAMS_SIZE=${_gate_params_size}
+    GATE_SET_PARAMS_STATUS=${_gate_set_params})
+  list(APPEND _rgpot_mopacc_gate_env
+       "RGPOT_MOPACC_GATE_${_gate_name}=$<TARGET_FILE:${_gate_target}>")
+endforeach()
+rgpot_test_executable(mopac_abi_gate_test CppCore/tests/MOPACAbiGateTest.cc)
+rgpot_add_test(MOPACAbiGateTest COMMAND mopac_abi_gate_test
+               ENVIRONMENT ${_rgpot_mopacc_gate_env})
 
 # Each frontend's C ABI against its no-op stub.
 set(_rgpot_abi_stubs mopac:MOPACPot)
@@ -578,6 +794,10 @@ rgpot_test_executable(cpmd_pot_gradient_stress_test
                       CppCore/tests/CPMDPotGradientStressTest.cc)
 rgpot_add_test(CPMDPotGradientStressTest COMMAND cpmd_pot_gradient_stress_test
   ENVIRONMENT "RGPOT_CPMD_ENGINE=$<TARGET_FILE:cpmdc_gradient_engine>")
+rgpot_test_executable(composite_cpmd_dispersion_test
+                      CppCore/tests/CompositeCpmdDispersionTest.cc)
+rgpot_add_test(CompositeCpmdDispersionTest COMMAND composite_cpmd_dispersion_test
+  ENVIRONMENT "RGPOT_CPMD_ENGINE=$<TARGET_FILE:cpmdc_gradient_engine>")
 rgpot_test_executable(cpmd_pot_message_abi_test
                       CppCore/tests/CPMDPotMessageAbiTest.cc)
 rgpot_add_test(CPMDPotMessageAbiTest COMMAND cpmd_pot_message_abi_test
@@ -585,6 +805,38 @@ rgpot_add_test(CPMDPotMessageAbiTest COMMAND cpmd_pot_message_abi_test
 rgpot_test_executable(profile_loader_test CppCore/tests/ProfileLoaderTest.cc)
 rgpot_add_test(ProfileLoaderTest COMMAND profile_loader_test
                ENVIRONMENT ${_rgpot_cpmdc_env})
+
+foreach(engine lammpc_fake_engine lammpc_fake_engine_nostress
+               lammpc_fake_engine_abi2)
+  add_library(${engine} SHARED CppCore/tests/lammpc_fake_engine.cc)
+  target_compile_definitions(${engine} PRIVATE ${_rgpot_build_identity})
+  target_link_libraries(${engine} PRIVATE ptlrpc)
+  target_include_directories(${engine} PRIVATE CppCore include)
+endforeach()
+target_compile_definitions(lammpc_fake_engine_nostress
+                           PRIVATE LAMMPC_FAKE_NO_STRESS)
+target_compile_definitions(lammpc_fake_engine_abi2
+                           PRIVATE LAMMPC_FAKE_BRIDGE_ABI_MAJOR=2)
+foreach(engine lammps_legacy_engine_a lammps_legacy_engine_b)
+  add_library(${engine} SHARED CppCore/tests/external_refcount_engine.c)
+  target_include_directories(${engine} PRIVATE "${RGPOT_TEST_ROOT}/CppCore")
+  target_compile_definitions(${engine} PRIVATE RGPOT_ENGINE_BUILD)
+endforeach()
+rgpot_test_executable(lammpc_pot_test CppCore/tests/LammpcPotTest.cc)
+# The loaded-module identity lookup the test calls is hidden in a shared
+# librgpot. It has its own translation unit, so compiling it here leaves the
+# resident engine tables in librgpot alone.
+if(BUILD_SHARED_LIBS)
+  target_sources(lammpc_pot_test PRIVATE
+                 CppCore/rgpot/ExternalPot/detail/LoadedIdentity.cc)
+endif()
+rgpot_add_test(LammpcPotTest COMMAND lammpc_pot_test
+  ENVIRONMENT
+    "RGPOT_LAMMPS_LEGACY_ENGINE_A=$<TARGET_FILE:lammps_legacy_engine_a>"
+    "RGPOT_LAMMPS_LEGACY_ENGINE_B=$<TARGET_FILE:lammps_legacy_engine_b>"
+    "RGPOT_LAMMPC_ENGINE=$<TARGET_FILE:lammpc_fake_engine>"
+    "RGPOT_LAMMPC_NOSTRESS_ENGINE=$<TARGET_FILE:lammpc_fake_engine_nostress>"
+    "RGPOT_LAMMPC_ABI2_ENGINE=$<TARGET_FILE:lammpc_fake_engine_abi2>")
 
 # CP2K over a fake engine, and over libcp2k through the shim.
 if(RGPOT_WITH_CP2K)

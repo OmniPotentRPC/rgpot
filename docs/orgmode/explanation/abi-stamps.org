@@ -30,11 +30,28 @@ The layout revision moves when an exported struct changes size, field order or
 field type; callers and libraries with different layout revisions never match.
 
 The stamp is not an ELF soversion.
-In a Meson build with =with_rust_core=, =librgpot= links the static archive
-=librgpot_core.a= and keeps only the archive members it references.
-The cdylib
-=librgpot_core.so= that cargo builds next to it exports the whole C ABI, and the Meson test =abi_core_symbols=
-checks that library.
+In a Meson build with =with_rust_core= and the fast pair list off, =librgpot=
+links the static archive =librgpot_core.a= and keeps only the archive members it
+references.
+The umbrella references none of that archive's C ABI, so the shared library
+exports 74 =rgpot_*= symbols, all of them from the rest of the umbrella.
+Two of those are =rgpot_builtin_muller_brown_new= and
+=rgpot_muller_brown_config_default=, and 22 are the =rgpot_md_session_*= entry
+points.
+One more is =rgpot_lammpc_potential=.
+The archive still holds the whole C ABI, and the Meson test =abi_core_symbols=
+checks the archive rather than the shared library.
+With the fast pair list on, the archive is =librgpot_bundle.a=.
+It defines 54 =rgpot_*= symbols: the same C ABI, plus the four fast-list entry
+points.
+Every one of those names is public
+(=scripts/abi_core_baseline.txt= and =scripts/abi_baseline_fast.txt=).
+The umbrella links this archive with =--whole-archive=, or with
+=-force_load= on Darwin, so those 54 symbols are exported as well and the shared library exports 128 =rgpot_*=
+symbols.
+A process that also loads a separate rgpot-core shared library then has two
+definitions of those names.
+The Meson test =rgpot_so_exports= pins both export counts.
 
 ** Scope
 
@@ -56,6 +73,25 @@ Other interfaces carry their own numbers:
 The engine plugins (for example
 =libclassical_engine.so= and =libmopac_engine.so=) are built without a soversion
 and opened by those unversioned names.
+Each plugin reports =RgpotEngineAbiStamp=
+(=RGPOT_ENGINE_ABI_VERSION=, =RGPOT_ENGINE_ABI_MINOR=,
+=RGPOT_ENGINE_ABI_LAYOUT_REVISION=) through =rgpot_engine_abi_stamp=, or is
+minor 0, layout 1 when that symbol is absent.
+Because engine minor bumps add optional exports that the host probes with
+=dlsym= (such as
+=rgpot_engine_last_components= and =rgpot_engine_component_name= in minor 5,
+=rgpot_engine_unload_policy= in minor 7, and =rgpot_engine_taylor_jet= in minor
+11), the Rust loader's =RgpotEngineAbiStamp::serves(host)= accepts any plugin
+with the same major and layout revision whose minor is at most the host's
+(=ENGINE_ABI_MINOR=), resolving optional exports only when present and reporting
+them as absent otherwise, while rejecting plugins whose minor is newer than the
+host's.
+Minor 8 adds the negative code =RGPOT_ENGINE_ERR_LOCK= (-2) for a failed engine
+or handle lock.
+It exports no new symbol and changes no struct, so the layout revision stays at 1.
+The meson test =engine_abi_stamps= opens every standalone engine plugin of the
+build, =libpotlibc_engine= included when =with_potlibc= is enabled, and compares
+its stamp with the header.
 
 ** The C++ layout stamp
 
@@ -105,15 +141,20 @@ Feature bit 0 is =RGPOT_HAS_CACHE=, which adds the virtual =setCache= to
 Covered types:
 
 - =ForceInput=, =ForceOut=, =ForceBatch=, =PotCaps=, =CalculatorGroup=
-- =LJConfig=, =LJClusterConfig=, =MorseConfig=, =ZBLConfig=
+- =LJConfig=, =LJClusterConfig=, =MorseConfig=, =ZBLConfig=, =SuttonChenConfig=,
+  =D2Config=, =D2CpmdConfig=, =D4Config=, =MullerBrownConfig=
 - =Reentrancy= and =PotType=
 - =PotentialBase=, =Potential<Derived>= (through one probe instantiation),
-  =LJPot=, =LJClusterPot=, =MorsePot=, =ZBLPot=
+  =LJPot=, =LJClusterPot=, =MorsePot=, =ZBLPot=, =SuttonChenPot=, =SumPot=,
+  =lr::SumPot=, =D2Pot=, =D2CpmdPot=, =MullerBrownPot=, =nlist::Builder=,
+  =nlist::Walk=
 - with the cache: =cache::EvalCounts= and =cache::PotentialCache=
 
 The classes of the optional backends are not covered (xtb, tblite, dftd3, dftd4,
 ExprPot, XcKernel, Metatomic, UMA, NWChem, CPMD, MOPAC, Skala, the Fortran
 potentials).
+=D4Config= is covered, because it sits in a header of its own that does not
+include dftd4; =D4Pot= is not.
 Their headers and features differ between builds, so a stamp over them would
 refuse libraries that agree on everything a consumer uses.
 
@@ -133,6 +174,7 @@ is not the hash.
 | 3.5.1   | 1, 0, 1         | 4                    |
 | 3.6.0   | 1, 1, 1         | 6                    |
 | 3.7.0   | 1, 2, 1         | 6                    |
+| 3.8.0   | 1, 10, 1        | 9                    |
 
 3.6.0 raised the minor for =rgpot_eindir_abi_compatible=; a caller built against
 minor 0 still matches it.
@@ -142,6 +184,44 @@ They are additions, and their state lives behind the
 the layout revision stays at 1.
 A 3.7 library still serves a caller built against minor 0 or 1.
 A caller built against minor 2 is refused by a 3.6 library.
+3.8.0 raises the minor to 3 for
+=RGPOT_SCC_NOT_CONVERGED=, =rgpot_set_last_error= and the fused-cache settings
+and error kind.
+They are additions, no old call changes, and the layout revision stays at 1.
+It also raises the minor to 4 for the Taylor jet functions and the statuses
+=RGPOT_NO_JET= (6), =RGPOT_JET_BRANCH= (7) and =RGPOT_JET_DOMAIN= (8).
+The jet callback also lives behind =fused_cache=, so the layout revision stays
+at 1.
+It also raises the minor to 5 for the engine and RPC Hessian-vector interfaces.
+It raises the minor to 6 for =rgpot_potential_new_eam_table= and the four
+=RGPOT_EAM_TABLE_*= format codes.
+They are additions that take no new struct, so the layout revision stays at 1.
+It raises the minor to 8 for =rgpot_potential_hessian=,
+=rgpot_potential_hvp_resolved=, the analytic and dual-number Hessian callbacks, the dual-number Hessian-vector callback, =rgpot_potential_derivative_caps=
+and
+=rgpot_potential_derivative_counts=, the new structs =rgpot_derivative_caps_t=
+and =rgpot_derivative_counts_t=, the enum =rgpot_hessian_scheme_t=, and the
+values =RGPOT_HVP_AD= (4) and =RGPOT_HVP_EXACT= (5).
+The product takes its scheme as an =int=, so a library of minor 6 refuses the
+new values with =RGPOT_INVALID_PARAMETER= instead of misreading them.
+No existing struct changes and the new state lives behind =fused_cache=, so the
+layout revision stays at 1.
+It raises the minor to 9 for the =rgpot_mdi_server_start= export.
+The symbol is present in every build, so a library that reports minor 9 has it.
+A build without the Cargo feature =mdi= answers the call with =RGPOT_RPC_ERROR=
+and a message that names the feature.
+It raises the minor to 10 for =rgpot_rpc_client_select_orbitals=, which is an
+additive export behind =RGPOT_HAS_RPC=, so the layout revision stays at 1.
+The molecular-dynamics session entry points and their optional neighbour-query
+and neighbour-setter slots are symbols of the C++ library, not of the core C
+ABI, so this minor stays at 10.
+The session operation table carries its byte size and the new slots follow
+=destroy=, so an older table still loads.
+=rgpot_md_session_get_source_indices= is one of those slots, after =set_neighbors=.
+An engine that leaves it null, or whose table ends before it, does not report a
+separate source index.
+The C++ layout revision stays 2 and =kCxxSoversion= stays 9, because the session
+vtable is not one of the covered potential types.
 
 The ledger notes that soversion 3 was the 3.4.0 layout, which 3.5.0 reused after
 the layout changed, and that 4 is the 3.5.0 layout, shipped from 3.5.1.
@@ -150,3 +230,22 @@ cached pair table.
 Soversion 6 drops the copied half-list from LJ and Morse and gives ZBL and the
 open Lennard-Jones cluster a neighbour list.
 A program linked against soversion 4 does not load =librgpot.so.6=.
+
+Soversion 9 stamps =SumPot=, =lr::SumPot= and =PotType::LrSum=.
+=lr::SumPot= derives from =SumPot= now, so it grows from 56 to 120 bytes and its
+old constructor and =add= symbols leave the library.
+It also stamps =D2Config=, =D2Pot= and =PotType::D2=.
+It also stamps =D2CpmdConfig=, =D2CpmdPot= and =PotType::D2Cpmd=.
+=D4Config= gains =periodic= in the padding after =atm=, so it keeps its size and
+only the field offsets show it.
+=D2CpmdConfig= gains =symmetry=.
+=PotCaps= gains =analyticHessian=, =adHessian= and =adHvp=, and =PotentialBase=
+gains the virtuals =hessianImpl=, =hessianAdImpl= and =hessianVectorAdImpl=
+after =hessianVectorImpl=.
+The vtable changed, so =kCxxLayoutRevision= is 2.
+It also stamps =MullerBrownConfig= and =MullerBrownPot=.
+The zero-argument =MullerBrownPot= constructor remains its own symbol.
+It also stamps =nlist::Builder= and =nlist::Walk=, which move their state behind
+a pointer so each is one pointer wide.
+It also adds a process-unique generation id on =Neighbours=.
+A program linked against soversion 8 does not load =librgpot.so.9=.

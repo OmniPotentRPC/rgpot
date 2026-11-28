@@ -11,6 +11,9 @@ import sys
 import tempfile
 from pathlib import Path
 
+# Potentials.capnp imports common.capnp; both are vendored side by side.
+SCHEMA_FILES = ("Potentials.capnp", "common.capnp")
+
 
 def _struct_body(lines: list[str], name: str, rel: Path) -> list[str]:
     needle = f"struct {name} {{"
@@ -101,7 +104,7 @@ def _assert_cp2k_arm(schema_path: Path, lines: list[str]) -> None:
         raise AssertionError(f"{rel} PotentialConfig.cp2k must be CP2KParams @17")
 
 
-def _regenerate(root: Path, capnp: str, schema: Path, out: Path) -> dict[str, bytes]:
+def _regenerate(root: Path, capnp: str, schema_dir: Path, out: Path) -> dict[str, bytes]:
     """Run the repository's own generator wrapper and return the artifacts."""
     out.mkdir(parents=True, exist_ok=True)
     subprocess.run(
@@ -110,55 +113,52 @@ def _regenerate(root: Path, capnp: str, schema: Path, out: Path) -> dict[str, by
             str(root / "CppCore" / "rgpot" / "rpc" / "capnp_compile.py"),
             capnp,
             str(out),
-            str(schema.parent),
-            str(schema),
+            str(schema_dir),
+            *(str(schema_dir / name) for name in SCHEMA_FILES),
         ],
         check=True,
     )
     return {p.name: p.read_bytes() for p in sorted(out.iterdir())}
 
 
-def _request(capnp: str, schema: Path) -> bytes:
+def _request(capnp: str, schema_dir: Path) -> bytes:
     """CodeGeneratorRequest bytes: the one input every capnp backend sees."""
     return subprocess.run(
-        [capnp, "compile", "-o-", f"--src-prefix={schema.parent}", str(schema)],
+        [
+            capnp,
+            "compile",
+            "-o-",
+            f"--src-prefix={schema_dir}",
+            *(str(schema_dir / name) for name in SCHEMA_FILES),
+        ],
         check=True,
         stdout=subprocess.PIPE,
     ).stdout
 
 
 def _assert_generated_in_sync(root: Path, capnp: str, build_dir: Path | None) -> None:
-    cpp_schema = root / "CppCore" / "rgpot" / "rpc" / "Potentials.capnp"
-    rust_schema = root / "rgpot-core" / "schema" / "Potentials.capnp"
+    cpp_dir = root / "CppCore" / "rgpot" / "rpc"
+    rust_dir = root / "rgpot-core" / "schema"
     with tempfile.TemporaryDirectory() as tmp:
         tmp_path = Path(tmp)
-        # Each copy sits alone in its own directory so the generated names and
-        # the embedded source paths cannot differ for incidental reasons.
-        # Each copy gets its own local series applied, as the meson build
-        # and rgpot-core/build.rs do, so the comparison is of what compiles.
-        cpp_copy = tmp_path / "cpp" / "Potentials.capnp"
-        rust_copy = tmp_path / "rust" / "Potentials.capnp"
-        for src, dst in ((cpp_schema, cpp_copy), (rust_schema, rust_copy)):
-            subprocess.run(
-                [
-                    sys.executable,
-                    str(root / "CppCore" / "rgpot" / "rpc" / "schema_ledger.py"),
-                    "apply",
-                    "--root",
-                    str(root),
-                    "--schema",
-                    str(src),
-                    "--series",
-                    str(src.parent / "local"),
-                    "--out",
-                    str(dst),
-                ],
-                check=True,
-            )
+        # Each copy sits alone in its own directory, with the common.capnp it
+        # imports, so the generated names and the embedded source paths
+        # cannot differ for incidental reasons.
+        cpp_copy = tmp_path / "cpp"
+        rust_copy = tmp_path / "rust"
+        for src, dst in ((cpp_dir, cpp_copy), (rust_dir, rust_copy)):
+            dst.mkdir()
+            for name in SCHEMA_FILES:
+                shutil.copyfile(src / name, dst / name)
 
         from_cpp = _regenerate(root, capnp, cpp_copy, tmp_path / "gen_cpp")
         from_rust = _regenerate(root, capnp, rust_copy, tmp_path / "gen_rust")
-        assert set(from_cpp) == {"Potentials.capnp.cpp", "Potentials.capnp.h"}, from_cpp.keys()
+        assert set(from_cpp) == {
+            "Potentials.capnp.cpp",
+            "Potentials.capnp.h",
+            "common.capnp.cpp",
+            "common.capnp.h",
+        }, from_cpp.keys()
         for name in from_cpp:
             if from_cpp[name] != from_rust[name]:
                 raise AssertionError(f"regenerated {name} differs between the C++ and Rust schema copies")
@@ -192,6 +192,11 @@ def main() -> int:
             raise AssertionError(f"{rel} must expose CPMDSectionKind")
         _assert_expr_potspec(schema_path.relative_to(root), lines)
         _assert_cp2k_arm(schema_path.relative_to(root), lines)
+
+    cpp_common = root / "CppCore" / "rgpot" / "rpc" / "common.capnp"
+    rust_common = root / "rgpot-core" / "schema" / "common.capnp"
+    if cpp_common.read_bytes().replace(b"\r\n", b"\n") != rust_common.read_bytes().replace(b"\r\n", b"\n"):
+        raise AssertionError("rgpot-core bundled common.capnp must match the C++ RPC copy")
 
     if cpp_lines == rust_lines:
         if capnp is None:

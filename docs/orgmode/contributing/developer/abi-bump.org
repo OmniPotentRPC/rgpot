@@ -32,6 +32,9 @@ Then:
 
 1. Regenerate the header with =pixi run gen-header= and commit it with the
    change.
+   =pixi run header-drift= (=scripts/check_header_drift.sh=) fails when the
+   committed header differs from a fresh regeneration, with the default features
+   and with all of them.
 2. Append each new exported function to =scripts/abi_core_baseline.txt=.
    The list only grows; it holds the functions of a build with the crate's
    default features.
@@ -43,10 +46,19 @@ Then:
    declaring a baseline name.
 
 In a Meson build with =with_rust_core= on Linux, the test =abi_core_symbols=
-fails when =librgpot_core.so= no longer exports a baseline name.
+fails when the Rust archive no longer exports a baseline name.
 =scripts/abi_baseline.txt= and =scripts/abi_baseline_fast.txt= are the same
-check for the neighbour-list and fast-list exports of =librgpot= (Meson test
-=abi_symbols=).
+check for the
+=RGPOT_API= and fast-list exports of =librgpot= (Meson test =abi_symbols=).
+Every public C function of =librgpot= is declared with
+=RGPOT_API= from =rgpot/rgpot_api.h=, and a new one is appended to
+=scripts/abi_baseline.txt=.
+On Linux and macOS =RGPOT_API= means default visibility.
+On Windows it is =dllexport= while =librgpot= is built
+(=RGPOT_BUILDING=), =dllimport= for a caller of the DLL, and empty for a caller of the static library (=RGPOT_STATIC=,
+set by the Meson dependency and the pkg-config file).
+=scripts/abi_symbols.py= checks the baselines against the ELF, Mach-O or archive
+symbol table, or the export table of a DLL.
 The neighbour-list C ABI has its own number, =RGPOT_NLIST_ABI= in
 =CppCore/rgpot/nlist/rgpot_nlist.h=.
 
@@ -86,8 +98,10 @@ The constants live in =CppCore/rgpot/abi/CxxLayout.hpp=.
 - the fingerprint of the stamp's inputs (the text of =compute_hash()=, the four
   constants, the covered structures and the data members of the covered classes)
   differs from the last ledger line;
-- compared with =main=, a shipped ledger line changed or was dropped, or
-  =compute_hash()= changed without a new ledger line;
+- compared with =main=, whatever branch a pull request targets, a shipped ledger
+  line changed or was dropped, or =compute_hash()= changed without a new ledger
+  line; a line not yet on =main=, such as the soversion =develop= has not
+  released, may be edited in place;
 - the SONAME of the built =librgpot= is not =librgpot.so.N= for =N= =
   =kCxxSoversion=;
 - the table tags and the =RGPOT_CXX_PLATFORM_LISTED_TAG= guards differ;

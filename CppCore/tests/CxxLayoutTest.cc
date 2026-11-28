@@ -11,6 +11,7 @@
 #include <catch2/catch_all.hpp>
 
 #include "rgpot/abi/CxxLayout.hpp"
+#include "rgpot/nlist/Neighbours.hpp"
 #include "rgpot/plugin/DynLib.hpp"
 
 namespace abi = rgpot::abi;
@@ -116,5 +117,31 @@ TEST_CASE("a library built with a changed structure is refused",
       rgpot::plugin::dynlib::sym(handle, "rgpot_cxx_layout_compatible"));
   REQUIRE(check_fn != nullptr);
   REQUIRE(check_fn(&mine) == 0);
+  rgpot::plugin::dynlib::close(handle);
+}
+
+TEST_CASE("Neighbours generations share one counter across shared objects",
+          "[abi][layout][generation]") {
+  if (std::getenv("RGPOT_SHARED_LIBRARY") == nullptr) {
+    SKIP("the generation counter boundary requires shared librgpot");
+  }
+  const char *path = std::getenv("RGPOT_LAYOUT_FIXTURE");
+  REQUIRE(path != nullptr);
+  auto handle = rgpot::plugin::dynlib::open(path);
+  REQUIRE(handle != nullptr);
+  using GenerationFn = std::uint64_t (*)(void);
+  auto fixture_generation =
+      reinterpret_cast<GenerationFn>(rgpot::plugin::dynlib::sym(
+          handle, "rgpot_fixture_neighbours_generation"));
+  REQUIRE(fixture_generation != nullptr);
+
+  const auto executable_first = rgpot::nlist::Neighbours{}.generation();
+  const auto fixture_first = fixture_generation();
+  const auto executable_second = rgpot::nlist::Neighbours{}.generation();
+  const auto fixture_second = fixture_generation();
+  CHECK(executable_first < fixture_first);
+  CHECK(fixture_first < executable_second);
+  CHECK(executable_second < fixture_second);
+
   rgpot::plugin::dynlib::close(handle);
 }

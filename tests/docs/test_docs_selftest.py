@@ -73,6 +73,30 @@ class PlantedReferenceMistakes(unittest.TestCase):
         errors = _about(doccheck.reference_errors(ROOT, [page]), name)
         self.assertTrue(any("but the source has" in e for e in errors), errors)
 
+    def test_python_overloads_must_all_be_documented(self):
+        name = "rgpot.rgpot_lammps_potential"
+        info = doccheck.py_public_names(ROOT)[name]
+        self.assertEqual(len(info.overloads), 2)
+        only_first = "rgpot_lammps_potential" + doccheck._fmt_params(info.overloads[0])
+        page = _page(_entry(name, only_first, "python"))
+        errors = [
+            e
+            for e in _about(doccheck.reference_errors(ROOT, [page]), name)
+            if "second entry" not in e
+        ]
+        self.assertTrue(any("undocumented overload" in e for e in errors), errors)
+        both = "\n".join(
+            "rgpot_lammps_potential" + doccheck._fmt_params(params)
+            for params in info.overloads
+        )
+        page = _page(_entry(name, both, "python"))
+        errors = [
+            e
+            for e in _about(doccheck.reference_errors(ROOT, [page]), name)
+            if "second entry" not in e
+        ]
+        self.assertEqual(errors, [])
+
     def test_member_claimed_on_a_class_without_it(self):
         names = doccheck.py_public_names(ROOT)
         classes = {n.split(".")[1] for n, v in names.items() if v.kind == "class"}
@@ -144,12 +168,15 @@ class PlantedReferenceMistakes(unittest.TestCase):
         )
 
     def test_local_schema_field_that_no_page_names(self):
-        members = [m for m, _ in doccheck.local_schema_fields(ROOT)]
+        members = doccheck.local_schema_fields(ROOT)
         self.assertIn("UmaParams.cacheDir", members)
         named = "\n".join(f"| ={m}= | x |" for m in members if m != "UmaParams.cacheDir")
         errors = doccheck.local_schema_errors(ROOT, [_page(f"* Page\n\n{named}\n")])
         self.assertEqual(len(errors), 1, errors)
-        self.assertIn("adds UmaParams.cacheDir, which no reference page names", errors[0])
+        self.assertIn(
+            f"{doccheck.SCHEMA_LEDGER}: rgpot added UmaParams.cacheDir, which no reference page names",
+            errors[0],
+        )
 
 
 class PlantedFactMistakes(unittest.TestCase):
@@ -216,6 +243,14 @@ class PlantedFactMistakes(unittest.TestCase):
         self.assertIn("&RGPOT key EMBEDDING is not in the table", errors)
         self.assertIn("THREADS is not a key", errors)
 
+    def test_engine_table_exports_against_the_adapter(self):
+        page = (ROOT / doccheck.ENGINE_ABI_PAGE).read_text(encoding="utf-8")
+        self.assertEqual(doccheck.engine_table_export_errors(ROOT), [])
+        planted = page.replace("=rgpot_engine_hvp=, ", "", 1)
+        self.assertNotEqual(page, planted)
+        errors = "\n".join(doccheck.engine_table_export_errors(ROOT, _page(planted)))
+        self.assertIn("export rgpot_engine_hvp is not in the library export list", errors)
+
     def test_wrong_default_in_build_options_page(self):
         options = doccheck.meson_options(ROOT)
         cmake = doccheck.cmake_options(ROOT)
@@ -274,6 +309,20 @@ class PlantedBrokenExamples(unittest.TestCase):
         text = "#+attr_rgpot: run requires=has_expr link=rgpot\n#+begin_src cpp\nint main() { return 1; }\n#+end_src\n"
         [block] = self._blocks(text)
         self.assertEqual(doccheck.run_block(block, info, ROOT), ("skip", "build lacks has_expr"))
+
+    def test_meson_options_supply_features_without_defines(self):
+        with tempfile.TemporaryDirectory(prefix="doccheck-build-") as tmp:
+            build = Path(tmp)
+            info = build / "meson-info"
+            info.mkdir()
+            options = [
+                {"name": "with_rpc", "value": False},
+                {"name": "with_rpc_client_only", "value": True},
+                {"name": "with_long_range", "value": True},
+            ]
+            (info / "intro-buildoptions.json").write_text(json.dumps(options), encoding="utf-8")
+            features = doccheck._option_features(build)
+        self.assertEqual(features, {"has_rpc": True, "has_long_range": True})
 
     def test_cpp_flags_come_from_a_test(self):
         with tempfile.TemporaryDirectory(prefix="doccheck-build-") as tmp:
@@ -360,6 +409,29 @@ class PlantedBrokenExamples(unittest.TestCase):
             info = doccheck.build_info(build, ROOT)
             self.assertEqual(doccheck.run_block(block, info, ROOT), ("ok", ""))
 
+    @unittest.skipUnless(shutil.which(os.environ.get("CXX", "c++")), "needs c++")
+    def test_client_only_build_skips_blocks_that_link_librgpot(self):
+        text = "#+attr_rgpot: run link=rgpot\n#+begin_src cpp\nint main() { return 0; }\n#+end_src\n"
+        [block] = self._blocks(text)
+        targets = [{"name": "pot_client_bridge", "type": "shared library", "filename": ["/build/libbridge.so"],
+                    "target_sources": []}]
+        with tempfile.TemporaryDirectory(prefix="doccheck-build-") as tmp:
+            build = Path(tmp).resolve()
+            (build / "meson-info").mkdir()
+            options = build / "meson-info" / "intro-buildoptions.json"
+            info = doccheck.BuildInfo(build, [], [], [], False, {}, targets)
+            for client_only in (True, False):
+                with self.subTest(with_rpc_client_only=client_only):
+                    options.write_text(
+                        json.dumps([{"name": "with_rpc_client_only", "value": client_only}]), encoding="utf-8"
+                    )
+                    status, detail = doccheck.run_block(block, info, ROOT)
+                    if client_only:
+                        self.assertEqual((status, detail), ("skip", "client-only build has no librgpot"))
+                    else:
+                        self.assertEqual(status, "fail")
+                        self.assertIn("rgpot", detail)
+
     def test_cpp_block_needs_an_rpc_build(self):
         text = "#+attr_rgpot: compile requires=has_rpc\n#+begin_src cpp\nint main() { return 1; }\n#+end_src\n"
         [block] = self._blocks(text)
@@ -388,6 +460,242 @@ class PlantedBrokenExamples(unittest.TestCase):
         text = "#+attr_rgpot: run\n#+begin_src python\nimport rgpot\nassert rgpot.LJPot is None\n#+end_src\n"
         results = list(doccheck.execute_blocks(build, ROOT, self._blocks(text)))
         self.assertEqual([status for _, status, _ in results], ["fail"])
+
+
+class Coverage(unittest.TestCase):
+    def test_tree_is_covered(self):
+        self.assertEqual(doccheck.coverage_errors(ROOT), [])
+
+    def test_missing_marker_is_reported(self):
+        planted = list(doccheck.COVERAGE_MARKERS) + [
+            ("docs/orgmode/reference/gupta.org", "not-a-real-marker")
+        ]
+        with mock.patch.object(doccheck, "COVERAGE_MARKERS", planted):
+            errors = "\n".join(doccheck.coverage_errors(ROOT))
+        self.assertIn("not-a-real-marker", errors)
+
+
+def _load(name: str, relpath: str):
+    return doccheck._load_module(name, relpath, ROOT)
+
+
+class Inventory(unittest.TestCase):
+    def test_every_public_item_is_documented(self):
+        self.assertEqual(doccheck.inventory_errors(ROOT), [])
+
+    def test_potential_without_a_how_to_is_reported(self):
+        inventory = _load("rgpot_inventory_test", "docs/inventory.py")
+        planted = "docs/orgmode/howto/potentials-silicon.org"
+        with mock.patch.object(inventory, "POTENTIAL_PAGES", planted):
+            errors = "\n".join(inventory.errors(ROOT))
+        self.assertIn("potential LJ ", errors)
+        self.assertNotIn("potential EDIP ", errors)
+
+    def test_program_without_a_heading_is_reported(self):
+        inventory = _load("rgpot_inventory_test", "docs/inventory.py")
+        planted = {"potserv": "docs/orgmode/reference/mpi.org"}
+        with mock.patch.object(inventory, "TOOLS", planted):
+            errors = "\n".join(inventory.errors(ROOT))
+        self.assertIn("tool potserv ", errors)
+
+
+class GeneratedFiles(unittest.TestCase):
+    def _tree(self) -> Path:
+        tmp = Path(tempfile.mkdtemp(prefix="doccheck-gen-"))
+        org = tmp / "docs" / "orgmode"
+        org.mkdir(parents=True)
+        (org / "index.org").write_text(
+            textwrap.dedent(
+                """\
+                #+TITLE: Index
+
+                * Overview
+                A summary line.
+
+                #+begin_export rst
+                .. toctree::
+                   :caption: Guides
+
+                   guide
+                #+end_export
+                """
+            ),
+            encoding="utf-8",
+        )
+        (org / "guide.org").write_text(
+            "#+TITLE: Guide\n\n* Guide\nUse =rgpot= like this.\n", encoding="utf-8"
+        )
+        return tmp
+
+    def test_the_tree_is_current(self):
+        self.assertEqual(doccheck.generated_errors(ROOT), [])
+
+    def test_llms_files_follow_the_pages(self):
+        gen = _load("rgpot_gen_llms_test", "scripts/gen_llms.py")
+        tree = self._tree()
+        self.assertEqual(len(gen.stale(tree)), 2)
+        for name, text in gen.generate(tree).items():
+            (tree / name).write_text(text, encoding="utf-8")
+        self.assertEqual(gen.stale(tree), [])
+        self.assertIn("[Guide](https://rgpot.rgoswami.me/guide.html)", (tree / "llms.txt").read_text())
+        self.assertIn("Use `rgpot` like this.", (tree / "llms-full.txt").read_text())
+        page = tree / "docs" / "orgmode" / "guide.org"
+        page.write_text(page.read_text() + "More text.\n", encoding="utf-8")
+        self.assertEqual(len(gen.stale(tree)), 1)
+
+    def test_unreleased_notes_are_copied(self):
+        gen = _load("rgpot_gen_llms_notes", "scripts/gen_llms.py")
+        tree = self._tree()
+        org = tree / "docs" / "orgmode"
+        index = org / "index.org"
+        index.write_text(
+            index.read_text(encoding="utf-8")
+            + "\n".join(
+                [
+                    "",
+                    "#+begin_export rst",
+                    ".. toctree::",
+                    "   :caption: Notes",
+                    "",
+                    "   changelog",
+                    "#+end_export",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        (org / "changelog.org").write_text(
+            "#+TITLE: Changelog\n\nThe notes live with the fragments.\n",
+            encoding="utf-8",
+        )
+        fragments = tree / "docs" / "newsfragments"
+        fragments.mkdir()
+        (fragments / "+note.fixed.md").write_text(
+            "The metatomic potential is the caller.\n",
+            encoding="utf-8",
+        )
+        (fragments / "README.md").write_text(
+            "Towncrier news fragments\n",
+            encoding="utf-8",
+        )
+        full = gen.generate(tree)["llms-full.txt"]
+        self.assertIn("The metatomic potential is the caller.", full)
+        self.assertNotIn("Towncrier news fragments", full)
+
+    def test_verbatim_keeps_math_and_follows_org_rules(self):
+        gen = _load("rgpot_gen_llms_markup", "scripts/gen_llms.py")
+        exact = r"\(\epsilon_{rf}=1\). =grompp= warns that \(\epsilon_{rf}=\epsilon_r\);"
+        self.assertEqual(
+            gen._inline(exact, "howto/engine-nblib"),
+            r"\(\epsilon_{rf}=1\). `grompp` warns that \(\epsilon_{rf}=\epsilon_r\);",
+        )
+        self.assertEqual(gen._inline(r"\(=x=\)", "k"), r"\(=x=\)")
+        self.assertEqual(gen._inline(r"$$=x=$$", "k"), r"$$=x=$$")
+        self.assertEqual(gen._inline("a=b in prose", "k"), "a=b in prose")
+        self.assertEqual(gen._inline("(=rgpot=)", "k"), "(`rgpot`)")
+        self.assertEqual(gen._inline("(~code~)", "k"), "(`code`)")
+        spanned = "See \\(a =x= b\n+ c\\) and =grompp=.\n"
+        rendered = gen.org_to_markdown(spanned, "k")
+        self.assertIn(r"\(a =x= b", rendered)
+        self.assertIn("`grompp`", rendered)
+        self.assertNotIn("`x`", rendered)
+
+    def test_delimiters_inside_code_stay_in_the_span(self):
+        gen = _load("rgpot_gen_llms_code_span", "scripts/gen_llms.py")
+        self.assertEqual(
+            gen._inline("=rgpot_engine_abi_version() == ENGINE_ABI_VERSION=", "k"),
+            "`rgpot_engine_abi_version() == ENGINE_ABI_VERSION`",
+        )
+        self.assertEqual(gen._inline("and =err=/=err_len=.", "k"), "and `err`/`err_len`.")
+        self.assertEqual(
+            gen._inline("*Kinds from ~rgpot_kinds~* (~wp~, ~ip~, ~lp~).", "k"),
+            "*Kinds from `rgpot_kinds`* (`wp`, `ip`, `lp`).",
+        )
+        self.assertEqual(gen._inline("=potctl=+=cog=", "k"), "`potctl`+`cog`")
+        self.assertEqual(gen._inline("a name containing =/=.", "k"), "a name containing `/`.")
+        self.assertEqual(gen._inline("writes =*energy= here", "k"), "writes `*energy` here")
+        self.assertEqual(gen._inline("=+INFINITY=", "k"), "`+INFINITY`")
+        self.assertEqual(
+            gen._inline("`a == b` and =c= and ``fmt>=12``", "k"),
+            "`a == b` and `c` and ``fmt>=12``",
+        )
+        self.assertEqual(
+            gen._inline("=Commit type `merge` not allowed=", "k"),
+            "`Commit type `merge` not allowed`",
+        )
+        self.assertEqual(gen._inline("=De=, =a=, =re=", "k"), "`De`, `a`, `re`")
+        kept = '=RgpotCalculator("morse", switch_width=(c2-c1)*r0)='
+        self.assertEqual(
+            gen._inline(kept, "k"),
+            '`RgpotCalculator("morse", switch_width=(c2-c1)*r0)`',
+        )
+
+    def test_inline_code_round_trip(self):
+        gen = _load("rgpot_gen_llms_round_trip", "scripts/gen_llms.py")
+        tree = self._tree()
+        page = tree / "docs" / "orgmode" / "guide.org"
+        page.write_text(
+            "\n".join(
+                [
+                    "#+TITLE: Guide",
+                    "",
+                    "* Guide",
+                    "Use `a == b` and =rgpot_engine_abi_version() == ENGINE_ABI_VERSION=.",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        full = gen.generate(tree)["llms-full.txt"]
+        self.assertIn("`a == b`", full)
+        self.assertIn("`rgpot_engine_abi_version() == ENGINE_ABI_VERSION`", full)
+        self.assertEqual(gen.inline_code_errors(tree, full), [])
+        broken = full.replace("`a == b`", "a == b")
+        errors = gen.inline_code_errors(tree, broken)
+        self.assertTrue(any("`a == b`" in error for error in errors), errors)
+        self.assertEqual(gen.inline_code_errors(ROOT), [])
+
+    def test_full_text_backticks_are_balanced_outside_math(self):
+        gen = _load("rgpot_gen_llms_markup_lint", "scripts/gen_llms.py")
+        broken = r"\(\epsilon_{rf}`1\). =grompp`"
+        errors = gen.markup_errors(broken)
+        self.assertTrue(any("inline math" in error for error in errors), errors)
+        self.assertTrue(gen.markup_errors("a lone ` backtick"))
+        self.assertEqual(gen.markup_errors(r"\(\epsilon_{rf}=1\). `grompp`"), [])
+        self.assertEqual(gen.markup_errors("```\nodd ` inside\n```\n"), [])
+        tree = self._tree()
+        for name, text in gen.generate(tree).items():
+            (tree / name).write_text(text, encoding="utf-8")
+        full = tree / "llms-full.txt"
+        full.write_text(
+            full.read_text(encoding="utf-8").replace("Use `rgpot`", broken),
+            encoding="utf-8",
+        )
+        stale = gen.stale(tree)
+        self.assertTrue(any("inline math" in error for error in stale), stale)
+        self.assertEqual(gen.markup_errors((ROOT / "llms-full.txt").read_text(encoding="utf-8")), [])
+
+    def test_doi_missing_from_the_manifest_is_reported(self):
+        dois = _load("rgpot_verify_dois_test", "scripts/verify_dois.py")
+        tree = self._tree()
+        page = tree / "docs" / "orgmode" / "guide.org"
+        page.write_text(page.read_text() + "See doi:10.1000/182.\n", encoding="utf-8")
+        self.assertEqual(dois.cited_dois(tree), {"10.1000/182": ["docs/orgmode/guide.org"]})
+        self.assertIn("10.1000/182 is not in docs/dois.json", "\n".join(dois.check(tree)))
+        (tree / "docs" / "dois.json").write_text("{}", encoding="utf-8")
+        self.assertIn("10.1000/182", "\n".join(dois.check(tree)))
+        (tree / "docs" / "dois.json").write_text(json.dumps({"10.1000/182": {}}), encoding="utf-8")
+        self.assertEqual(dois.check(tree), [])
+        (tree / "docs" / "dois.json").write_text(json.dumps({"10.1000/999": {}}), encoding="utf-8")
+        self.assertEqual(len(dois.check(tree)), 2)
+
+    def test_doi_extraction_drops_sentence_punctuation(self):
+        dois = _load("rgpot_verify_dois_test", "scripts/verify_dois.py")
+        text = "(doi:10.1016/0010-4655(90)90007-N). Also doi:10.1063/1.2841941: and 10.1000/182."
+        self.assertEqual(
+            dois.dois_in(text),
+            {"10.1016/0010-4655(90)90007-N", "10.1063/1.2841941", "10.1000/182"},
+        )
 
 
 if __name__ == "__main__":

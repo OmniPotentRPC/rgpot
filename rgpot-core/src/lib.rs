@@ -3,6 +3,7 @@
 
 // C-style names are intentional for cbindgen compatibility.
 #![allow(non_camel_case_types)]
+#![allow(rustdoc::redundant_explicit_links)]
 
 //! # rgpot-core
 //!
@@ -22,9 +23,16 @@
 //! | [`status`] | Status codes, thread-local error message, panic safety |
 //! | [`potential`] | Callback-based potential dispatch (opaque handle) |
 //! | [`hvp`] | Hessian-vector products with a cached centre or an analytic callback |
+//! | [`hessian`] | Dense Hessians, and the derivative capabilities and counts of a handle |
+//! | [`fused`] | One cache of the outcome of a fused energy-and-gradient evaluation |
+//! | [`jet`] | Validated Taylor jets along a line, with typed refusals |
+//! | [`taylor`] | Interval Taylor series that implement a jet |
+//! | [`ch5_2008`] | Exact Taylor jet of the CH5 2008 surface |
+//! | [`eam_table`] | Tabulated EAM potentials read from DYNAMO tables |
 //! | [`c_api`] | `extern "C"` entry points collected by cbindgen |
 //! | [`version`] | Loaded library version, to check against `rgpot.h` |
-//! | [`rpc`] | Cap'n Proto RPC client and server (feature-gated) |
+//! | `engine` | Loader for the generic engine C ABI (`engine` feature) |
+//! | `rpc` | Cap'n Proto RPC client and server (feature-gated) |
 //!
 //! ## Design Principles
 //!
@@ -33,7 +41,7 @@
 //!    single source of truth for all language bindings.
 //!
 //! 2. **Panic safety at every boundary.** All `extern "C"` functions wrap their
-//!    body in [`status::catch_unwind`], converting panics to
+//!    body in `status::catch_unwind`, converting panics to
 //!    [`status::rgpot_status_t::RGPOT_INTERNAL_ERROR`] and storing a
 //!    human-readable message retrievable via [`status::rgpot_last_error`].
 //!
@@ -49,13 +57,22 @@
 //! The core types use DLPack tensors for device-agnostic data exchange.
 //! See [`tensor`] for helpers to create DLPack tensors from raw pointers.
 
-pub mod types;
-pub mod tensor;
-pub mod status;
-pub mod potential;
-pub mod hvp;
-pub mod eindir;
 pub mod c_api;
+pub mod ch5_2008;
+pub mod eam_table;
+pub mod eindir;
+pub mod fused;
+pub mod hessian;
+pub mod hvp;
+pub mod jet;
+pub mod md_session;
+pub mod potential;
+pub mod status;
+pub mod taylor;
+pub mod tensor;
+pub mod types;
+#[cfg(feature = "mdi")]
+pub mod units;
 pub mod version;
 
 #[cfg(feature = "schema")]
@@ -70,10 +87,25 @@ pub mod Potentials_capnp {
 }
 
 #[cfg(feature = "schema")]
+#[allow(dead_code, non_snake_case, unused_parens, clippy::all)]
+/// Auto-generated bindings for `common.capnp`, which `Potentials.capnp`
+/// imports for the shared rgconf types (neighbour-list configuration and
+/// the presence wrappers of the patch structs).
+pub mod common_capnp {
+    include!(concat!(env!("OUT_DIR"), "/common_capnp.rs"));
+}
+
+#[cfg(feature = "schema")]
 pub mod compat;
+
+#[cfg(feature = "engine")]
+pub mod engine;
 
 #[cfg(feature = "profile")]
 pub mod profile;
 
 #[cfg(feature = "rpc")]
 pub mod rpc;
+
+#[cfg(feature = "mdi")]
+pub mod mdi;

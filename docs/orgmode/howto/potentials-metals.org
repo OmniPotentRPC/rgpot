@@ -1,0 +1,1431 @@
+#+COMMENT: Copyright 2023--present rgpot developers
+#+TITLE: Metal and embedded-atom potentials
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+#+STARTUP: content
+
+* Metal and embedded-atom potentials
+
+Seven =PotType= enumerators evaluate metals with an embedded-atom or an
+effective-medium energy: =CuH2=, =EAMAl=, =FeHe=, =EMT=, =EAMCell= and
+=EAMTable=, plus the first- and second-neighbour modified embedded-atom method
+=MEAM=.
+Each section below says how to reach the potential, gives its functional form as
+the kernel evaluates it, lists the parameters with where they are set, runs a
+program, and cites the literature.
+The names a host accepts (=rgpot-eval=,
+=pair_coeff=, the PLUMED =POTENTIAL= keyword) are in [[file:../reference/potential_names.org][Potential
+names]].
+The class contracts are in
+[[file:../reference/cpp_potentials.org][C++ potentials]] and the Python classes
+in [[file:../reference/python_api.org][Python API]].
+
+Lengths are Angstrom, energies are eV and forces are eV/Angstrom.
+All seven read the cell as periodic in every direction (by default for
+=EAMTable= and =MEAM=, which also support open boundaries).
+None of the kernels writes a stress except =EAMTable= and =MEAM=, and only when
+asked.
+
+| Name       | C++ class                      | Python           |
+|------------+--------------------------------+------------------|
+| =CuH2=     | =rgpot::fortranpots::CuH2Pot=  | =rgpot.CuH2Pot=  |
+| =EAMAl=    | =rgpot::fortranpots::EAMAlPot= | =rgpot.EAMAlPot= |
+| =FeHe=     | =rgpot::fortranpots::FeHePot=  | =rgpot.FeHePot=  |
+| =EMT=      | =rgpot::EMTPot=                | none             |
+| =EAMCell=  | =rgpot::EAMPot=                | none             |
+| =EAMTable= | =rgpot::EAMTablePot=           | none             |
+| =MEAM=     | =rgpot::MEAMPot=               | none             |
+
+=CuH2=, =EAMAl= and =FeHe= need a build with =-Dwith_fortran_pots=enabled=, and
+=EAMTable= needs =-Dwith_eam_table=true=.
+=EMT= and =EAMCell= are always built.
+=MEAM= reads LAMMPS MEAM library and parameter files.
+
+Every example evaluates the energy of a small geometry and prints it next to the
+same energy computed by hand from the formulas in the section, using the
+parameters in its table.
+The two numbers agree, which is the check that the text states the kernel's
+form.
+The dimers sit in a cubic box of 20 Angstrom, so only the pair itself interacts.
+Where an example prints a force, it prints a central difference of the energy
+with step 1e-5 Angstrom beside it.
+
+Three of the kernels share one form family.
+The embedded-atom energy is
+
+#+attr_rgpot: skip the energy formula, not code
+#+begin_example
+E = sum_{i<j} phi(r_ij) + sum_i F(rho_i)
+rho_i = sum_{j /= i} rho(r_ij)
+#+end_example
+
+and =CuH2=, =EAMAl= and =EAMCell= take for =phi= a Morse function written as two
+exponentials.
+For =rho= they take the shape =r^6 (e^(-beta r) + 512 e^(-2 beta r))=.
+That is the form of Voter and Chen, who also point out that =F -> F + g rho=
+with =phi -> phi - 2 g rho= leaves the energy unchanged, and that scaling =rho=
+by a constant while rescaling =F= does too.
+The Fortran kernels evaluate it in gather form (see
+[[file:../explanation/fortran-kernels.org][Fortran kernels]]): densities first,
+then =F= and =F'= for every atom, then the force.
+
+** =CuH2= copper and hydrogen
+
+*** What it is and how to reach it
+
+An embedded-atom potential for copper (atomic number 29) and hydrogen (atomic
+number 1) in any order, with a cutoff of 6.1 Angstrom.
+It is the eOn =CuH2= potential.
+
+- C++: =rgpot::fortranpots::CuH2Pot= in =CppCore/rgpot/fortran/FortranPots.hpp=.
+- Python: =rgpot.CuH2Pot=.
+  It has an analytic Hessian-vector product.
+- =rgpot-eval=, LAMMPS
+  =pair_coeff= and PLUMED name: =CuH2= (a build with the Fortran potentials), as in =pair_coeff * * CuH2 Cu H=.
+- =potserv=: type =CuH2=, as in =potserv 12345 CuH2=.
+- Reference: [[file:../reference/cpp_potentials.org][C++ potentials]],
+  [[file:../reference/fortran_potentials.org][Fortran potentials]] and
+  [[file:../reference/python_api.org][Python API]].
+
+Any other atomic number, or two atoms at the same position, is an error.
+
+*** Functional form
+
+The kernel is =CppCore/rgpot/fortran/rgpot_cuh2.f90=.
+The species of the two atoms of a pair pick the pair function, and the species
+of a neighbour picks the density it gives.
+
+- Pair term, once per pair with =r < rcut=, for the pairs =cucu=, =hcu= and
+  =hh=: =da * e^(-alpha_a r) + db * e^(-alpha_b r) - phicut=, in eV.
+- Density an atom of species =s= gives at distance =r=:
+  =rho_s(r) = scale_s * r^neta_s * g_s(r) - rhocut_s= with =g_s(r) = e^(-beta_a_s r) + gamma_s * e^(-beta_b_s r)=.
+  For copper =neta= is 6 and =gamma= is 512.
+  For hydrogen =neta= and =gamma= are 0, so the density is
+  =scale_h * e^(-beta_a_h r)=.
+- Embedding energy:
+  =F_cu(rho) = sum_{k=1..8} f_cu(k) rho^k= and =F_h(rho) = sum_{k=1..5} f_h(k) rho^k=,
+  in eV.
+  There is no constant term, so an isolated atom has no embedding energy.
+- Total: =E = sum_{i<j} phi(r_ij) + sum_i F_{Z_i}(rho_i)=, with
+  =rho_i= the sum over neighbours =j= of the density of the species of =j= at =r_ij=.
+- Shifts: =phicut= and =rhocut= are the pair energy and the density at =rcut=
+  before the shift.
+  Subtracting them makes both vanish at the cutoff, and a pair at =r >= rcut= is
+  skipped.
+  The slopes do not vanish there.
+
+*** Parameters
+
+The values are the defaults of =cuh2_params_t= in
+=CppCore/rgpot/fortran/rgpot_cuh2.f90=.
+A caller of =CuH2Pot= has no way to change them.
+Pair energies are in eV and decay rates in 1/Angstrom.
+
+| Component      | Value    | Meaning                       |
+|----------------+----------+-------------------------------|
+| =da_cucu=      | 2862.3   | Cu-Cu pair amplitude (eV)     |
+| =alpha_a_cucu= | 3.51236  | Cu-Cu pair decay (1/Angstrom) |
+| =db_cucu=      | -109.107 | Cu-Cu pair amplitude (eV)     |
+| =alpha_b_cucu= | 1.75618  | Cu-Cu pair decay (1/Angstrom) |
+| =da_hcu=       | 86.1495  | H-Cu pair amplitude (eV)      |
+| =alpha_a_hcu=  | 4.21154  | H-Cu pair decay (1/Angstrom)  |
+| =db_hcu=       | 15355.5  | H-Cu pair amplitude (eV)      |
+| =alpha_b_hcu=  | 6.07604  | H-Cu pair decay (1/Angstrom)  |
+| =da_hh=        | 79.5013  | H-H pair amplitude (eV)       |
+| =alpha_a_hh=   | 2.47961  | H-H pair decay (1/Angstrom)   |
+| =db_hh=        | -107.555 | H-H pair amplitude (eV)       |
+| =alpha_b_hh=   | 2.99918  | H-H pair decay (1/Angstrom)   |
+| =scale_cu=     | 0.273072 | Cu density prefactor          |
+| =beta_a_cu=    | 3.69051  | Cu density decay (1/Angstrom) |
+| =beta_b_cu=    | 7.38101  | Cu density decay (1/Angstrom) |
+| =gamma_cu=     | 512.0    | Cu density second-term weight |
+| =neta_cu=      | 6        | Cu density power of r         |
+| =scale_h=      | 2.14389  | H density prefactor           |
+| =beta_a_h=     | 3.77701  | H density decay (1/Angstrom)  |
+| =beta_b_h=     | 0.0      | H density second decay        |
+| =gamma_h=      | 0.0      | H density second-term weight  |
+| =neta_h=       | 0        | H density power of r          |
+| =rcut=         | 6.1      | cutoff (Angstrom)             |
+
+The embedding coefficients are =f_cu(1:8)= and =f_h(1:5)=, in eV per density to
+the power =k=.
+
+| k | =f_cu(k)=     | =f_h(k)= |
+|---+---------------+----------|
+| 1 | -112.945      | -81.7537 |
+| 2 | 8510.04       | 838.668  |
+| 3 | -261734.0     | -3952.35 |
+| 4 | 4780090.0     | 8767.87  |
+| 5 | -52341900.0   | -6599.37 |
+| 6 | 339124000.0   |          |
+| 7 | -1201500000.0 |          |
+| 8 | 1796190000.0  |          |
+
+The source names the kernel as eOn's =CuH2= and no paper for these numbers.
+
+*** Example
+
+This program needs a build with =-Dwith_fortran_pots=enabled=.
+It evaluates a copper dimer at 2.55 Angstrom and a copper-hydrogen dimer at 1.7
+Angstrom.
+For the copper dimer the embedding energy of each atom is =F_cu= at the shifted
+density of its one neighbour.
+For the copper-hydrogen pair the copper atom takes
+=F_cu= at the shifted hydrogen density and the hydrogen atom takes =F_h= at the
+shifted copper density.
+
+#+attr_rgpot: run link=rgpot requires=has_fortran_pots
+#+begin_src cpp
+#include <cmath>
+#include <cstdio>
+
+#include "rgpot/fortran/FortranPots.hpp"
+
+namespace {
+
+const double rc = 6.1;
+
+double phi_cucu(double r) {
+  return 2862.3 * std::exp(-3.51236 * r) - 109.107 * std::exp(-1.75618 * r);
+}
+double phi_hcu(double r) {
+  return 86.1495 * std::exp(-4.21154 * r) + 15355.5 * std::exp(-6.07604 * r);
+}
+double rho_cu(double r) {
+  return 0.273072 * std::pow(r, 6) *
+         (std::exp(-3.69051 * r) + 512.0 * std::exp(-7.38101 * r));
+}
+double rho_h(double r) { return 2.14389 * std::exp(-3.77701 * r); }
+
+double embed_cu(double d) {
+  const double c[8] = {-112.945,     8510.04,      -261734.0,    4780090.0,
+                       -52341900.0, 339124000.0, -1201500000.0, 1796190000.0};
+  double e = 0.0, p = d;
+  for (double ck : c) {
+    e += ck * p;
+    p *= d;
+  }
+  return e;
+}
+double embed_h(double d) {
+  const double c[5] = {-81.7537, 838.668, -3952.35, 8767.87, -6599.37};
+  double e = 0.0, p = d;
+  for (double ck : c) {
+    e += ck * p;
+    p *= d;
+  }
+  return e;
+}
+
+double energy(rgpot::fortranpots::CuH2Pot &pot, int z1, double r, double *fx) {
+  const double pos[6] = {10.0, 10.0, 10.0, 10.0 + r, 10.0, 10.0};
+  const int z[2] = {29, z1};
+  const double box[9] = {20.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 20.0};
+  double forces[6] = {};
+  rgpot::ForceInput in{2, pos, z, box};
+  rgpot::ForceOut out{};
+  out.F = forces;
+  pot.forceImpl(in, &out);
+  if (fx)
+    *fx = forces[3];
+  return out.energy;
+}
+
+double shifted(double (*f)(double), double r) { return f(r) - f(rc); }
+
+} // namespace
+
+int main() {
+  rgpot::fortranpots::CuH2Pot pot;
+  const double h = 1e-5;
+  double fx = 0.0;
+
+  // Cu-Cu dimer: one pair term and one embedding term per atom.
+  const double r = 2.55;
+  const double e = energy(pot, 29, r, &fx);
+  const double by_hand = shifted(phi_cucu, r) +
+                         2.0 * embed_cu(shifted(rho_cu, r));
+  const double fd = -(energy(pot, 29, r + h, nullptr) -
+                      energy(pot, 29, r - h, nullptr)) / (2 * h);
+  std::printf("Cu-Cu at %.2f: kernel %.8f, by hand %.8f eV\n", r, e, by_hand);
+  std::printf("force on atom 1, x: %.6f, central difference %.6f\n", fx, fd);
+
+  // Cu-H dimer: the Cu atom sees the H density and the H atom the Cu density.
+  const double s = 1.7;
+  const double e_h = energy(pot, 1, s, &fx);
+  const double by_hand_h = shifted(phi_hcu, s) +
+                           embed_cu(shifted(rho_h, s)) +
+                           embed_h(shifted(rho_cu, s));
+  std::printf("Cu-H at %.2f: kernel %.8f, by hand %.8f eV\n", s, e_h,
+              by_hand_h);
+  return 0;
+}
+#+end_src
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+Cu-Cu at 2.55: kernel -1.73811469, by hand -1.73811469 eV
+force on atom 1, x: -1.480595, central difference -1.480595
+Cu-H at 1.70: kernel -1.28277140, by hand -1.28277140 eV
+#+end_example
+
+
+*** Literature
+
+The source cites no paper for this potential.
+The pair term as two exponentials and the =r^6= density with weight 512 are the
+Morse and density forms of Voter and Chen; that paper treats nickel and
+aluminium and has no hydrogen, and its numbers are not these.
+
+- eOn, the software this kernel descends from: Goswami,
+  TheochemUI/eOn: v3.6.0, Zenodo (2026), doi:10.5281/zenodo.18529495.
+- Voter and Chen, MRS Proceedings 82, 175 (1986), doi:10.1557/PROC-82-175.
+- Daw and Baskes, Phys.
+  Rev. B 29, 6443-6453 (1984), doi:10.1103/PhysRevB.29.6443, for the
+  embedded-atom energy.
+
+** =EAMAl= double-exponential aluminium
+
+*** What it is and how to reach it
+
+An embedded-atom potential for aluminium with a cutoff of 7.1 Angstrom.
+The kernel does not read the atomic numbers; every atom is aluminium.
+
+- C++: =rgpot::fortranpots::EAMAlPot= in
+  =CppCore/rgpot/fortran/FortranPots.hpp=.
+- Python: =rgpot.EAMAlPot=.
+- =rgpot-eval=, LAMMPS
+  =pair_coeff= and PLUMED name: =EAMAl= (a build with the Fortran potentials), as in =pair_coeff * * EAMAl Al=.
+- =potserv=: type =EAMAl= (a build with the Fortran potentials), as in
+  =potserv 12345 EAMAl=.
+- Reference: [[file:../reference/cpp_potentials.org][C++ potentials]],
+  [[file:../reference/fortran_potentials.org][Fortran potentials]] and
+  [[file:../reference/python_api.org][Python API]].
+
+For the cell-list aluminium of the same family with a shorter cutoff, see
+=EAMCell= below.
+
+*** Functional form
+
+The kernel is =CppCore/rgpot/fortran/rgpot_eam_al.f90=.
+With =s= for =density_scale=, =g= for =g_transform= and
+=c_k= for =embed_coeff(k)=:
+
+- Density: =rho(r) = s * (h(r) - h(rcut))= with
+  =h(r) = r^6 * (e^(-beta_a r) + 512 e^(-beta_b r))=.
+  Here =beta_a= and =beta_b= are =density_decay_a= and =density_decay_b=.
+- Pair term, in eV: =phi(r) = p(r) - p(rcut) - 2 g rho(r)= with
+  =p(r) = A e^(-a r) + B e^(-b r)=.
+  Here =A=, =a=, =B= and =b= are =pair_amp_a=, =pair_decay_a=, =pair_amp_b= and
+  =pair_decay_b=.
+- Embedding: =F(rho) = g rho + sum_{k=1..8} c_k rho^k=, in eV.
+- Total: =E = sum_{i<j} phi(r_ij) + sum_i F(rho_i)=.
+- Cutoff: a pair with =r^2 > 0.9999 rcut^2=, that is =r > 7.09964= Angstrom,
+  contributes nothing.
+  The shifts make =phi= and =rho= vanish at =rcut=; the slopes do not, which is
+  why the kernel drops the pair slightly inside the cutoff.
+- The two exponentials of the pair term have decay rates in the ratio 2, so the
+  pair term is a Morse function with =Dm = B^2 / (4 A)= = 4.0197 eV, =alpha = b=
+  = 1.5103 1/Angstrom and =Rm = ln(-B / (2 Dm)) / alpha= = 2.1013 Angstrom,
+  apart from the shift and the =g= term.
+- The value of =g= does not change the energy: the sum of
+  =g rho_i= over the atoms cancels the sum of =-2 g rho(r_ij)= over the pairs.
+  =scripts/validation/eam_al.py= checks the density, pair, embedding and force
+  expressions of the kernel symbolically.
+
+*** Parameters
+
+The values are the defaults of
+=eam_al_params_t= in =CppCore/rgpot/fortran/rgpot_eam_al.f90=.
+A caller of =EAMAlPot= has no way to change them.
+The source writes each as a default-real literal, so the kernel stores the
+single-precision rounding of the digits shown.
+The table gives the digits as written.
+
+| Component          | Value             | Unit           |
+|--------------------+-------------------+----------------|
+| =g_transform=      | -0.60647886749203 | eV per density |
+| =pair_amp_a=       | 2294.3609145535   | eV             |
+| =pair_decay_a=     | 3.0205380362464   | 1/Angstrom     |
+| =pair_amp_b=       | -192.06894637533  | eV             |
+| =pair_decay_b=     | 1.5102690181232   | 1/Angstrom     |
+| =density_scale=    | 0.87928364657088  | dimensionless  |
+| =density_decay_a=  | 3.3068828537934   | 1/Angstrom     |
+| =density_decay_b=  | 6.6137657075868   | 1/Angstrom     |
+| =density_weight_b= | 512.0             | dimensionless  |
+| =density_power=    | 6                 | power of r     |
+| =rcut=             | 7.1               | Angstrom       |
+
+| k | =embed_coeff(k)= |
+|---+------------------|
+| 1 | 4.4572157051836  |
+| 2 | 193.21775368064  |
+| 3 | -1173.6502684704 |
+| 4 | 4203.3500116196  |
+| 5 | -8785.1680280827 |
+| 6 | 10632.994102532  |
+| 7 | -6921.0410455328 |
+| 8 | 1875.2698365752  |
+
+The source names the numbers as the eOn aluminium parameters and no paper.
+
+*** Example
+
+This program needs a build with =-Dwith_fortran_pots=enabled=.
+It evaluates an aluminium dimer at 2.6 Angstrom.
+The by-hand energy rounds every literal to single precision first, as the kernel
+does.
+
+#+attr_rgpot: run link=rgpot requires=has_fortran_pots
+#+begin_src cpp
+#include <cmath>
+#include <cstdio>
+
+#include "rgpot/fortran/FortranPots.hpp"
+
+namespace {
+
+// The kernel stores each literal of the eOn parameter file as a
+// single-precision number, so the hand calculation does the same.
+double f32(float x) { return static_cast<double>(x); }
+
+const double g = f32(-0.60647886749203f);
+const double pair_a = f32(2294.3609145535f), decay_a = f32(3.0205380362464f);
+const double pair_b = f32(-192.06894637533f), decay_b = f32(1.5102690181232f);
+const double scale = f32(0.87928364657088f);
+const double beta_a = f32(3.3068828537934f), beta_b = f32(6.6137657075868f);
+const double weight = f32(512.0f);
+const double rcut = f32(7.1f);
+
+double pair_shape(double r) {
+  return pair_a * std::exp(-decay_a * r) + pair_b * std::exp(-decay_b * r);
+}
+double dens_shape(double r) {
+  return std::pow(r, 6) *
+         (std::exp(-beta_a * r) + weight * std::exp(-beta_b * r));
+}
+double rho(double r) { return scale * (dens_shape(r) - dens_shape(rcut)); }
+double phi(double r) {
+  return pair_shape(r) - pair_shape(rcut) - 2.0 * g * rho(r);
+}
+double embed(double d) {
+  const double c[8] = {f32(4.4572157051836f),  f32(193.21775368064f),
+                       f32(-1173.6502684704f), f32(4203.3500116196f),
+                       f32(-8785.1680280827f), f32(10632.994102532f),
+                       f32(-6921.0410455328f), f32(1875.2698365752f)};
+  double e = g * d, p = d;
+  for (double ck : c) {
+    e += ck * p;
+    p *= d;
+  }
+  return e;
+}
+
+double energy(rgpot::fortranpots::EAMAlPot &pot, double r, double *fx) {
+  const double pos[6] = {10.0, 10.0, 10.0, 10.0 + r, 10.0, 10.0};
+  const int z[2] = {13, 13};
+  const double box[9] = {20.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 20.0};
+  double forces[6] = {};
+  rgpot::ForceInput in{2, pos, z, box};
+  rgpot::ForceOut out{};
+  out.F = forces;
+  pot.forceImpl(in, &out);
+  if (fx)
+    *fx = forces[3];
+  return out.energy;
+}
+
+} // namespace
+
+int main() {
+  rgpot::fortranpots::EAMAlPot pot;
+  const double r = 2.6, h = 1e-5;
+  double fx = 0.0;
+  const double e = energy(pot, r, &fx);
+  const double by_hand = phi(r) + 2.0 * embed(rho(r));
+  const double fd =
+      -(energy(pot, r + h, nullptr) - energy(pot, r - h, nullptr)) / (2 * h);
+  std::printf("kernel energy %.8f eV\n", e);
+  std::printf("by hand       %.8f eV\n", by_hand);
+  std::printf("force on atom 1, x: %.6f eV/Angstrom\n", fx);
+  std::printf("central difference: %.6f eV/Angstrom\n", fd);
+  return 0;
+}
+#+end_src
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+kernel energy -1.55821100 eV
+by hand       -1.55821100 eV
+force on atom 1, x: -0.563874 eV/Angstrom
+central difference: -0.563874 eV/Angstrom
+#+end_example
+
+
+*** Literature
+
+The source does not name a paper.
+The functional form is that of Voter and Chen, including the Morse pair, the
+=r^6= density with weight 512, and the two invariances of the energy that
+=g_transform= and =density_scale= use.
+Voter and Chen define =F= numerically from a universal binding curve, where this
+kernel carries a polynomial.
+Their Table II lists for aluminium =Dm= 3.7760 eV, =Rm= 2.1176 Angstrom, =alpha=
+1.4859 1/Angstrom, =beta= 3.3232 1/Angstrom and =rcut= 5.5550 Angstrom.
+The numbers of this kernel differ from those (see the Morse reading above and
+=density_decay_a=), so the page does not call them that paper's fit.
+No paper was found for the parameter set.
+
+- eOn, the software this kernel descends from: Goswami,
+  TheochemUI/eOn: v3.6.0, Zenodo (2026), doi:10.5281/zenodo.18529495.
+- Voter and Chen, MRS Proceedings 82, 175 (1986), doi:10.1557/PROC-82-175.
+- Daw and Baskes, Phys.
+  Rev. B 29, 6443-6453 (1984), doi:10.1103/PhysRevB.29.6443, for the
+  embedded-atom energy.
+
+** =FeHe= iron and helium
+
+*** What it is and how to reach it
+
+An embedded-atom potential for iron (atomic number 26) and helium (atomic number 2)
+with species-dependent pair terms and two embedding channels: a d-band density
+fed by Fe-Fe pairs and embedded on iron, and an s-band density fed by Fe-He
+pairs and embedded on both species.
+Helium pairs feed neither density, so a pure helium configuration is the bare
+He-He pair potential.
+The neighbour table uses the largest of the five cutoffs, 5.4 Angstrom.
+
+- C++: =rgpot::fortranpots::FeHePot= in =CppCore/rgpot/fortran/FortranPots.hpp=.
+- Python: =rgpot.FeHePot=.
+- =rgpot-eval=, LAMMPS
+  =pair_coeff= and PLUMED name: =FeHe= (a build with the Fortran potentials), as in =pair_coeff * * FeHe Fe He=.
+- =potserv=: no type name.
+- Reference: [[file:../reference/cpp_potentials.org][C++ potentials]],
+  [[file:../reference/fortran_potentials.org][Fortran potentials]] and
+  [[file:../reference/python_api.org][Python API]].
+
+Any other atomic number is an error.
+
+*** Functional form
+
+The kernel is =CppCore/rgpot/fortran/rgpot_fehe.f90=.
+Distances are in Angstrom and energies in eV.
+
+- Total: =E = sum_{i<j} V_ab(r_ij) + sum_i (F_d(rho_d_i) + F_s(rho_s_i))=, where
+  =F_d= acts on iron atoms only.
+- Each pair term and each density is zero beyond its own cutoff.
+  None of them is shifted.
+- Fe-Fe pair, =r <= 5.3=: below 1.0 a screened Coulomb term
+  =fe_zbl_scale / r * S(r)= with
+  =S(r) = sum_{k=1..4} fe_zbl_weight(k) * e^(-fe_zbl_decay(k) r)=; from 1.0 to 2.05 the bridge =exp(c1 + c2 r + c3 r^2 + c4 r^3)= with =c1= to =c4= the =fe_bridge=
+  entries; from 2.05 up the cubic knot sum
+  =sum_k fe_pair_coeff(k) * max(fe_pair_knot(k) - r, 0)^3=.
+- Fe-He pair, =r <= 3.9028=: a cubic knot sum with =fehe_knot= and =fehe_coeff=.
+- He-He pair, =r <= 5.4=, in the reduced distance
+  =x = r / he_rm=: =he_eps * (core(x) - D(x) * disp(x))= with
+  =core(x) = he_aa * e^(-he_alpha x + he_beta x^2)= and =disp(x) = he_c6 / x^6 + he_c8 / x^8 + he_c10 / x^10=.
+  The damping is =D(x) = e^(-(he_damp / x - 1)^2)= for =x < he_damp= and 1
+  above.
+- d-band density an iron neighbour gives, =r <= 4.2=: the cubic knot sum with
+  =fe_rho_knot= and =fe_rho_coeff=.
+- s-band density an unlike neighbour gives, =r <= 4.10=:
+  =sband_amp * r^3 * e^(-2 sband_decay r)=.
+- Embedding, for a density at or above 1e-35 and zero below:
+  =F_d(rho) = -sqrt(rho) + fe_emb_quadratic * rho^2 + fe_emb_quartic * rho^4= and =F_s(rho) = a sqrt(rho) + b rho^2 + c rho^4=,
+  with =a=, =b= and =c= the =sband_emb_sqrt=, =sband_emb_quadratic= and
+  =sband_emb_quartic= entries.
+  The s-band function is the same for both species.
+
+*** Parameters
+
+The values are the defaults of =fehe_params_t= in
+=CppCore/rgpot/fortran/rgpot_fehe.f90=.
+A caller of =FeHePot= has no way to change them.
+The Fe-Fe and Fe-He knot positions and coefficients are the arrays
+=fe_pair_knot=, =fe_pair_coeff=, =fe_rho_knot=, =fe_rho_coeff=,
+=fehe_knot= and =fehe_coeff=; the example below carries every one of them,
+copied from the source.
+
+| Component             | Value                  | Meaning               |
+|-----------------------+------------------------+-----------------------|
+| =rcut_fe_pair=        | 5.3                    | Fe-Fe pair cutoff     |
+| =rcut_fe_rho=         | 4.2                    | d-band density cutoff |
+| =rcut_fehe_pair=      | 3.9028                 | Fe-He pair cutoff     |
+| =rcut_fehe_rho=       | 4.10                   | s-band density cutoff |
+| =rcut_he_pair=        | 5.4                    | He-He pair cutoff     |
+| =fe_zbl_scale=        | 9.7342365892908e+03    | eV Angstrom           |
+| =fe_zbl_weight(1:4)=  | 0.18180, 0.50990,      | dimensionless         |
+|                       | 0.28020, 0.02817       |                       |
+| =fe_zbl_decay(1)=     | 2.8616724320005e+01    | 1/Angstrom            |
+| =fe_zbl_decay(2)=     | 8.4267310396064e+00    | 1/Angstrom            |
+| =fe_zbl_decay(3)=     | 3.6030244464156e+00    | 1/Angstrom            |
+| =fe_zbl_decay(4)=     | 1.8028536321603e+00    | 1/Angstrom            |
+| =fe_bridge(1)=        | 7.4122709384068e+00    | dimensionless         |
+| =fe_bridge(2)=        | -6.4180690713367e-01   | 1/Angstrom            |
+| =fe_bridge(3)=        | -2.6043547961722e+00   | 1/Angstrom^2          |
+| =fe_bridge(4)=        | 6.2625393931230e-01    | 1/Angstrom^3          |
+| =fe_bridge_lo=        | 1.0000                 | Angstrom              |
+| =fe_bridge_hi=        | 2.0500                 | Angstrom              |
+| =fe_emb_quadratic=    | -6.7314115586063e-04   | d-band embedding      |
+| =fe_emb_quartic=      | 7.6514905604792e-08    | d-band embedding      |
+| =sband_amp=           | 20.0                   | s-band density        |
+| =sband_decay=         | 1.5312426703208 / bohr | 1/Angstrom            |
+| =sband_emb_sqrt=      | 0.220813420485         | s-band embedding      |
+| =sband_emb_quadratic= | 1.367508764130         | s-band embedding      |
+| =sband_emb_quartic=   | 3.382256025271         | s-band embedding      |
+| =he_rm=               | 2.9683                 | Angstrom              |
+| =he_c6=               | 1.35186623             | dimensionless         |
+| =he_c8=               | 0.41495143             | dimensionless         |
+| =he_c10=              | 0.17151143             | dimensionless         |
+| =he_aa=               | 186924.404             | dimensionless         |
+| =he_alpha=            | 10.5717543             | dimensionless         |
+| =he_beta=             | -2.07758779            | dimensionless         |
+| =he_damp=             | 1.438                  | reduced distance      |
+| =he_eps=              | 10.956 k_B             | eV, 10.956 K          |
+
+Here =bohr= is 0.529177210818181818 Angstrom, and =k_B= is converted with
+1.380658e-23 J/K and 1.602177e-19 J/eV.
+The knot arrays have 13 entries for the Fe-Fe pair, running from 2.2 to 5.3
+Angstrom, 3 for the d-band density, and 8 for the Fe-He pair, running from
+1.5440 to 3.9028 Angstrom.
+
+*** Example
+
+This program needs a build with =-Dwith_fortran_pots=enabled=.
+It evaluates three dimers, one for each pair of species, and compares each with
+the formulas above.
+The iron dimer at 2.5 Angstrom adds the d-band embedding energy of two atoms,
+each at the density of one neighbour.
+The iron-helium dimer at 2.0 Angstrom adds the s-band embedding energy of two
+atoms, each at the s-band density of the pair.
+The helium dimer at 3.2 Angstrom is the bare HFD-B pair.
+
+#+attr_rgpot: run link=rgpot requires=has_fortran_pots
+#+begin_src cpp
+#include <cmath>
+#include <cstdio>
+
+#include "rgpot/fortran/FortranPots.hpp"
+
+namespace {
+
+// Sum of coeff[k] * (knot[k] - r)^3 over the knots beyond r.
+double cubic_knots(const double *coeff, const double *knot, int n, double r) {
+  double v = 0.0;
+  for (int k = 0; k < n; ++k)
+    if (knot[k] > r)
+      v += coeff[k] * std::pow(knot[k] - r, 3);
+  return v;
+}
+
+// Fe-Fe pair above 2.05 Angstrom and the d-band density, both cubic knots.
+const double fe_knot[13] = {2.2, 2.3, 2.4, 2.5, 2.6, 2.7, 2.8,
+                            3.0, 3.3, 3.7, 4.2, 4.7, 5.3};
+const double fe_coeff[13] = {
+    -2.7444805994228e+01, 1.5738054058489e+01,  2.2077118733936e+00,
+    -2.4989799053251e+00, 4.2099676494795e+00,  -7.7361294129713e-01,
+    8.0656414937789e-01,  -2.3194358924605e+00, 2.6577406128280e+00,
+    -1.0260416933564e+00, 3.5018615891957e-01,  -5.8531821042271e-02,
+    -3.0458824556234e-03};
+const double rho_knot[3] = {2.4, 3.2, 4.2};
+const double rho_coeff[3] = {1.1686859407970e+01, -1.4710740098830e-02,
+                             4.7193527075943e-01};
+
+// Fe-He pair, cubic knots.
+const double fehe_knot[8] = {1.5440, 1.6155, 1.6896, 1.8017,
+                             2.0482, 2.3816, 3.5067, 3.9028};
+const double fehe_coeff[8] = {559.804426025391, -45.916354995728,
+                              35.550312671661,  164.319865173340,
+                              -1.727464405060,  0.106771826237,
+                              0.073715269849,   0.038235287677};
+
+double dband_embed(double d) {
+  return -std::sqrt(d) - 6.7314115586063e-04 * d * d +
+         7.6514905604792e-08 * std::pow(d, 4);
+}
+double sband_embed(double d) {
+  return 0.220813420485 * std::sqrt(d) + 1.367508764130 * d * d +
+         3.382256025271 * std::pow(d, 4);
+}
+double sband_density(double r) {
+  const double decay = 1.5312426703208 / 0.529177210818181818;
+  return 20.0 * r * r * r * std::exp(-2.0 * decay * r);
+}
+
+// Helium dimer, HFD-B form in x = r / rm.
+double he_he(double r) {
+  const double eps = 10.956 * 1.380658e-23 / 1.602177e-19;
+  const double x = r / 2.9683;
+  const double disp = 1.35186623 / std::pow(x, 6) +
+                      0.41495143 / std::pow(x, 8) +
+                      0.17151143 / std::pow(x, 10);
+  const double core =
+      186924.404 * std::exp(-10.5717543 * x - 2.07758779 * x * x);
+  const double damp = x < 1.438 ? std::exp(-std::pow(1.438 / x - 1.0, 2)) : 1.0;
+  return eps * (core - damp * disp);
+}
+
+double dimer(int z0, int z1, double r, double *fx) {
+  rgpot::fortranpots::FeHePot pot;
+  const double pos[6] = {10.0, 10.0, 10.0, 10.0 + r, 10.0, 10.0};
+  const int z[2] = {z0, z1};
+  const double box[9] = {20.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 20.0};
+  double forces[6] = {};
+  rgpot::ForceInput in{2, pos, z, box};
+  rgpot::ForceOut out{};
+  out.F = forces;
+  pot.forceImpl(in, &out);
+  *fx = forces[3];
+  return out.energy;
+}
+
+} // namespace
+
+int main() {
+  double fx = 0.0;
+
+  // Two Fe atoms: pair spline plus a d-band embedding on each atom.
+  const double e_fefe = dimer(26, 26, 2.5, &fx);
+  const double rho_d = cubic_knots(rho_coeff, rho_knot, 3, 2.5);
+  const double h_fefe = cubic_knots(fe_coeff, fe_knot, 13, 2.5) +
+                        2.0 * dband_embed(rho_d);
+  std::printf("Fe-Fe at 2.5: kernel %.8f, by hand %.8f eV, Fx %.6f\n", e_fefe,
+              h_fefe, fx);
+
+  // Fe and He: pair spline plus an s-band embedding on both atoms.
+  const double e_fehe = dimer(26, 2, 2.0, &fx);
+  const double rho_s = sband_density(2.0);
+  const double h_fehe = cubic_knots(fehe_coeff, fehe_knot, 8, 2.0) +
+                        2.0 * sband_embed(rho_s);
+  std::printf("Fe-He at 2.0: kernel %.8f, by hand %.8f eV, Fx %.6f\n", e_fehe,
+              h_fehe, fx);
+
+  // Two He atoms feed neither density: the bare HFD-B pair.
+  const double e_hehe = dimer(2, 2, 3.2, &fx);
+  std::printf("He-He at 3.2: kernel %.8f, by hand %.8f eV, Fx %.6f\n", e_hehe,
+              he_he(3.2), fx);
+  return 0;
+}
+#+end_src
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+Fe-Fe at 2.5: kernel -2.70130149, by hand -2.70130149 eV, Fx -1.404539
+Fe-He at 2.0: kernel 0.53842992, by hand 0.53842992 eV, Fx 0.988719
+He-He at 3.2: kernel -0.00081048, by hand -0.00081048 eV, Fx -0.000884
+#+end_example
+
+
+*** Literature
+
+The source says the iron part is Ackland's 2004 many-body fit for alpha iron,
+and that the helium part adds a second density channel.
+Only some of the Fe-Fe constants of this source agree with the iron listing in
+the Ackland paper below, so the page does not claim the Fe-Fe numbers are that
+paper's table.
+The Fe-He pair spline and the s-band parameters have no paper named in the
+source, and none was found.
+
+The He-He constants are those of the HFD-B3-FCII potential of Aziz, Janzen and
+Moldover, Table I: =he_rm= 2.9683 Angstrom, =he_eps= 10.956 K, =he_c6=, =he_c8=,
+=he_c10=, =he_aa=, =he_alpha=, =he_beta= and =he_damp= as in the table above.
+The form is the HFD-B form of Aziz, McCourt and Wong, whose constants differ
+slightly (its =he_eps= is 10.948 K).
+
+- eOn, the software this kernel descends from: Goswami,
+  TheochemUI/eOn: v3.6.0, Zenodo (2026), doi:10.5281/zenodo.18529495.
+- Ackland, Mendelev, Srolovitz, Han and Barashev, J. Phys.: Condens.
+  Matter 16, S2629-S2642 (2004), doi:10.1088/0953-8984/16/27/003.
+- Aziz, McCourt and Wong, Mol.
+  Phys. 61, 1487-1511 (1987), doi:10.1080/00268978700101941, for the HFD-B form.
+- Aziz, Janzen and Moldover, Phys.
+  Rev. Lett. 74, 1586-1589 (1995), doi:10.1103/PhysRevLett.74.1586, for the
+  He-He constants.
+- Daw and Baskes, Phys.
+  Rev. B 29, 6443-6453 (1984), doi:10.1103/PhysRevB.29.6443, for the
+  embedded-atom energy.
+
+** =EMT= effective medium theory
+
+*** What it is and how to reach it
+
+The Asap effective-medium potential of eOn's vendored tree, for H, Mg, Al, Ni,
+Cu, Pd, Ag, Pt and Au with the default parameters, and for Al, Cu, Ag and Au
+with the Rasmussen parameters.
+The default configuration is the Asap provider, so a copper system takes the
+copper row of the first table below.
+
+- C++: =rgpot::EMTPot= in =CppCore/rgpot/EMT/EMTPot.hpp=, configured with
+  =rgpot::EMTConfig{.rasmussen = true}= for the second table.
+- Python: no class.
+- =rgpot-eval=, LAMMPS
+  =pair_coeff= and PLUMED name: =EMT= with the option =parameters= set to =asap= (the default) or =rasmussen=, as in =pair_coeff * * EMT parameters rasmussen Cu=.
+- =potserv=: no type name.
+- Reference: [[file:../reference/cpp_potentials.org][C++ potentials]] and
+  [[file:../reference/potential_names.org][Potential names]].
+
+An element the provider does not cover throws the Asap =Exception= class, which
+does not derive from =std::exception=.
+A periodic cell must be taller than twice the neighbour-list cutoff in every
+direction, or the kernel throws the same class.
+For copper in a cubic box the call throws at 10.85 Angstrom and runs at 11.0.
+There is no stress.
+
+*** Functional form
+
+The kernel is the Asap code under =CppCore/rgpot/EMT/Asap=, in =EMT.cpp=,
+=EMTParameterProvider.h= and the two parameter providers.
+Lengths are in Angstrom; the provider tables below give the lengths in bohr and
+the code converts them with 0.5291772.
+With =beta = 1.809= and, for each atom =i= of element =e= with neighbours =j=:
+
+- Fermi weight: =w(r) = 1 / (1 + exp(slope * (r - rc)))=.
+  The cutoff is =rc = (beta * s0 / 2) * (sqrt(3) + sqrt(4))=, with =s0= the
+  largest =seq= among the elements in use.
+  The slope is =slope = ln(9999) / (r1 - rc)= with
+  =r1 = rc * 2 * sqrt(4) / (sqrt(3) + sqrt(4))=.
+  The weight is 1/10000 at =r1=, and the neighbour list reaches
+  =1.04500185048 * rc=.
+- Density sums over the neighbours =j= of atom =i=, with =chi = n0_b / n0_a= for
+  a neighbour of element =b= and an atom of element =a=:
+  =sigma1 = sum_j chi * w(r_ij) * exp(-eta2 * (r_ij - beta * s0_e))= and
+  =sigma2 = sum_j w(r_ij) * exp(-(kappa / beta) * (r_ij - beta * s0_e))=.
+  =sigma1= is floored at 1e-9.
+- Neutral-sphere radius, with
+  =dr = s - s0_e=: =s = s0_e - ln(sigma1 / (12 * gamma1)) / (beta * eta2)=.
+- Cohesive term: =Ec = E0 * (1 + lambda * dr) * exp(-lambda * dr)=.
+- Atomic-sphere term:
+  =Eas = 6 * V0 * exp(-kappa * dr) - V0 * sigma2 / (2 * gamma2)=.
+- Energy: =E = sum_i (Ec_i + Eas_i - E0_e)=.
+  The kernel subtracts =E0= by default, so a perfect crystal at the equilibrium
+  lattice constant has an energy near zero.
+- The factors =gamma1= and =gamma2= come from the first three fcc shells (12, 6
+  and 24 neighbours at
+  =d_k = sqrt(k) * beta * s0=) with the weight =w=, normalised by the nearest-neighbour term: =gamma1 = sum_k w_k * pop_k * e^(-eta2 d_k) / (12 * e^(-beta s0 eta2))= and =gamma2 = sum_k w_k * pop_k * e^(-(kappa / beta) d_k) / (12 * e^(-kappa s0))=.
+
+*** Parameters
+
+The first table is the default (Asap) provider and the second the Rasmussen
+provider, in the units of the source files: =E0=, =V0= in eV, =S0= in bohr
+(=seq = S0 * 0.5291772= Angstrom), =eta2=, =kappa=, =lambda= in
+1/bohr, and =n0= in 1/bohr^3.
+The source also stores a mass and a length scale per element, which do not enter
+the energy.
+The rows are set in =EMTDefaultParameterProvider.cpp= and
+=EMTRasmussenParameterProvider.cpp=.
+
+| Element | Z  | E0     | S0   | V0    | eta2  | kappa | lambda | n0      |
+|---------+----+--------+------+-------+-------+-------+--------+---------|
+| Al      | 13 | -3.280 | 3.00 | 1.493 | 1.240 | 2.000 | 1.169  | 0.007   |
+| Ni      | 28 | -4.44  | 2.60 | 3.673 | 1.669 | 2.757 | 1.948  | 0.0103  |
+| Cu      | 29 | -3.510 | 2.67 | 2.476 | 1.652 | 2.74  | 1.906  | 0.0091  |
+| Pd      | 46 | -3.90  | 2.87 | 2.773 | 1.818 | 3.107 | 2.155  | 0.00688 |
+| Ag      | 47 | -2.96  | 3.01 | 2.132 | 1.652 | 2.790 | 1.892  | 0.00547 |
+| Pt      | 78 | -5.85  | 2.90 | 4.067 | 1.812 | 3.145 | 2.192  | 0.00802 |
+| Au      | 79 | -3.80  | 3.00 | 2.321 | 1.674 | 2.873 | 2.182  | 0.00703 |
+
+Hydrogen and magnesium are in the same file with the lengths given in Angstrom
+and converted by the code: for H, =E0= 0.784035, =seq= 0.530015 Angstrom, =V0=
+2.398292, =eta2= 4.401035, =kappa= 4.456708, =lambda= 2.108959 (all
+1/Angstrom) and =n0= 0.181636 1/Angstrom^3; for Mg, =E0= -1.487, =seq= 1.7664
+Angstrom, =V0= 2.2298, =eta2= 2.5411, =kappa= 4.435, =lambda= 3.2927 (all
+1/Angstrom) and =n0= 0.03554 1/Angstrom^3.
+
+| Element | Z  | E0     | S0   | V0    | eta2  | kappa | lambda | n0     |
+|---------+----+--------+------+-------+-------+-------+--------+--------|
+| Al      | 13 | -3.280 | 3.00 | 1.725 | 1.380 | 2.311 | 1.591  | 0.007  |
+| Cu      | 29 | -3.510 | 2.67 | 2.643 | 1.506 | 2.492 | 1.942  | 0.0091 |
+| Ag      | 47 | -2.96  | 3.01 | 2.679 | 1.400 | 2.365 | 1.956  | 0.0059 |
+| Au      | 79 | -3.80  | 3.00 | 2.703 | 1.310 | 2.221 | 2.192  | 0.0064 |
+
+The Rasmussen source marks the =n0= of Al and Cu with a comment to check it.
+The source names no paper for either table.
+
+*** Example
+
+The program evaluates copper in a cell of 4 x 4 x 4 conventional fcc cells, 256
+atoms, which is tall enough for the cutoff.
+It prints the energy per atom at three lattice constants next to the formulas
+above for the perfect crystal, then moves one atom by 0.1 Angstrom and compares
+the force on it with a central difference.
+At 3.615 Angstrom, near the equilibrium lattice constant of copper, the energy
+per atom is zero to the printed digits, because the kernel subtracts =E0=.
+
+#+attr_rgpot: run link=rgpot
+#+begin_src cpp
+#include <cmath>
+#include <cstdio>
+#include <vector>
+
+#include "rgpot/EMT/EMTPot.hpp"
+
+namespace {
+
+// Default-provider copper row (energies eV, lengths bohr) of
+// EMTDefaultParameterProvider.cpp.
+const double bohr = 0.5291772, beta = 1.809;
+const double E0 = -3.510, V0 = 2.476;
+const double seq = 2.67 * bohr;
+const double eta2 = 1.652 / bohr, kappa = 2.74 / bohr, lambda = 1.906 / bohr;
+
+// Energy per atom of the perfect fcc crystal with lattice constant a.
+// Three shells (12, 6 and 24 neighbours) lie inside the neighbour list.
+double per_atom(double a) {
+  const int pop[3] = {12, 6, 24};
+  const double rf = 0.5 * seq * beta * (std::sqrt(3.0) + std::sqrt(4.0));
+  const double r =
+      rf * 2.0 * std::sqrt(4.0) / (std::sqrt(3.0) + std::sqrt(4.0));
+  const double slope = std::log(9999.0) / (r - rf);
+  double gamma1 = 0.0, gamma2 = 0.0, s1 = 0.0, s2 = 0.0;
+  for (int k = 0; k < 3; ++k) {
+    const double n = std::sqrt(k + 1.0);
+    const double d0 = n * beta * seq, d = n * a / std::sqrt(2.0);
+    const double w0 = 1.0 / (1.0 + std::exp(slope * (d0 - rf)));
+    const double w = 1.0 / (1.0 + std::exp(slope * (d - rf)));
+    gamma1 += w0 * pop[k] * std::exp(-eta2 * (d0 - beta * seq));
+    gamma2 += w0 * pop[k] * std::exp(-kappa / beta * (d0 - beta * seq));
+    s1 += w * pop[k] * std::exp(-eta2 * (d - beta * seq));
+    s2 += w * pop[k] * std::exp(-kappa / beta * (d - beta * seq));
+  }
+  const double s = seq - std::log(s1 / gamma1) / (beta * eta2);
+  const double ec =
+      E0 * (1.0 + lambda * (s - seq)) * std::exp(-lambda * (s - seq));
+  const double eas = 6.0 * V0 * std::exp(-kappa * (s - seq)) -
+                     0.5 * V0 * 12.0 / gamma2 * s2;
+  return ec + eas - E0;
+}
+
+// 4 x 4 x 4 conventional cells, 256 atoms. The cell must be taller than
+// twice the Asap cutoff, which rules out 3 x 3 x 3 cells.
+struct Crystal {
+  std::vector<double> pos;
+  std::vector<int> z;
+  double box[9] = {};
+  explicit Crystal(double a) {
+    const double basis[4][3] = {
+        {0.0, 0.0, 0.0}, {0.5, 0.5, 0.0}, {0.5, 0.0, 0.5}, {0.0, 0.5, 0.5}};
+    for (int i = 0; i < 4; ++i)
+      for (int j = 0; j < 4; ++j)
+        for (int k = 0; k < 4; ++k)
+          for (const auto &b : basis) {
+            pos.push_back((i + b[0]) * a);
+            pos.push_back((j + b[1]) * a);
+            pos.push_back((k + b[2]) * a);
+          }
+    z.assign(pos.size() / 3, 29);
+    box[0] = box[4] = box[8] = 4.0 * a;
+  }
+};
+
+double evaluate(rgpot::EMTPot &pot, const Crystal &c, std::vector<double> &f) {
+  f.assign(c.pos.size(), 0.0);
+  rgpot::ForceInput in{c.z.size(), c.pos.data(), c.z.data(), c.box};
+  rgpot::ForceOut out{};
+  out.F = f.data();
+  pot.forceImpl(in, &out);
+  return out.energy;
+}
+
+} // namespace
+
+int main() {
+  rgpot::EMTPot pot;
+  std::vector<double> f;
+  for (double a : {3.615, 3.70, 3.80}) {
+    const Crystal c(a);
+    std::printf("a = %.3f: kernel %.6f eV/atom, by hand %.6f eV/atom\n", a,
+                evaluate(pot, c, f) / static_cast<double>(c.z.size()),
+                per_atom(a));
+  }
+
+  Crystal c(3.615);
+  c.pos[0] += 0.1;
+  const double e0 = evaluate(pot, c, f);
+  const double fx = f[0];
+  const double h = 1e-5;
+  c.pos[0] += h;
+  const double ep = evaluate(pot, c, f);
+  c.pos[0] -= 2.0 * h;
+  const double em = evaluate(pot, c, f);
+  std::printf("atom 0 moved 0.1 Angstrom: energy %.6f eV\n", e0);
+  std::printf("force x: %.6f eV/Angstrom, central difference %.6f\n", fx,
+              -(ep - em) / (2.0 * h));
+  return 0;
+}
+#+end_src
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+a = 3.615: kernel 0.000051 eV/atom, by hand 0.000051 eV/atom
+a = 3.700: kernel 0.033910 eV/atom, by hand 0.033910 eV/atom
+a = 3.800: kernel 0.120815 eV/atom, by hand 0.120815 eV/atom
+atom 0 moved 0.1 Angstrom: energy 0.050128 eV
+force x: -0.744357 eV/Angstrom, central difference -0.744357
+#+end_example
+
+
+*** Literature
+
+The header =CppCore/rgpot/EMT/Asap/EMT.h= names the Jacobsen, Stoltze and
+Norskov paper as the documentation of the method and no paper for the parameter
+tables.
+It does not name Rasmussen or any other paper for the second provider, so none
+is cited for it.
+
+- eOn, the software the vendored Asap tree comes from: Goswami,
+  TheochemUI/eOn: v3.6.0, Zenodo (2026), doi:10.5281/zenodo.18529495.
+- Jacobsen, Stoltze and Norskov, Surf.
+  Sci. 366, 394-402 (1996), doi:10.1016/0039-6028(96)00816-3.
+
+** =EAMCell= cell-list aluminium, palladium and gold
+
+*** What it is and how to reach it
+
+The cell-list embedded-atom kernel from eOn, with a built-in table for aluminium
+(13), palladium (46) and gold (79).
+It has no options.
+The neighbour list, the Verlet skin and the threading are described in
+=docs/eam_cell.md=.
+
+- C++: =rgpot::EAMPot= in =CppCore/rgpot/EAM/EAMPot.hpp=, with an empty
+  =rgpot::EAMCellConfig=.
+- Python: no class.
+- =rgpot-eval=, LAMMPS
+  =pair_coeff= and PLUMED name: =EAMCell=, as in =pair_coeff * * EAMCell Al=.
+- =potserv=: no type name.
+- Reference: [[file:../reference/cpp_potentials.org][C++ potentials]] and
+  [[file:../reference/potential_names.org][Potential names]].
+
+Only the diagonal of the box is read, and a diagonal entry that is not positive
+throws =std::invalid_argument=.
+An atomic number outside the table throws the same.
+The minimum image is one half-box correction, so the box should be longer than
+twice the cutoff in every direction.
+There is no stress.
+
+*** Functional form
+
+The kernel is =CppCore/rgpot/EAM/EAM.cpp=.
+For a pair at distance =r= with =r <= r_cut=:
+
+- Density: =rho(r) = r^6 * (e^(-beta1 r) + 512 e^(-2 beta2 r))=.
+- Pair term: =phi(r) = Dm * ((1 - e^(-alpha (r - Rm)))^2 - 1)=, in eV, once per
+  pair.
+- Embedding: =F(rho) = sum_{k=0..8} c_k rho^k=, in eV.
+  The constant =c_0= is added for every atom, including one with no neighbour.
+- Total: =E = sum_{i<j} phi(r_ij) + sum_i F(rho_i)=.
+- Nothing is shifted: the pair term and the density keep their value at the
+  cutoff.
+- There are no cross-element terms.
+  The density an atom receives and each pair with a higher-index partner use the
+  parameters of the element of atom =i= alone, so the table is meant for one
+  element at a time.
+
+*** Parameters
+
+The rows are the table =el_params= in =CppCore/rgpot/EAM/Parameters.h=.
+Energies are in eV, lengths in Angstrom, and =alpha=, =beta1= and =beta2= in
+1/Angstrom.
+
+| Element | Z  | Dm       | alpha   | Rm      | beta1   | beta2   | r_cut  |
+|---------+----+----------+---------+---------+---------+---------+--------|
+| Al      | 13 | 3.63262  | 1.49303 | 2.12396 | 3.45762 | 3.54208 | 5.555  |
+| Pd      | 46 | 1.6054   | 1.55083 | 2.35604 | 3.35148 | 3.34715 | 5.4120 |
+| Au      | 79 | 0.669134 | 1.89707 | 2.57021 | 3.69785 | 3.69674 | 5.5155 |
+
+The embedding coefficients =c_0= to =c_8=, in eV per density to the power =k=:
+
+| k | Al         | Pd         | Au        |
+|---+------------+------------+-----------|
+| 0 | -0.0847305 | 0.0992627  | -0.198791 |
+| 1 | 17.0887    | 4.8356     | -27.7663  |
+| 2 | 60.7909    | -0.368647  | 224.068   |
+| 3 | -75.8412   | 17.2739    | -594.101  |
+| 4 | 39.9948    | -18.450    | 1316.31   |
+| 5 | -6.21563   | 9.5018     | -2070.62  |
+| 6 | -3.07993   | -2.69876   | 1973.14   |
+| 7 | 1.51365    | 0.405341   | -1012.02  |
+| 8 | -0.196034  | -0.0251768 | 214.373   |
+
+*** Example
+
+The program evaluates an aluminium dimer at 2.9 Angstrom, then perfect fcc
+aluminium in a cell of 4 x 4 x 4 conventional cells at two lattice constants.
+The by-hand dimer energy uses the formulas and the aluminium row above.
+
+#+attr_rgpot: run link=rgpot
+#+begin_src cpp
+#include <cmath>
+#include <cstdio>
+#include <vector>
+
+#include "rgpot/EAM/EAMPot.hpp"
+
+namespace {
+
+// The aluminium row of CppCore/rgpot/EAM/Parameters.h.
+const double Dm = 3.63262, alpha = 1.49303, Rm = 2.12396;
+const double beta1 = 3.45762, beta2 = 3.54208;
+const double c[9] = {-0.0847305, 17.0887,  60.7909, -75.8412, 39.9948,
+                     -6.21563,   -3.07993, 1.51365, -0.196034};
+
+double phi(double r) {
+  const double d = 1.0 - std::exp(-alpha * (r - Rm));
+  return Dm * d * d - Dm;
+}
+double rho(double r) {
+  return std::pow(r, 6) *
+         (std::exp(-beta1 * r) + 512.0 * std::exp(-2.0 * beta2 * r));
+}
+double embed(double d) {
+  double e = 0.0, p = 1.0;
+  for (double ck : c) {
+    e += ck * p;
+    p *= d;
+  }
+  return e;
+}
+
+double evaluate(rgpot::EAMPot &pot, const std::vector<double> &pos, double L,
+                std::vector<double> &f) {
+  const std::vector<int> z(pos.size() / 3, 13);
+  const double box[9] = {L, 0.0, 0.0, 0.0, L, 0.0, 0.0, 0.0, L};
+  f.assign(pos.size(), 0.0);
+  rgpot::ForceInput in{z.size(), pos.data(), z.data(), box};
+  rgpot::ForceOut out{};
+  out.F = f.data();
+  pot.forceImpl(in, &out);
+  return out.energy;
+}
+
+} // namespace
+
+int main() {
+  rgpot::EAMPot pot;
+  std::vector<double> f;
+
+  const double r = 2.9, h = 1e-5;
+  auto dimer = [&](double x) {
+    return evaluate(pot, {10.0, 10.0, 10.0, 10.0 + x, 10.0, 10.0}, 20.0, f);
+  };
+  const double e = dimer(r);
+  const double fx = f[3];
+  std::printf("dimer at %.1f: kernel %.8f eV, by hand %.8f eV\n", r, e,
+              phi(r) + 2.0 * embed(rho(r)));
+  std::printf("force on atom 1, x: %.6f eV/Angstrom, central difference %.6f\n",
+              fx, -(dimer(r + h) - dimer(r - h)) / (2.0 * h));
+
+  const double basis[4][3] = {
+      {0.0, 0.0, 0.0}, {0.5, 0.5, 0.0}, {0.5, 0.0, 0.5}, {0.0, 0.5, 0.5}};
+  for (double a : {4.05, 4.40}) {
+    std::vector<double> pos;
+    for (int i = 0; i < 4; ++i)
+      for (int j = 0; j < 4; ++j)
+        for (int k = 0; k < 4; ++k)
+          for (const auto &b : basis) {
+            pos.push_back((i + b[0]) * a);
+            pos.push_back((j + b[1]) * a);
+            pos.push_back((k + b[2]) * a);
+          }
+    const double ec = evaluate(pot, pos, 4.0 * a, f);
+    std::printf("fcc a = %.2f, %zu atoms: %.6f eV/atom\n", a, pos.size() / 3,
+                ec / static_cast<double>(pos.size() / 3));
+  }
+  return 0;
+}
+#+end_src
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+dimer at 2.9: kernel -1.09789446 eV, by hand -1.09789446 eV
+force on atom 1, x: -0.790135 eV/Angstrom, central difference -0.790135
+fcc a = 4.05, 256 atoms: -3.025594 eV/atom
+fcc a = 4.40, 256 atoms: -3.315209 eV/atom
+#+end_example
+
+
+The energy per atom at 4.05 Angstrom, the experimental lattice constant of
+aluminium, is still falling with the lattice constant, and the 4.40 Angstrom
+value is lower.
+This table with these formulas has its minimum near 4.4 Angstrom, so it is not a
+description of aluminium at 4.05.
+=EAMAl= above gives -3.356 eV per atom at 4.05 Angstrom.
+
+*** Literature
+
+The source cites no paper.
+The form is that of Voter and Chen, with one change: this table has separate
+=beta1= and =beta2=, where their density has one =beta=.
+The aluminium row has the cutoff 5.555 Angstrom of their Table II, but its other
+numbers differ from that table.
+The palladium and gold rows are not in that paper.
+No paper was found for the table.
+
+- eOn, the software this kernel descends from: Goswami,
+  TheochemUI/eOn: v3.6.0, Zenodo (2026), doi:10.5281/zenodo.18529495.
+- Voter and Chen, MRS Proceedings 82, 175 (1986), doi:10.1557/PROC-82-175.
+- Daw and Baskes, Phys.
+  Rev. B 29, 6443-6453 (1984), doi:10.1103/PhysRevB.29.6443, for the
+  embedded-atom energy.
+
+** =EAMTable= tabulated EAM
+
+*** What it is and how to reach it
+
+An embedded-atom or Finnis-Sinclair potential read from a DYNAMO table, in the
+three LAMMPS layouts =funcfl=, =setfl= and =fs=.
+The energy, the interpolation and the agreement with LAMMPS are in
+[[file:../reference/eam_table.org][the EAMTable reference]].
+This section does not repeat them.
+
+- C++: =rgpot::EAMTablePot= in =CppCore/rgpot/EAMTable/EAMTablePot.hpp=, built
+  with =-Dwith_eam_table=true=.
+- Python: no class.
+- =rgpot-eval=, LAMMPS
+  =pair_coeff= and PLUMED name: =EAMTable= with the options =file=, =format= and =skin=, as in =pair_coeff * * EAMTable file Cu_u3.eam Cu=.
+  The host builds it periodic and with the stress on.
+- =potserv=: no type name.
+- Reference: [[file:../reference/eam_table.org][the EAMTable reference]] and
+  [[file:../reference/potential_names.org][Potential names]].
+
+An atom picks its element by atomic number, matched against the first field of
+each element line of the file.
+
+*** Functional form
+
+The form is the one of the reference page,
+
+#+attr_rgpot: skip the energy formula, not code
+#+begin_example
+E = sum_i F_a(rho_i) + sum_{i<j} phi_ab(r_ij)
+rho_i = sum_{j /= i} rho_ab(r_ij)
+#+end_example
+
+with every function read from the file and interpolated by a seven-coefficient
+cubic.
+A =funcfl= file holds, for one element, =F(rho)=, an effective charge =Z(r)= and
+=rho(r)=, and the pair term is =r * phi(r) = 27.2 * 0.529 * Z(r)^2= in eV
+Angstrom.
+Above the last density point the energy continues linearly with the slope at the
+last point.
+
+*** Parameters
+
+There are no parameters in the code.
+Everything comes from the file, and the configuration fields are:
+
+| Field    | Default | Meaning                                 |
+|----------+---------+-----------------------------------------|
+| =path=   | none    | the table file                          |
+| =format= | =Setfl= | =Funcfl=, =Setfl= or =FinnisSinclair=   |
+| =skin=   | 1.0     | Verlet skin of the pair list (Angstrom) |
+| =stress= | false   | write the Cauchy stress                 |
+
+The repository ships two tables under =CppCore/tests/data/eam_table/=, a
+=funcfl= copper file =Cu_u3.eam= and a =setfl= copper-nickel file
+=CuNi.eam.alloy=.
+The header of =Cu_u3.eam= gives the element line =29 63.550 3.6150 FCC=, that is
+atomic number, mass, lattice constant in Angstrom and lattice type, and the grid
+line
+=500 5.0100200400801306e-04 500 1.0000000000000009e-02 4.9499999999999886e+00=,
+that is the number of density points, the density step, the number of distance
+points, the distance step in Angstrom and the cutoff in Angstrom.
+
+*** Example
+
+The first program writes a tiny =funcfl= table to the temporary directory, with
+=F(rho) = -2 rho=, =Z(r) = 0.2 e^(-r)= and =rho(r) = e^(-r)=, on 101 density
+points of step 0.02 and 201 distance points of step 0.025 Angstrom.
+It reads the table back and evaluates a dimer at 2.0 Angstrom.
+The by-hand energy is =phi(r) - 4 e^(-r)=: the pair term from =Z=, and the
+embedding energy =-2 rho= of each atom at the density =e^(-r)= of its one
+neighbour.
+The file is removed once the potential has read it.
+
+#+attr_rgpot: run link=rgpot requires=has_eam_table
+#+begin_src cpp
+#include <cmath>
+#include <cstdio>
+#include <filesystem>
+#include <fstream>
+#include <string>
+#include <vector>
+
+#include "rgpot/EAMTable/EAMTablePot.hpp"
+
+namespace {
+
+// A funcfl file holds F(rho), Z(r) and rho(r), five numbers to a line.
+// F(rho) = -2 rho, Z(r) = 0.2 exp(-r) and rho(r) = exp(-r).
+void write_block(std::ofstream &f, const std::vector<double> &v) {
+  for (std::size_t i = 0; i < v.size(); ++i)
+    f << (i % 5 == 0 ? "" : " ") << v[i] << (i % 5 == 4 ? "\n" : "");
+  f << "\n";
+}
+
+void write_table(const char *path) {
+  const int nrho = 101, nr = 201;
+  const double drho = 0.02, dr = 0.025;
+  std::vector<double> F, Z, rho;
+  for (int i = 0; i < nrho; ++i)
+    F.push_back(-2.0 * i * drho);
+  for (int i = 0; i < nr; ++i) {
+    Z.push_back(0.2 * std::exp(-i * dr));
+    rho.push_back(std::exp(-i * dr));
+  }
+  std::ofstream f(path);
+  f.precision(17);
+  f << "toy funcfl table\n";
+  f << "29 63.55 3.615 FCC\n";
+  f << nrho << " " << drho << " " << nr << " " << dr << " " << (nr - 1) * dr
+    << "\n";
+  write_block(f, F);
+  write_block(f, Z);
+  write_block(f, rho);
+}
+
+double energy(const rgpot::EAMTablePot &pot, double r, double *fx) {
+  const double pos[6] = {10.0, 10.0, 10.0, 10.0 + r, 10.0, 10.0};
+  const int z[2] = {29, 29};
+  const double box[9] = {20.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 20.0};
+  double forces[6] = {};
+  rgpot::ForceInput in{2, pos, z, box};
+  rgpot::ForceOut out{};
+  out.F = forces;
+  pot.forceImpl(in, &out);
+  if (fx)
+    *fx = forces[3];
+  return out.energy;
+}
+
+} // namespace
+
+int main() {
+  const std::string path =
+      (std::filesystem::temp_directory_path() / "toy_funcfl.eam").string();
+  write_table(path.c_str());
+  const rgpot::EAMTablePot pot(
+      {.path = path, .format = rgpot::EAMTableFormat::Funcfl});
+  std::filesystem::remove(path);
+  const double r = 2.0, h = 1e-5;
+  double fx = 0.0;
+  const double e = energy(pot, r, &fx);
+  // r phi = 27.2 * 0.529 * Z^2, and each atom embeds -2 rho(r).
+  const double phi = 27.2 * 0.529 * 0.04 * std::exp(-2.0 * r) / r;
+  const double by_hand = phi - 4.0 * std::exp(-r);
+  std::printf("kernel energy %.6f eV, by hand %.6f eV\n", e, by_hand);
+  std::printf("force on atom 1, x: %.6f eV/Angstrom\n", fx);
+  std::printf("central difference: %.6f eV/Angstrom\n",
+              -(energy(pot, r + h, nullptr) - energy(pot, r - h, nullptr)) /
+                  (2.0 * h));
+  return 0;
+}
+#+end_src
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+kernel energy -0.536070 eV, by hand -0.536070 eV
+force on atom 1, x: -0.528164 eV/Angstrom
+central difference: -0.528164 eV/Angstrom
+#+end_example
+
+
+The second program reads the shipped =Cu_u3.eam=, with the stress on, and prints
+the energy per atom and the pressure =-trace(sigma) / 3= of a cell of 3 x 3 x 3
+conventional cells at three lattice constants.
+The path is relative to the repository root, where the examples run.
+At 3.615 Angstrom the pressure is zero to the printed digits and the energy is
+the cohesive energy of the table, -3.54 eV.
+
+#+attr_rgpot: run link=rgpot requires=has_eam_table
+#+begin_src cpp
+#include <cstdio>
+#include <vector>
+
+#include "rgpot/EAMTable/EAMTablePot.hpp"
+
+int main() {
+  // Cu_u3.eam is the Foiles-Baskes-Daw copper table kept for the tests. The
+  // path is relative to the repository root.
+  const rgpot::EAMTablePot pot(
+      {.path = "CppCore/tests/data/eam_table/Cu_u3.eam",
+       .format = rgpot::EAMTableFormat::Funcfl,
+       .stress = true});
+  const double gpa = 160.2176634; // eV/Angstrom^3 to GPa
+  const double basis[4][3] = {
+      {0.0, 0.0, 0.0}, {0.5, 0.5, 0.0}, {0.5, 0.0, 0.5}, {0.0, 0.5, 0.5}};
+  for (double a : {3.615, 3.55, 3.68}) {
+    std::vector<double> pos;
+    for (int i = 0; i < 3; ++i)
+      for (int j = 0; j < 3; ++j)
+        for (int k = 0; k < 3; ++k)
+          for (const auto &b : basis) {
+            pos.push_back((i + b[0]) * a);
+            pos.push_back((j + b[1]) * a);
+            pos.push_back((k + b[2]) * a);
+          }
+    const std::vector<int> z(pos.size() / 3, 29);
+    const double L = 3.0 * a;
+    const double box[9] = {L, 0.0, 0.0, 0.0, L, 0.0, 0.0, 0.0, L};
+    std::vector<double> forces(pos.size());
+    rgpot::ForceInput in{z.size(), pos.data(), z.data(), box};
+    rgpot::ForceOut out{};
+    out.F = forces.data();
+    pot.forceImpl(in, &out);
+    const double p =
+        -(out.stress[0] + out.stress[4] + out.stress[8]) / 3.0 * gpa;
+    std::printf("a = %.3f: %.5f eV/atom, pressure %.4f GPa\n", a,
+                out.energy / static_cast<double>(z.size()), p);
+  }
+  return 0;
+}
+#+end_src
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+a = 3.615: -3.54000 eV/atom, pressure -0.0000 GPa
+a = 3.550: -3.52423 eV/atom, pressure 8.4724 GPa
+a = 3.680: -3.52600 eV/atom, pressure -6.5942 GPa
+#+end_example
+
+
+*** Literature
+
+The tables are data files and carry their own citations in their headers.
+=Cu_u3.eam= is from Foiles, Baskes and Daw.
+The =fs= layout is the Finnis-Sinclair form and the embedded-atom energy is that
+of Daw and Baskes.
+
+- Foiles, Baskes and Daw, Phys.
+  Rev. B 33, 7983-7991 (1986), doi:10.1103/PhysRevB.33.7983.
+- Daw and Baskes, Phys.
+  Rev. B 29, 6443-6453 (1984), doi:10.1103/PhysRevB.29.6443.
+- Finnis and Sinclair, Philos.
+  Mag.
+  A 50, 45-55 (1984), doi:10.1080/01418618408244210.
+
+** =MEAM= modified embedded-atom method
+
+*** What it is and how to reach it
+
+=rgpot::MEAMPot= evaluates the first-neighbour method of Baskes and the
+second-neighbour extension of Lee and Baskes.
+It reports =PotType::MEAM= and reads the library and parameter files accepted by
+the LAMMPS =pair_style meam= implementation.
+The configuration names the files, selects and orders their element records, and
+optionally assigns an atomic number to each record.
+
+*** Functional form, parameters and example
+
+The energy, screening ellipses, reference lattices, mixing rules, file grammar,
+errors and a complete aluminium example are in the
+[[file:../reference/meam.org][MEAM reference]].
+Lengths are Angstrom and energies are eV.
+The model builds its pair tables once; one immutable =MEAMModel= can then serve
+concurrent potential instances.
+
+*** Literature
+
+- Baskes, Phys.
+  Rev. B 46, 2727-2742 (1992), doi:10.1103/PhysRevB.46.2727.
+- Lee and Baskes, Phys.
+  Rev. B 62, 8564-8567 (2000), doi:10.1103/PhysRevB.62.8564.

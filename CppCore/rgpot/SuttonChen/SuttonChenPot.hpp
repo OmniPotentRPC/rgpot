@@ -31,6 +31,7 @@
 #include <cstdint>
 #include <vector>
 // clang-format on
+#include "rgpot/KeptPotential.hpp"
 #include "rgpot/Locality.hpp"
 #include "rgpot/PairTerms.hpp"
 #include "rgpot/ParamHash.hpp"
@@ -40,11 +41,9 @@
 #include "rgpot/nlist/Neighbours.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 
-#if defined(_WIN32)
-#define RGPOT_SC_API __declspec(dllexport)
-#else
-#define RGPOT_SC_API __attribute__((visibility("default")))
-#endif
+#include "rgpot/rgpot_api.h"
+
+#define RGPOT_SC_API RGPOT_API
 
 extern "C" {
 
@@ -150,9 +149,24 @@ public:
   /// Stored Verlet list or a streaming cell walk.
   void setNeighbourMode(nlist::Mode mode) noexcept { mode_ = mode; }
 
-  /// Pairs, over all threads, whose density-pass powers the force pass
-  /// reads back. It computes the rest again, with the same bits. The
-  /// default keeps 32 MiB of terms.
+  /// Atoms from which a call adds its terms atom by atom in index order,
+  /// on any thread count: the least in kTeamFrom.
+  static constexpr std::size_t kTeamMinAtoms = 64;
+  /// Atoms from which a team of two threads opens, of three, and of four
+  /// or more: the smallest clusters from which each took at most nine
+  /// tenths of the one-thread time in thread_count_bench. A team evaluates
+  /// each pair twice in each pass, and no team of two did.
+  static constexpr TeamFrom kTeamFrom{kNoTeam, 2048, kTeamMinAtoms};
+
+  /// True when the last force call kept the Verlet list.
+  [[nodiscard]] bool listReused() const noexcept { return neighbours_.reused(); }
+
+  /// Maximum pairs, over all threads, whose density-pass powers the
+  /// two-pass force pass reads back (`PairTerms<3>::kDefaultLimit`,
+  /// 1,398,101 pairs = 32 MiB at 24 bytes per pair, by default), and the
+  /// upper-pair count bound (`total_up <= pairs`) for the three-phase
+  /// stored OpenMP path. 0 skips the three-phase path and keeps no
+  /// two-pass pair terms.
   void setPairTermLimit(std::size_t pairs) noexcept { term_limit_ = pairs; }
 
 private:
@@ -170,5 +184,11 @@ private:
   mutable std::vector<double> rho_;
   mutable std::vector<double> weight_;
 };
+
+template <>
+RGPOT_SC_API KeptCounts Kept<SuttonChenPot>::counts() noexcept;
+
+template <>
+RGPOT_SC_API void Kept<SuttonChenPot>::release() noexcept;
 
 } // namespace rgpot

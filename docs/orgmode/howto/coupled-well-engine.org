@@ -1,0 +1,216 @@
+#+COMMENT: Copyright 2023--present rgpot developers
+#+TITLE: Use the parameterized coupled well engine
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+#+STARTUP: content
+
+* Use the parameterized coupled well engine
+
+=libcoupled_well_engine.so= is a small analytic engine plugin for a
+two-coordinate model with a quartic barrier and a transverse spring that is
+shifted by the barrier coordinate.
+It needs no model file and no third-party library, evaluates one atom, and has
+exact energy, force and Hessian-vector product.
+That makes it a reference for anything that consumes the generic engine C ABI: a
+loader, a saddle-point or minimum search, a Hessian-vector method, or a batch
+driver.
+Nothing in it belongs to one method.
+
+** The model
+
+The engine acts on the x and y coordinates of one atom:
+
+#+attr_rgpot: skip the energy formula, not code
+#+begin_example
+E(x, y) = V0 ((x / x0)^2 - 1)^2 + k / 2 (y - alpha x^2)^2
+#+end_example
+
+=V0= is the barrier energy in eV, =x0= the position of either minimum along x in
+Angstrom, =k= the transverse spring in
+eV/Angstrom^2 and =alpha= the coupling in 1/Angstrom.
+The energy does not depend on z, so the z force is zero and the z row and column
+of the Hessian are zero.
+The cell is ignored: the model is not periodic.
+
+With =u = x / x0= and =d = y - alpha x^2=, the gradient is
+
+#+attr_rgpot: skip the gradient formula, not code
+#+begin_example
+dE/dx = 4 V0 u (u^2 - 1) / x0 - 2 k alpha x d
+dE/dy = k d
+#+end_example
+
+and the Hessian is
+
+#+attr_rgpot: skip the Hessian formula, not code
+#+begin_example
+d2E/dx2  = 4 V0 (3 u^2 - 1) / x0^2 + k (4 alpha^2 x^2 - 2 alpha d)
+d2E/dxdy = -2 k alpha x
+d2E/dy2  = k
+#+end_example
+
+For =alpha = 0= the coordinates decouple into a double well in x and a harmonic
+well in y.
+The minima are at =(+/- x0, alpha x0^2)=, the barrier top at the origin has
+energy =V0=, and the Hessian at a minimum is
+=[[8 V0 / x0^2 + 4 k alpha^2 x0^2, -2 k alpha x0], [-2 k alpha x0, k]]=.
+
+** Build the engine
+
+On Unix-like builds, Meson builds =libcoupled_well_engine.so= without optional
+dependencies.
+Windows builds skip the engine plugin libraries, including this one.
+When built for installation, it is installed with
+=include/rgpot/coupled_well_engine.h=.
+
+#+attr_rgpot: syntax
+#+begin_src bash
+meson setup bbdir -Dwith_tests=true
+meson compile -C bbdir
+meson test -C bbdir --print-errorlogs coupled_well_engine
+#+end_src
+
+The test checks exact energies, forces and Hessian-vector products at the
+minimum, the barrier top and a generic point against closed forms, the batch and
+transform semantics, the compatibility rule of the ABI stamp, and concurrent use
+of one handle.
+
+** Create an instance
+
+The create message new callers write is =RgpotCoupledWellConfigV2= from
+=include/rgpot/coupled_well_engine.h=.
+=RgpotCoupledWellConfigV1= is the 48-byte message a client built against the
+original layout still sends: =magic= at offset 0, =version= at offset 4,
+=atomic_number= at offset 8, =reserved= at offset 12 and the four parameters
+from offset 16.
+Because =RGPOT_COUPLED_WELL_CONFIG_VERSION= now names version 2, a version-1
+source recompiled against the current header must use
+=RGPOT_COUPLED_WELL_CONFIG_VERSION_V1= (and =RGPOT_COUPLED_WELL_CONFIG_V1_SIZE=);
+setting =RgpotCoupledWellConfigV1.version= to
+=RGPOT_COUPLED_WELL_CONFIG_VERSION= is refused.
+Set the version-2 =magic=, =size= and =version=, the one =atomic_number= the
+engine accepts, and the four parameters.
+=reserved0= and =reserved1= must be zero.
+
+#+attr_rgpot: compile flags=-ICppCore -Iinclude
+#+begin_src c
+#include <string.h>
+
+#include "rgpot/coupled_well_engine.h"
+#include "rgpot/engine_c_abi.h"
+
+int main(void) {
+RgpotCoupledWellConfigV2 cfg;
+memset(&cfg, 0, sizeof cfg);
+cfg.magic = RGPOT_COUPLED_WELL_CONFIG_MAGIC;
+cfg.size = sizeof cfg;
+cfg.version = RGPOT_COUPLED_WELL_CONFIG_VERSION;
+cfg.reserved0 = 0;
+cfg.atomic_number = 1;
+cfg.reserved1 = 0;
+cfg.barrier_energy = 3.0;
+cfg.well_position = 2.0;
+cfg.transverse_spring = 4.0;
+cfg.coupling = 0.25;
+
+char error[256];
+RgpotEnginePot *pot =
+    rgpot_engine_create(&cfg, sizeof cfg, error, sizeof error);
+if (pot == NULL) {
+    return 1;
+}
+rgpot_engine_destroy(pot);
+return 0;
+}
+#+end_src
+
+=rgpot_engine_create= refuses, with a reason in =errbuf=, a version-2 message
+with
+=size < RGPOT_COUPLED_WELL_CONFIG_MIN_SIZE=, a wrong magic or reserved field, a version other than =RGPOT_COUPLED_WELL_CONFIG_VERSION_V1=
+or =RGPOT_COUPLED_WELL_CONFIG_VERSION= (the plain error string
+=coupled-well config version is unknown=), a non-positive
+=atomic_number=, a =barrier_energy=, =well_position= or =transverse_spring= that
+is not finite and positive, and a =coupling= that is not finite.
+A negative =coupling= is valid.
+A larger version-2 message is accepted only when every unknown trailing byte up
+to =size= is zero.
+The 48-byte version-1 message is accepted unchanged.
+
+** Evaluate it
+
+=rgpot_engine_force= takes exactly one atom of the configured species.
+A different atom count or species is refused with code 1.
+A position that is not finite after the optional transform is refused with code
+1, and a position at which the energy or force overflows returns code 2.
+Nothing is written to =forces=, =energy= or =variance= on an error, and the
+reason is in =rgpot_engine_last_error=.
+=rgpot_engine_hvp= follows the same rules, also refuses a direction that is not
+finite, and refuses with code 1 when
+=hv_out= overlaps =direction=, =positions=, =atomicNrs= or =box=, leaving =hv_out=
+untouched.
+
+=rgpot_engine_force_batch= evaluates =nSystems= systems of that one atom.
+It applies the transform to every system and evaluates every system before it
+writes anything, so a refused transform or an overflow leaves =forces=,
+=energies= and =variances= unchanged.
+It returns the first nonzero transform code, 1 for an invalid argument
+(=invalid argument (batch)=), and 2 for a non-finite answer.
+
+The library reports =RgpotEngineCaps= with =batched= and =analytic_hvp= set and
+=reentrancy= 0.
+The model is a pure function of the create message, so any number of threads may
+call one handle at once, and =rgpot_engine_last_error= may run during an
+evaluation.
+When calls overlap, a successful call may clear a failure message from another
+thread before it is read.
+
+The library exports =rgpot_engine_available=, which returns 1, the ABI stamp and
+=rgpot_engine_abi_compatible= with the rule of the [[file:../reference/engine_abi.org][engine
+ABI reference]]: equal major and layout revision, and an engine minor no newer
+than the host's.
+It does not export the model digest, thread-setting or charge-and-spin symbols.
+
+** Load it from Rust
+
+Enable the generic loader, not an engine-specific feature.
+
+# [[[cog import rgpot_version as v; cog.outl("#+attr_rgpot: syntax"); cog.outl(v.readme_org("engine"))]]]
+#+attr_rgpot: syntax
+#+begin_src toml
+[dependencies]
+rgpot-core = { version = "3.8.0", features = ["engine"] }
+#+end_src
+# [[[end]]]
+
+=rgpot_core::engine::CoupledWellConfig= is the typed create message.
+It is
+=#[non_exhaustive]=, so start from =CoupledWellConfig::default()=, a valid unit well, and chain the =with_*=
+builders.
+=validate= applies the create-time checks of the engine before the library is
+opened.
+=as_bytes= is the message to pass to =EnginePotential::load=.
+
+#+attr_rgpot: fragment Rust excerpt; needs the rgpot-core crate and the built library
+#+begin_src rust
+let config = CoupledWellConfig::default()
+    .with_atomic_number(1)
+    .with_barrier_energy(3.0)
+    .with_well_position(2.0)
+    .with_transverse_spring(4.0)
+    .with_coupling(0.25);
+config.validate()?;
+let mut engine =
+    unsafe { EnginePotential::load(path, config.as_bytes()) }?;
+let request = EngineRequest {
+    positions: &[1.0, 0.5, 0.0],
+    atomic_numbers: &[1],
+    box_matrix: &[10.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 10.0],
+};
+let answer = engine.force(&request)?;
+let product = engine.hvp(&request, &[1.0, 2.0, 0.0])?;
+#+end_src
+
+For the parameters of the example, the energy at (1, 0.5) is
+29/16 eV, the force is (11/4, -1, 0)
+eV/Angstrom, and the Hessian-vector product for the direction (1, 2, 0) is (-17/4,
+6, 0).
+=EnginePotential::force_batch= returns one =EngineEvaluation= per system.

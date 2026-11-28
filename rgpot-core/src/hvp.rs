@@ -10,20 +10,34 @@
 //! callback each product is a difference of two force evaluations, and one
 //! of them is the centre the search has not moved from.
 //!
-//! A handle keeps the forces of the last centre it evaluated, keyed on the
-//! bits of the positions, the atomic numbers and the cell. `k` forward
-//! products at one centre therefore cost `k + 1` force calls instead of
-//! `2k`. Another geometry, species list or cell is a new centre, and
-//! [`rgpot_potential_t::invalidate_hvp_centre`] drops the cached one when
+//! A handle keeps the forces of the last centre it evaluated in its fused
+//! cache ([`crate::fused`]), keyed on the bits of the positions, the atomic
+//! numbers, the cell and the engine settings. `k` forward products at one
+//! centre therefore cost `k + 1` force calls instead of `2k`. A centre that
+//! failed is stored as well, so asking for it again returns the failure
+//! without a second call, unless the engine refused the request as
+//! invalid. That failure is not stored, and the next request runs the
+//! engine again. Another geometry, species list, cell or engine setting
+//! is a new centre, and
+//! [`rgpot_potential_t::invalidate_hvp_centre`] makes the next one new when
 //! the potential itself changes. A potential that knows its Hessian
 //! registers a [`HessianVectorCallback`] and the products make no force
-//! call at all.
+//! call at all; one that differentiates its energy with dual numbers
+//! registers its product as a second, dual-number callback.
 //!
 //! | Scheme | Force calls per product | Error |
 //! |--------|-------------------------|-------|
 //! | `RGPOT_HVP_FORWARD` | 1, plus 1 for each new centre | `O(h)` |
 //! | `RGPOT_HVP_CENTRAL` | 2 | `O(h^2)` |
 //! | `RGPOT_HVP_ANALYTIC` | 0 | that of the callback |
+//! | `RGPOT_HVP_AD` | 0 | that of the callback |
+//!
+//! `RGPOT_HVP_AUTO` takes the analytic callback and falls back to forward
+//! differences without one. `RGPOT_HVP_EXACT` takes the analytic callback,
+//! else the dual-number one, and is refused rather than differenced. Either
+//! way [`rgpot_potential_t::hessian_vector_resolved`] returns the scheme
+//! that ran and [`rgpot_potential_t::derivative_counts`] counts it, so a
+//! fallback is never silent.
 //!
 //! `h` is the length of the displacement along the unit direction
 //! `v / |v|`, in the units of the positions. The difference is scaled back
@@ -36,12 +50,14 @@
 
 use std::os::raw::c_void;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex};
 
-use crate::eindir::{rgpot_potential_t, validated_result};
+use crate::c_api::potential::force_input_defect;
+use crate::eindir::rgpot_potential_t;
+use crate::fused::{lock, FusedError, FusedSource};
 use crate::status::rgpot_status_t;
 use crate::tensor::{copy_f64_tensor, copy_i32_tensor, rgpot_tensor_cpu_f64_2d, rgpot_tensor_free};
-use crate::types::{rgpot_force_input_t, rgpot_force_out_t};
+use crate::types::rgpot_force_input_t;
 
 /// Analytic Hessian-vector product of a potential.
 ///
@@ -65,6 +81,7 @@ pub const RGPOT_HVP_DEFAULT_STEP: f64 = 1.0e-3;
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum rgpot_hvp_scheme_t {
     /// The analytic callback when one is registered, otherwise forward.
+    /// The scheme that ran is reported and counted.
     RGPOT_HVP_AUTO = 0,
     /// One displaced force call against the cached centre forces.
     RGPOT_HVP_FORWARD = 1,
@@ -72,6 +89,11 @@ pub enum rgpot_hvp_scheme_t {
     RGPOT_HVP_CENTRAL = 2,
     /// The registered callback. Refused when none is registered.
     RGPOT_HVP_ANALYTIC = 3,
+    /// The registered dual-number callback. Refused when none is registered.
+    RGPOT_HVP_AD = 4,
+    /// The analytic callback, else the dual-number one. Refused when neither
+    /// is registered; never a finite difference.
+    RGPOT_HVP_EXACT = 5,
 }
 
 impl rgpot_hvp_scheme_t {
@@ -82,6 +104,8 @@ impl rgpot_hvp_scheme_t {
             1 => Some(Self::RGPOT_HVP_FORWARD),
             2 => Some(Self::RGPOT_HVP_CENTRAL),
             3 => Some(Self::RGPOT_HVP_ANALYTIC),
+            4 => Some(Self::RGPOT_HVP_AD),
+            5 => Some(Self::RGPOT_HVP_EXACT),
             _ => None,
         }
     }
@@ -109,7 +133,10 @@ pub enum HvpError {
     Invalid(String),
     /// A callback returned this status. Its own `rgpot_last_error`
     /// message, if it set one, is left in place.
-    Callback(rgpot_status_t),
+    Callback {
+        status: rgpot_status_t,
+        message: String,
+    },
 }
 
 impl HvpError {
@@ -117,7 +144,7 @@ impl HvpError {
     pub fn status(&self) -> rgpot_status_t {
         match self {
             Self::Invalid(_) => rgpot_status_t::RGPOT_INVALID_PARAMETER,
-            Self::Callback(status) => *status,
+            Self::Callback { status, .. } => *status,
         }
     }
 }
@@ -126,71 +153,67 @@ impl std::fmt::Display for HvpError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Invalid(why) => f.write_str(why),
-            Self::Callback(status) => write!(f, "callback returned {status:?}"),
+            Self::Callback { status, message } => {
+                write!(f, "{message} (callback returned {status:?})")
+            }
         }
     }
 }
 
 impl std::error::Error for HvpError {}
 
-fn invalid(why: impl Into<String>) -> HvpError {
+pub(crate) fn invalid(why: impl Into<String>) -> HvpError {
     HvpError::Invalid(why.into())
 }
 
 /// Energy, variance and forces (`3 * n_atoms`, row-major) at a centre.
-#[derive(Debug, Clone, PartialEq)]
-pub struct HvpCentre {
-    pub energy: f64,
-    pub variance: f64,
-    pub forces: Vec<f64>,
-}
-
-/// `f64::to_bits` of every coordinate and cell entry: float equality would
-/// serve the forces of `+0.0` at `-0.0`.
-#[derive(Clone, PartialEq)]
-struct GeometryKey {
-    positions: Vec<u64>,
-    atomic_numbers: Option<Vec<i32>>,
-    box_matrix: Option<Vec<u64>>,
-}
-
-struct CachedCentre {
-    key: GeometryKey,
-    centre: Arc<HvpCentre>,
-}
+pub use crate::fused::FusedValue as HvpCentre;
 
 /// Per-handle Hessian-vector state, kept in the handle's opaque cache.
 #[derive(Default)]
 pub(crate) struct HvpState {
     callback: Mutex<Option<HessianVectorCallback>>,
-    centre: Mutex<Option<CachedCentre>>,
+    ad_callback: Mutex<Option<HessianVectorCallback>>,
     products: AtomicU64,
     force_calls: AtomicU64,
     centre_reused: AtomicU64,
     analytic: AtomicU64,
+    /// Products by the scheme they resolved to, zero directions included.
+    pub(crate) by_forward: AtomicU64,
+    pub(crate) by_central: AtomicU64,
+    pub(crate) by_analytic: AtomicU64,
+    pub(crate) by_ad: AtomicU64,
 }
 
-fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
-    mutex
-        .lock()
-        .unwrap_or_else(|poisoned| poisoned.into_inner())
-}
-
-impl HvpState {
-    pub(crate) fn invalidate(&self) {
-        *lock(&self.centre) = None;
+impl From<FusedError> for HvpError {
+    fn from(error: FusedError) -> Self {
+        match error {
+            FusedError::Invalid { message } => Self::Invalid(message),
+            other => Self::Callback {
+                status: other.status(),
+                message: other.to_string(),
+            },
+        }
     }
 }
 
-struct Geometry {
-    n_atoms: usize,
-    positions: Vec<f64>,
-    key: GeometryKey,
+pub(crate) struct Geometry {
+    pub(crate) n_atoms: usize,
+    pub(crate) positions: Vec<f64>,
+    atomic_numbers: Option<Vec<i32>>,
+    cell: Option<Vec<f64>>,
 }
 
 /// Copy the positions, species and cell of `input` after checking them.
-/// Species and cell are optional, as for the force callback.
-unsafe fn read_geometry(input: &rgpot_force_input_t) -> Result<Geometry, HvpError> {
+///
+/// The input must pass `force_input_defect`, the check that
+/// `rgpot_potential_calculate` makes, so a missing species buffer and an
+/// empty system are refused here as they are on the C++ side. A missing
+/// cell is left to the callback, so molecular potentials stay callable.
+pub(crate) unsafe fn read_geometry(input: &rgpot_force_input_t) -> Result<Geometry, HvpError> {
+    if let Some(why) = unsafe { force_input_defect(input) } {
+        return Err(invalid(why));
+    }
     let n_atoms = unsafe { input.n_atoms() }.ok_or_else(|| invalid("positions: tensor is NULL"))?;
     let dim = n_atoms
         .checked_mul(3)
@@ -201,22 +224,96 @@ unsafe fn read_geometry(input: &rgpot_force_input_t) -> Result<Geometry, HvpErro
     } else {
         Some(copy_i32_tensor(input.atomic_numbers, "atomic_numbers", n_atoms).map_err(invalid)?)
     };
-    let box_matrix = if input.box_matrix.is_null() {
+    let cell = if input.box_matrix.is_null() {
         None
     } else {
-        let cell = copy_f64_tensor(input.box_matrix, "box_matrix", 9, false).map_err(invalid)?;
-        Some(cell.iter().map(|v| v.to_bits()).collect())
-    };
-    let key = GeometryKey {
-        positions: positions.iter().map(|v| v.to_bits()).collect(),
-        atomic_numbers,
-        box_matrix,
+        Some(copy_f64_tensor(input.box_matrix, "box_matrix", 9, false).map_err(invalid)?)
     };
     Ok(Geometry {
         n_atoms,
         positions,
-        key,
+        atomic_numbers,
+        cell,
     })
+}
+
+/// `step`, or [`RGPOT_HVP_DEFAULT_STEP`] for 0, refused unless positive and
+/// finite.
+pub(crate) fn checked_step(step: f64) -> Result<f64, HvpError> {
+    let h = if step == 0.0 {
+        RGPOT_HVP_DEFAULT_STEP
+    } else {
+        step
+    };
+    if h.is_finite() && h > 0.0 {
+        Ok(h)
+    } else {
+        Err(invalid(format!(
+            "step must be positive and finite, got {step}"
+        )))
+    }
+}
+
+/// Call a derivative callback and check that the `out` it wrote is finite.
+/// A failing status keeps the message the callback set with
+/// `rgpot_set_last_error` during the call, or is described as
+/// `{caller} returned <status>` when it set none; a
+/// non-finite value is `{writer}: non-finite value at element <i>`. A
+/// successful call leaves the earlier message in place.
+pub(crate) fn run_callback(
+    caller: &str,
+    writer: &str,
+    out: &mut [f64],
+    call: impl FnOnce(*mut f64) -> rgpot_status_t,
+) -> Result<(), HvpError> {
+    let earlier = crate::status::last_error_message();
+    crate::status::set_last_error("");
+    let status = call(out.as_mut_ptr());
+    if status != rgpot_status_t::RGPOT_SUCCESS {
+        let message = crate::status::last_error_message();
+        return Err(HvpError::Callback {
+            status,
+            message: if message.is_empty() {
+                format!("{caller} returned {status:?}")
+            } else {
+                message
+            },
+        });
+    }
+    crate::status::set_last_error(&earlier);
+    if let Some(i) = out.iter().position(|v| !v.is_finite()) {
+        return Err(invalid(format!(
+            "{writer}: non-finite value at element {i}"
+        )));
+    }
+    Ok(())
+}
+
+/// The scheme a request runs: `AUTO` and `EXACT` resolved against the
+/// registered callbacks, and the callback schemes refused without theirs.
+fn resolve(
+    scheme: rgpot_hvp_scheme_t,
+    analytic: bool,
+    ad: bool,
+) -> Result<rgpot_hvp_scheme_t, HvpError> {
+    use rgpot_hvp_scheme_t::*;
+    match scheme {
+        RGPOT_HVP_AUTO if analytic => Ok(RGPOT_HVP_ANALYTIC),
+        RGPOT_HVP_AUTO => Ok(RGPOT_HVP_FORWARD),
+        RGPOT_HVP_ANALYTIC if !analytic => Err(invalid(
+            "RGPOT_HVP_ANALYTIC: no Hessian-vector callback is registered",
+        )),
+        RGPOT_HVP_AD if !ad => Err(invalid(
+            "RGPOT_HVP_AD: no dual-number Hessian-vector callback is registered",
+        )),
+        RGPOT_HVP_EXACT if analytic => Ok(RGPOT_HVP_ANALYTIC),
+        RGPOT_HVP_EXACT if ad => Ok(RGPOT_HVP_AD),
+        RGPOT_HVP_EXACT => Err(invalid(
+            "RGPOT_HVP_EXACT: neither an analytic nor a dual-number \
+             Hessian-vector callback is registered",
+        )),
+        other => Ok(other),
+    }
 }
 
 /// Euclidean norm, scaled so that large or tiny entries neither overflow
@@ -246,10 +343,23 @@ impl rgpot_potential_t {
         lock(&self.hvp_state().callback).is_some()
     }
 
+    /// Register `callback` as the dual-number Hessian-vector product of
+    /// this handle, or clear it with `None`. `RGPOT_HVP_AD` calls it, and
+    /// `RGPOT_HVP_EXACT` when there is no analytic callback; `AUTO` never
+    /// does.
+    pub fn set_ad_hessian_vector_callback(&self, callback: Option<HessianVectorCallback>) {
+        *lock(&self.hvp_state().ad_callback) = callback;
+    }
+
+    /// Whether a dual-number Hessian-vector callback is registered.
+    pub fn has_ad_hessian_vector_callback(&self) -> bool {
+        lock(&self.hvp_state().ad_callback).is_some()
+    }
+
     /// Drop the cached centre. Call it when the potential behind the handle
     /// changes while the geometry does not.
     pub fn invalidate_hvp_centre(&self) {
-        self.hvp_state().invalidate();
+        self.fused().invalidate();
     }
 
     /// The counters of the Hessian-vector entry points.
@@ -263,13 +373,23 @@ impl rgpot_potential_t {
         }
     }
 
-    /// Zero the counters. The cached centre stays.
+    /// Zero the counters, those of [`Self::derivative_counts`] included.
+    /// The cached centre stays.
     pub fn reset_hvp_counts(&self) {
         let state = self.hvp_state();
-        state.products.store(0, Ordering::Relaxed);
-        state.force_calls.store(0, Ordering::Relaxed);
-        state.centre_reused.store(0, Ordering::Relaxed);
-        state.analytic.store(0, Ordering::Relaxed);
+        for counter in [
+            &state.products,
+            &state.force_calls,
+            &state.centre_reused,
+            &state.analytic,
+            &state.by_forward,
+            &state.by_central,
+            &state.by_analytic,
+            &state.by_ad,
+        ] {
+            counter.store(0, Ordering::Relaxed);
+        }
+        self.reset_hessian_counts();
     }
 
     /// Energy and forces at the geometry of `input`.
@@ -292,16 +412,12 @@ impl rgpot_potential_t {
 
     /// Write `H direction` to `hv_out`; see the module documentation.
     ///
-    /// `direction` and `hv_out` hold `3 * n_atoms` doubles. `step` is the
-    /// displacement length, and 0 selects [`RGPOT_HVP_DEFAULT_STEP`]. A zero
-    /// direction gives a zero product without any call. `hv_out` is only
-    /// written on success by the finite differences; the analytic callback
-    /// may leave it partly written when it fails.
+    /// [`Self::hessian_vector_resolved`] without the scheme that ran, which
+    /// is still counted.
     ///
     /// # Safety
     ///
-    /// As for [`Self::hvp_centre`]; a registered analytic callback must also
-    /// be safe to call with the handle's `user_data`.
+    /// As for [`Self::hessian_vector_resolved`].
     pub unsafe fn hessian_vector(
         &self,
         input: &rgpot_force_input_t,
@@ -310,6 +426,32 @@ impl rgpot_potential_t {
         scheme: rgpot_hvp_scheme_t,
         hv_out: &mut [f64],
     ) -> Result<(), HvpError> {
+        unsafe { self.hessian_vector_resolved(input, direction, step, scheme, hv_out) }.map(|_| ())
+    }
+
+    /// Write `H direction` to `hv_out` and return the scheme that computed
+    /// it: `AUTO` resolves to `ANALYTIC` or `FORWARD`, `EXACT` to
+    /// `ANALYTIC` or `AD`, and any other scheme to itself.
+    ///
+    /// `direction` and `hv_out` hold `3 * n_atoms` doubles. `step` is the
+    /// displacement length, and 0 selects [`RGPOT_HVP_DEFAULT_STEP`]. A zero
+    /// direction gives a zero product without any call, counted under the
+    /// scheme it resolved to. `hv_out` is only written on success by the
+    /// finite differences; a callback may leave it partly written when it
+    /// fails. A refused scheme makes no call.
+    ///
+    /// # Safety
+    ///
+    /// As for [`Self::hvp_centre`]; registered callbacks must also be safe
+    /// to call with the handle's `user_data`.
+    pub unsafe fn hessian_vector_resolved(
+        &self,
+        input: &rgpot_force_input_t,
+        direction: &[f64],
+        step: f64,
+        scheme: rgpot_hvp_scheme_t,
+        hv_out: &mut [f64],
+    ) -> Result<rgpot_hvp_scheme_t, HvpError> {
         self.refuse_if_peer_refused()?;
         let geometry = unsafe { read_geometry(input) }?;
         let dim = geometry.positions.len();
@@ -330,35 +472,16 @@ impl rgpot_potential_t {
                 "direction: non-finite value at element {i}"
             )));
         }
-        let h = if step == 0.0 {
-            RGPOT_HVP_DEFAULT_STEP
-        } else {
-            step
-        };
-        if !(h.is_finite() && h > 0.0) {
-            return Err(invalid(format!(
-                "step must be positive and finite, got {step}"
-            )));
-        }
+        let h = checked_step(step)?;
         let state = self.hvp_state();
         let analytic = *lock(&state.callback);
-        let scheme = match scheme {
-            rgpot_hvp_scheme_t::RGPOT_HVP_AUTO if analytic.is_some() => {
-                rgpot_hvp_scheme_t::RGPOT_HVP_ANALYTIC
-            }
-            rgpot_hvp_scheme_t::RGPOT_HVP_AUTO => rgpot_hvp_scheme_t::RGPOT_HVP_FORWARD,
-            other => other,
-        };
-        if scheme == rgpot_hvp_scheme_t::RGPOT_HVP_ANALYTIC && analytic.is_none() {
-            return Err(invalid(
-                "RGPOT_HVP_ANALYTIC: no Hessian-vector callback is registered",
-            ));
-        }
+        let ad = *lock(&state.ad_callback);
+        let scheme = resolve(scheme, analytic.is_some(), ad.is_some())?;
         let length = norm(direction);
         if length == 0.0 {
             hv_out.fill(0.0);
-            state.products.fetch_add(1, Ordering::Relaxed);
-            return Ok(());
+            state.count(scheme);
+            return Ok(scheme);
         }
         let displaced = |sign: f64| -> Vec<f64> {
             geometry
@@ -368,30 +491,35 @@ impl rgpot_potential_t {
                 .map(|(x, v)| x + sign * h * (v / length))
                 .collect()
         };
+        let call = |callback: HessianVectorCallback, hv: *mut f64| unsafe {
+            callback(self.pot_user_data, input, direction.as_ptr(), hv)
+        };
         match scheme {
             rgpot_hvp_scheme_t::RGPOT_HVP_ANALYTIC => {
-                let callback = analytic.expect("checked above");
-                let status = unsafe {
-                    callback(
-                        self.pot_user_data,
-                        input,
-                        direction.as_ptr(),
-                        hv_out.as_mut_ptr(),
-                    )
-                };
-                if status != rgpot_status_t::RGPOT_SUCCESS {
-                    return Err(HvpError::Callback(status));
-                }
-                if let Some(i) = hv_out.iter().position(|v| !v.is_finite()) {
-                    return Err(invalid(format!(
-                        "Hessian-vector callback: non-finite value at element {i}"
-                    )));
-                }
+                let callback = analytic.expect("resolved against it");
+                run_callback(
+                    "analytic HVP callback",
+                    "Hessian-vector callback",
+                    hv_out,
+                    |out| call(callback, out),
+                )?;
                 state.analytic.fetch_add(1, Ordering::Relaxed);
             }
+            rgpot_hvp_scheme_t::RGPOT_HVP_AD => {
+                let callback = ad.expect("resolved against it");
+                run_callback(
+                    "dual-number HVP callback",
+                    "dual-number Hessian-vector callback",
+                    hv_out,
+                    |out| call(callback, out),
+                )?;
+            }
             rgpot_hvp_scheme_t::RGPOT_HVP_CENTRAL => {
-                let plus = unsafe { self.forces_at(input, displaced(1.0), geometry.n_atoms) }?;
-                let minus = unsafe { self.forces_at(input, displaced(-1.0), geometry.n_atoms) }?;
+                let calls = &state.force_calls;
+                let plus =
+                    unsafe { self.forces_at(input, displaced(1.0), geometry.n_atoms, calls) }?;
+                let minus =
+                    unsafe { self.forces_at(input, displaced(-1.0), geometry.n_atoms, calls) }?;
                 let scale = length / (2.0 * h);
                 for ((out, fm), fp) in hv_out.iter_mut().zip(&minus.forces).zip(&plus.forces) {
                     *out = (fm - fp) * scale;
@@ -399,18 +527,20 @@ impl rgpot_potential_t {
             }
             _ => {
                 let centre = unsafe { self.centre_of(input, &geometry) }?;
-                let plus = unsafe { self.forces_at(input, displaced(1.0), geometry.n_atoms) }?;
+                let plus = unsafe {
+                    self.forces_at(input, displaced(1.0), geometry.n_atoms, &state.force_calls)
+                }?;
                 let scale = length / h;
                 for ((out, f0), fp) in hv_out.iter_mut().zip(&centre.forces).zip(&plus.forces) {
                     *out = (f0 - fp) * scale;
                 }
             }
         }
-        state.products.fetch_add(1, Ordering::Relaxed);
-        Ok(())
+        state.count(scheme);
+        Ok(scheme)
     }
 
-    fn refuse_if_peer_refused(&self) -> Result<(), HvpError> {
+    pub(crate) fn refuse_if_peer_refused(&self) -> Result<(), HvpError> {
         match self.fused_cache_peer_refusal() {
             Some(why) => Err(HvpError::Invalid(why)),
             None => Ok(()),
@@ -423,26 +553,29 @@ impl rgpot_potential_t {
         geometry: &Geometry,
     ) -> Result<Arc<HvpCentre>, HvpError> {
         let state = self.hvp_state();
-        if let Some(cached) = lock(&state.centre).as_ref() {
-            if cached.key == geometry.key {
-                state.centre_reused.fetch_add(1, Ordering::Relaxed);
-                return Ok(Arc::clone(&cached.centre));
-            }
-        }
-        let centre = Arc::new(unsafe { self.evaluate(input, geometry.n_atoms) }?);
-        *lock(&state.centre) = Some(CachedCentre {
-            key: geometry.key.clone(),
-            centre: Arc::clone(&centre),
+        let key = self.fused().key(
+            &geometry.positions,
+            geometry.atomic_numbers.as_deref(),
+            geometry.cell.as_deref(),
+        );
+        let (outcome, source) = self.fused().evaluate(key, || {
+            state.force_calls.fetch_add(1, Ordering::Relaxed);
+            unsafe { self.run_engine(input, geometry.n_atoms) }
         });
-        Ok(centre)
+        if source == FusedSource::Stored {
+            state.centre_reused.fetch_add(1, Ordering::Relaxed);
+        }
+        Ok(outcome?)
     }
 
-    /// Forces at `positions`, with the species and cell of `input`.
-    unsafe fn forces_at(
+    /// Forces at `positions`, with the species and cell of `input`, counted
+    /// in `calls`.
+    pub(crate) unsafe fn forces_at(
         &self,
         input: &rgpot_force_input_t,
         mut positions: Vec<f64>,
         n_atoms: usize,
+        calls: &AtomicU64,
     ) -> Result<HvpCentre, HvpError> {
         let moved = rgpot_force_input_t {
             positions: unsafe {
@@ -451,35 +584,35 @@ impl rgpot_potential_t {
             atomic_numbers: input.atomic_numbers,
             box_matrix: input.box_matrix,
         };
-        let result = unsafe { self.evaluate(&moved, n_atoms) };
+        calls.fetch_add(1, Ordering::Relaxed);
+        let result = unsafe { self.run_engine(&moved, n_atoms) }
+            .map(|outcome| (*outcome).clone())
+            .map_err(HvpError::from);
         unsafe { rgpot_tensor_free(moved.positions) };
         result
     }
+}
 
-    unsafe fn evaluate(
-        &self,
-        input: &rgpot_force_input_t,
-        n_atoms: usize,
-    ) -> Result<HvpCentre, HvpError> {
-        let mut output = rgpot_force_out_t {
-            forces: std::ptr::null_mut(),
-            energy: 0.0,
-            variance: 0.0,
+impl HvpState {
+    pub(crate) fn has_analytic(&self) -> bool {
+        lock(&self.callback).is_some()
+    }
+
+    pub(crate) fn has_ad(&self) -> bool {
+        lock(&self.ad_callback).is_some()
+    }
+
+    fn count(&self, scheme: rgpot_hvp_scheme_t) {
+        self.products.fetch_add(1, Ordering::Relaxed);
+        let by = match scheme {
+            rgpot_hvp_scheme_t::RGPOT_HVP_FORWARD => &self.by_forward,
+            rgpot_hvp_scheme_t::RGPOT_HVP_CENTRAL => &self.by_central,
+            rgpot_hvp_scheme_t::RGPOT_HVP_ANALYTIC => &self.by_analytic,
+            rgpot_hvp_scheme_t::RGPOT_HVP_AD => &self.by_ad,
+            rgpot_hvp_scheme_t::RGPOT_HVP_AUTO | rgpot_hvp_scheme_t::RGPOT_HVP_EXACT => {
+                unreachable!("resolved before counting")
+            }
         };
-        self.hvp_state().force_calls.fetch_add(1, Ordering::Relaxed);
-        let status = unsafe { (self.callback)(self.pot_user_data, input, &mut output) };
-        let result = if status == rgpot_status_t::RGPOT_SUCCESS {
-            validated_result(&output, 3 * n_atoms)
-                .map(|forces| HvpCentre {
-                    energy: output.energy,
-                    variance: output.variance,
-                    forces,
-                })
-                .map_err(invalid)
-        } else {
-            Err(HvpError::Callback(status))
-        };
-        unsafe { rgpot_tensor_free(output.forces) };
-        result
+        by.fetch_add(1, Ordering::Relaxed);
     }
 }

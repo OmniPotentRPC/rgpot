@@ -28,23 +28,18 @@
 /// of that distance. One fraction for every geometry.
 inline constexpr double kEamSkinOverCutoff = 1.0 / 5.0;
 
-/// One OpenMP thread matches the direct pair loop bit for bit. Several
-/// threads split the atoms into one slice per requested thread, write the
-/// forces of each slice's own atoms and add partial energies in slice
-/// order, so a fixed thread count repeats bit for bit, also when the
-/// runtime starts fewer threads. Energy and every force component stay
-/// within this relative tolerance of the one-thread value. A component
-/// whose one-thread magnitude is below 1 is compared on an absolute scale
-/// of the same size.
-inline constexpr double kEamThreadedTolerance = 1e-9;
-
 /// Embedded-atom aluminium, palladium and gold.
 ///
-/// The neighbour search is a linked-cell list with a Verlet skin. The force
-/// loop visits the same pairs, in the same atom order, as the direct double
-/// loop, and the arithmetic of each pair is unchanged. `OMP_NUM_THREADS`
-/// above 1 splits atoms across threads. The variable is read on each call.
-/// When it is unset the call stays on one thread.
+/// The neighbour search is a linked-cell list with a Verlet skin. Below
+/// kTeamMinAtoms atoms the call runs on one thread and matches the
+/// direct pair loop bit for bit: the same pairs in the same atom order,
+/// with unchanged arithmetic. From there up the energy of each atom's row
+/// is summed on its own and the rows are added in index order, and
+/// `OMP_NUM_THREADS` splits the atoms across threads from the atoms
+/// kTeamFrom asks of that many. A slice sums the force on each of its
+/// atoms in the order of the one-thread loop, so every thread count, and
+/// every team the runtime starts, gives the same bits. The variable is
+/// read on each call.
 class EAM
 #ifndef EAM_STANDALONE
     : public eonc::Potential
@@ -90,8 +85,18 @@ public:
   /// candidate index array fits in the memory reported as available.
   void setNeighbourMode(rgpot::nlist::Mode mode) noexcept { mode_ = mode; }
 
-  /// Threads used by the most recent force call. 1 when OpenMP is off or
-  /// `OMP_NUM_THREADS` is unset.
+  /// Atoms from which a call adds each row's energy on its own, on any
+  /// thread count: the least in kTeamFrom.
+  static constexpr std::size_t kTeamMinAtoms = 40;
+  /// Atoms from which a team of two threads opens, of three, and of four
+  /// or more: the smallest clusters from which each took at most nine
+  /// tenths of the one-thread time in thread_count_bench. A team evaluates
+  /// each pair twice in each pass, and no team of two did.
+  static constexpr rgpot::TeamFrom kTeamFrom{rgpot::kNoTeam, 384, kTeamMinAtoms};
+
+  /// Threads used by the most recent force call. 1 when OpenMP is off,
+  /// `OMP_NUM_THREADS` is unset, or the call had fewer atoms than
+  /// kTeamFrom asks of that many threads.
   [[nodiscard]] int threadsUsed() const noexcept { return threads_used_; }
 
 #ifndef EAM_STANDALONE
@@ -134,8 +139,9 @@ private:
   std::vector<double> gdz_;
   std::vector<double> ginv_;
   std::vector<std::int32_t> rev_;
-  std::vector<double> thread_energy_;
-  std::vector<double> partial_f_;
+  /// Energy of each atom's row, and the sum of fscale * d over its row.
+  std::vector<double> row_energy_;
+  std::vector<double> row_pull_;
   /// Density and force rows for the stream, one per slice, so a half
   /// pair can update both atoms without a lock.
   std::vector<double> stream_rho_;
@@ -163,13 +169,13 @@ private:
                               double *U);
   void evaluateDensityStream(long N, const int *atomicNrs, double *F,
                              double *U);
+  void evaluateStreamRows(long N, const int *atomicNrs, double *F, double *U);
   [[nodiscard]] const rgpot::eam::ElementSpline &splineFor(int Z);
   void accumulate(long i, const int *atomicNrs, double *F, double &U,
                   std::vector<Delta> &deltas, const std::int32_t *stream_ids,
                   long stream_n) const;
   void geometry(long i, long j, double &dx, double &dy, double &dz,
                 double &r2) const;
-  [[nodiscard]] int threadsRequested() const;
 
   [[nodiscard]] element_parameters
   get_element_parameters(int atomic_number) const;

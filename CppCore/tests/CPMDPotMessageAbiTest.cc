@@ -8,8 +8,10 @@
 
 #include <array>
 #include <cstdlib>
+#include <string>
 #include <vector>
 
+#include "RestoreEnv.hpp"
 #include "cpmd_stress_oracle.hpp"
 #include "rgpot/CPMDPot/CPMDPot.hpp"
 #include "rgpot/NWChemPot/DynLib.hpp"
@@ -37,6 +39,26 @@ struct FakeEngineCounter {
 
   int sessions() const { return count(); }
 };
+
+using rgpot::test_support::RestoreEnv;
+
+double eval_atoms(rgpot::CPMDPot &pot, const std::vector<int> &atomic_numbers,
+                  const std::vector<double> &coords, double cell) {
+  const int n = static_cast<int>(atomic_numbers.size());
+  REQUIRE(coords.size() == static_cast<size_t>(n) * 3u);
+  rgpot::types::AtomMatrix positions(n, 3);
+  for (int i = 0; i < n; ++i) {
+    positions(i, 0) = coords[static_cast<size_t>(i) * 3u];
+    positions(i, 1) = coords[static_cast<size_t>(i) * 3u + 1u];
+    positions(i, 2) = coords[static_cast<size_t>(i) * 3u + 2u];
+  }
+  const std::array<std::array<double, 3>, 3> box = {
+      {{cell, 0.0, 0.0}, {0.0, cell, 0.0}, {0.0, 0.0, cell}}};
+  auto [energy, forces, variance] = pot(positions, atomic_numbers, box);
+  (void)forces;
+  (void)variance;
+  return energy;
+}
 
 } // namespace
 
@@ -129,6 +151,64 @@ TEST_CASE("CPMDPot keeps its engine session across identical setParams",
   REQUIRE(counter.sessions() == before + 2);
 }
 
+// cpmdc fixes the atom count and the element counts on a session.
+// Adding an atom, or swapping an element, needs a new session before
+// the evaluation. A move, a reorder, or a new cell does not.
+TEST_CASE("CPMDPot rebuilds its session when the topology changes",
+          "[cpmd][abi]") {
+  FakeEngineCounter counter;
+
+  ::capnp::MallocMessageBuilder msg;
+  auto p = msg.initRoot<::CPMDParams>();
+  p.setFunctional("BLYP");
+  p.setCutOffRy(70.0);
+  p.setCharge(0);
+  p.setMultiplicity(1);
+
+  rgpot::CPMDPot pot(p.asReader());
+  REQUIRE(pot.available());
+  const int baseline = counter.sessions();
+
+  const double cell = 23.0;
+  const auto energy_of = [](double zz) { return 0.75 + 0.001 * zz; };
+
+  double energy = eval_atoms(pot, {8}, {0.0, 0.0, 0.0}, cell);
+  REQUIRE_THAT(energy, WithinAbs(energy_of(cell), 1e-12));
+  REQUIRE(counter.sessions() == baseline);
+
+  energy = eval_atoms(pot, {8}, {0.2, 0.0, 0.0}, cell);
+  REQUIRE_THAT(energy, WithinAbs(energy_of(cell), 1e-12));
+  REQUIRE(counter.sessions() == baseline);
+
+  energy = eval_atoms(pot, {8, 1}, {0.0, 0.0, 0.0, 0.9, 0.0, 0.0}, cell);
+  REQUIRE_THAT(energy, WithinAbs(energy_of(cell), 1e-12));
+  REQUIRE(counter.sessions() == baseline + 1);
+
+  energy = eval_atoms(pot, {1, 8}, {0.9, 0.0, 0.0, 0.0, 0.0, 0.0}, cell);
+  REQUIRE_THAT(energy, WithinAbs(energy_of(cell), 1e-12));
+  REQUIRE(counter.sessions() == baseline + 1);
+
+  const double moved_cell = 24.0;
+  energy = eval_atoms(pot, {1, 8}, {1.1, 0.1, 0.0, 0.1, 0.0, 0.2}, moved_cell);
+  REQUIRE_THAT(energy, WithinAbs(energy_of(moved_cell), 1e-12));
+  REQUIRE(counter.sessions() == baseline + 1);
+
+  energy = eval_atoms(pot, {8, 1, 1},
+                      {0.0, 0.0, 0.1, 0.8, 0.0, -0.4, -0.8, 0.0, -0.4}, cell);
+  REQUIRE_THAT(energy, WithinAbs(energy_of(cell), 1e-12));
+  REQUIRE(counter.sessions() == baseline + 2);
+
+  energy = eval_atoms(pot, {8, 1, 1},
+                      {0.0, 0.0, 0.2, 0.7, 0.1, -0.4, -0.7, -0.1, -0.4}, cell);
+  REQUIRE_THAT(energy, WithinAbs(energy_of(cell), 1e-12));
+  REQUIRE(counter.sessions() == baseline + 2);
+
+  energy = eval_atoms(pot, {8, 6, 1},
+                      {0.0, 0.0, 0.2, 0.7, 0.1, -0.4, -0.7, -0.1, -0.4}, cell);
+  REQUIRE_THAT(energy, WithinAbs(energy_of(cell), 1e-12));
+  REQUIRE(counter.sessions() == baseline + 3);
+}
+
 // paramsKey feeds the result-cache key: equal params hash equal, any
 // field change hashes different, and the salt keeps it off the
 // parameter-free default of 0.
@@ -160,17 +240,28 @@ TEST_CASE("CPMDPot paramsKey follows the serialized params", "[cpmd][abi]") {
   REQUIRE(defaults.paramsKey() != b.paramsKey());
 }
 
-// selectOrbitals reaches the engine session before every force, so a
-// calculator that evaluates several images or beads in turn keeps each
-// one's orbitals apart. A pot that never names a key names none.
-TEST_CASE("CPMDPot names the orbital key before each force", "[cpmd][abi]") {
+// selectOrbitals applies immediately to a live session, so callers can
+// intentionally select several keys before the next force.
+TEST_CASE("CPMDPot applies orbital selection eagerly", "[cpmd][abi]") {
   rgpot::DynLib lib;
   const char *path = std::getenv("RGPOT_CPMD_ENGINE");
   REQUIRE(path != nullptr);
   lib.open(path);
   using KeyFn = long long (*)(void);
+  using OrbitalFn = double (*)(void);
+  using SelectFn = int (*)(void *, long long);
+  using LastErrorFn = const char *(*)(void);
   auto last_key = lib.sym<KeyFn>("cpmdc_fake_last_orbital_key");
+  auto last_initial_orbital =
+      lib.sym<OrbitalFn>("cpmdc_fake_last_initial_orbital_state");
+  auto last_final_orbital =
+      lib.sym<OrbitalFn>("cpmdc_fake_last_final_orbital_state");
+  auto raw_select = lib.sym<SelectFn>("cpmdc_session_select_orbitals");
+  auto raw_last_error = lib.sym<LastErrorFn>("cpmdc_last_error");
   constexpr long long kNone = -1000000;
+
+  REQUIRE(raw_select(nullptr, 0) == -1);
+  REQUIRE(std::string(raw_last_error()) == "null session");
 
   ::capnp::MallocMessageBuilder msg;
   auto p = msg.initRoot<::CPMDParams>();
@@ -188,17 +279,409 @@ TEST_CASE("CPMDPot names the orbital key before each force", "[cpmd][abi]") {
   (void)pot(positions, atmtypes, box);
   REQUIRE(last_key() == kNone);
 
+  // Refusing a key before any key was selected throws and leaves none selected.
+  REQUIRE_THROWS_WITH(pot.selectOrbitals(-99),
+                      "CPMD engine refused the orbital key");
+  REQUIRE(std::string(raw_last_error()) == "orbital key refused");
+  positions(0, 0) += 0.01;
+  (void)pot(positions, atmtypes, box);
+  REQUIRE(last_key() == kNone);
+
   for (long long key : {3LL, 0LL, 3LL, 41LL}) {
     pot.selectOrbitals(key);
+    REQUIRE(std::string(raw_last_error()).empty());
     positions(0, 0) += 0.01;
     (void)pot(positions, atmtypes, box);
     REQUIRE(last_key() == key);
   }
 
-  // The key survives a session recreated by new params.
+  // A rejected key leaves the live session's active key and the stored key
+  // re-applied to a new session unchanged.
+  REQUIRE_THROWS_WITH(pot.selectOrbitals(-99),
+                      "CPMD engine refused the orbital key");
+  REQUIRE(std::string(raw_last_error()) == "orbital key refused");
+  positions(0, 0) += 0.01;
+  (void)pot(positions, atmtypes, box);
+  REQUIRE(last_key() == 41);
   p.setCutOffRy(80.0);
   REQUIRE(pot.setParams(p.asReader()));
   positions(0, 0) += 0.01;
   (void)pot(positions, atmtypes, box);
   REQUIRE(last_key() == 41);
+
+  // select(seed), select(slot), then force(slot) starts from seed state.
+  constexpr long long seed = 7;
+  constexpr long long slot = 9;
+  pot.selectOrbitals(seed);
+  positions(0, 0) += 0.01;
+  (void)pot(positions, atmtypes, box);
+  const double seed_state = last_final_orbital();
+  pot.selectOrbitals(seed);
+  pot.selectOrbitals(slot);
+  positions(0, 0) += 0.01;
+  (void)pot(positions, atmtypes, box);
+  REQUIRE(last_key() == slot);
+  REQUIRE_THAT(last_initial_orbital(), WithinAbs(seed_state, 1e-12));
+}
+
+TEST_CASE("CPMDPot copies orbitals between keys", "[cpmd][abi]") {
+  rgpot::DynLib lib;
+  const char *path = std::getenv("RGPOT_CPMD_ENGINE");
+  REQUIRE(path != nullptr);
+  lib.open(path);
+  using OrbitalFn = double (*)(void);
+  auto last_initial_orbital =
+      lib.sym<OrbitalFn>("cpmdc_fake_last_initial_orbital_state");
+  auto last_final_orbital =
+      lib.sym<OrbitalFn>("cpmdc_fake_last_final_orbital_state");
+
+  ::capnp::MallocMessageBuilder msg;
+  auto p = msg.initRoot<::CPMDParams>();
+  p.setFunctional("BLYP");
+  p.setCutOffRy(70.0);
+  rgpot::CPMDPot pot(p.asReader());
+  REQUIRE(pot.available());
+  REQUIRE(pot.keepsOrbitalsPerKey());
+
+  rgpot::types::AtomMatrix positions = rgpot::types::AtomMatrix::Zero(1, 3);
+  std::vector<int> atmtypes{8};
+  std::array<std::array<double, 3>, 3> box = {
+      {{20.0, 0.0, 0.0}, {0.0, 21.0, 0.0}, {0.0, 0.0, 23.0}}};
+
+  constexpr long long seed = 101;
+  constexpr long long slot = 202;
+  pot.selectOrbitals(seed);
+  positions(0, 0) += 0.01;
+  (void)pot(positions, atmtypes, box);
+  const double seed_state = last_final_orbital();
+
+  pot.selectOrbitals(slot);
+  box[2][2] = 24.0;
+  positions(0, 0) += 0.01;
+  (void)pot(positions, atmtypes, box);
+  REQUIRE(last_final_orbital() != seed_state);
+
+  // Copying into the active slot refreshes the state used by the next force.
+  REQUIRE(pot.copyOrbitals(seed, slot));
+  box[2][2] = 23.0;
+  positions(0, 0) += 0.01;
+  (void)pot(positions, atmtypes, box);
+  REQUIRE_THAT(last_initial_orbital(), WithinAbs(seed_state, 1e-12));
+}
+
+// A refused key remembered before any session exists has to fail configure
+// without leaving that session up. The same params must try again.
+TEST_CASE("CPMDPot retries a refused orbital key on the same params",
+          "[cpmd][abi]") {
+  const char *raw = std::getenv("RGPOT_CPMD_ENGINE");
+  REQUIRE(raw != nullptr);
+  const std::string engine_path(raw);
+
+  RestoreEnv engine_env("RGPOT_CPMD_ENGINE");
+  RestoreEnv library_env("CPMDC_LIBRARY");
+  RestoreEnv alt_env("RGPOT_CPMDC_ENGINE");
+
+  rgpot::DynLib lib;
+  lib.open(engine_path);
+  using CountFn = int (*)(void);
+  using KeyFn = long long (*)(void);
+  auto creates = lib.sym<CountFn>("cpmdc_fake_session_create_count");
+  auto last_key = lib.sym<KeyFn>("cpmdc_fake_last_orbital_key");
+
+  engine_env.clear();
+  library_env.clear();
+  alt_env.clear();
+
+  ::capnp::MallocMessageBuilder msg;
+  auto p = msg.initRoot<::CPMDParams>();
+  p.setFunctional("BLYP");
+  p.setCutOffRy(70.0);
+  rgpot::CPMDPot pot(p.asReader());
+  REQUIRE_FALSE(pot.available());
+
+  // No live session, so the refusal is remembered for configure.
+  pot.selectOrbitals(-99);
+
+  p.setEnginePath(engine_path);
+  const int before = creates();
+  REQUIRE_FALSE(pot.setParams(p.asReader()));
+  REQUIRE(creates() == before + 1);
+  REQUIRE_FALSE(pot.available());
+
+  // Identical params must not take the live-session early return.
+  REQUIRE_FALSE(pot.setParams(p.asReader()));
+  REQUIRE(creates() == before + 2);
+  REQUIRE_FALSE(pot.available());
+
+  pot.selectOrbitals(41);
+  REQUIRE(pot.setParams(p.asReader()));
+  REQUIRE(pot.available());
+  REQUIRE(creates() == before + 3);
+  REQUIRE(pot.setParams(p.asReader()));
+  REQUIRE(creates() == before + 3);
+
+  rgpot::types::AtomMatrix positions = rgpot::types::AtomMatrix::Zero(1, 3);
+  std::vector<int> atmtypes{8};
+  std::array<std::array<double, 3>, 3> box = {
+      {{20.0, 0.0, 0.0}, {0.0, 21.0, 0.0}, {0.0, 0.0, 23.0}}};
+  (void)pot(positions, atmtypes, box);
+  REQUIRE(last_key() == 41);
+}
+
+TEST_CASE("CPMDPot force reports an orbital key refused at configure",
+          "[cpmd][abi]") {
+  const char *raw = std::getenv("RGPOT_CPMD_ENGINE");
+  REQUIRE(raw != nullptr);
+  const std::string engine_path(raw);
+
+  RestoreEnv engine_env("RGPOT_CPMD_ENGINE");
+  RestoreEnv library_env("CPMDC_LIBRARY");
+  RestoreEnv alt_env("RGPOT_CPMDC_ENGINE");
+
+  engine_env.clear();
+  library_env.clear();
+  alt_env.clear();
+
+  ::capnp::MallocMessageBuilder msg;
+  auto p = msg.initRoot<::CPMDParams>();
+  p.setFunctional("BLYP");
+  p.setCutOffRy(70.0);
+  rgpot::CPMDPot pot(p.asReader());
+
+  pot.selectOrbitals(-99);
+  p.setEnginePath(engine_path);
+  REQUIRE_FALSE(pot.setParams(p.asReader()));
+  REQUIRE_FALSE(pot.available());
+
+  rgpot::types::AtomMatrix positions = rgpot::types::AtomMatrix::Zero(1, 3);
+  std::vector<int> atmtypes{8};
+  std::array<std::array<double, 3>, 3> box = {
+      {{20.0, 0.0, 0.0}, {0.0, 21.0, 0.0}, {0.0, 0.0, 23.0}}};
+  REQUIRE_THROWS_WITH(
+      pot(positions, atmtypes, box),
+      "CPMD engine refused the orbital key: orbital key refused");
+}
+
+// configure drops the session when the engine refuses the remembered key,
+// but the engine stays loaded. The config message has to say the embed
+// rejected the params, and keep "engine not loaded" for a missing engine.
+TEST_CASE("CPMDPot setPotentialConfig reports an orbital key refusal",
+          "[cpmd][abi]") {
+  const char *raw = std::getenv("RGPOT_CPMD_ENGINE");
+  REQUIRE(raw != nullptr);
+  const std::string engine_path(raw);
+
+  RestoreEnv engine_env("RGPOT_CPMD_ENGINE");
+  RestoreEnv library_env("CPMDC_LIBRARY");
+  RestoreEnv alt_env("RGPOT_CPMDC_ENGINE");
+
+  engine_env.clear();
+  library_env.clear();
+  alt_env.clear();
+
+  ::capnp::MallocMessageBuilder msg;
+  auto p = msg.initRoot<::CPMDParams>();
+  p.setFunctional("BLYP");
+  p.setCutOffRy(70.0);
+  rgpot::CPMDPot pot(p.asReader());
+  REQUIRE_FALSE(pot.available());
+
+  ::capnp::MallocMessageBuilder cfg_msg;
+  auto cfg = cfg_msg.initRoot<::PotentialConfig>();
+  auto cp = cfg.initCpmd();
+  cp.setFunctional("BLYP");
+  cp.setCutOffRy(70.0);
+  cp.setEnginePath("/nonexistent/libcpmdc.so");
+
+  std::string message;
+  REQUIRE_FALSE(pot.setPotentialConfig(cfg.asReader(), &message));
+  REQUIRE(message == "rgpot params cpmd arm failed (engine not loaded): "
+                     "functional=BLYP cutoffRy=70.000000 charge=0 mult=1 "
+                     "enginePath=/nonexistent/libcpmdc.so");
+
+  pot.selectOrbitals(-99);
+  cp.setEnginePath(engine_path);
+  REQUIRE_FALSE(pot.setPotentialConfig(cfg.asReader(), &message));
+  REQUIRE_FALSE(pot.available());
+  const std::string rejected =
+      "rgpot params cpmd arm rejected by embed: functional=BLYP "
+      "cutoffRy=70.000000 charge=0 mult=1 enginePath=" +
+      engine_path +
+      " (CPMD engine refused the orbital key: orbital key refused)";
+  REQUIRE(message == rejected);
+
+  pot.selectOrbitals(41);
+  REQUIRE(pot.setPotentialConfig(cfg.asReader(), &message));
+  REQUIRE(pot.available());
+}
+
+TEST_CASE("CPMDPot setPotentialConfig reports a session-create refusal reason",
+          "[cpmd][abi]") {
+  const char *path = std::getenv("RGPOT_CPMD_ENGINE");
+  REQUIRE(path != nullptr);
+
+  rgpot::DynLib lib;
+  lib.open(path);
+  using SetCreateFailFn = void (*)(int, const char *);
+  auto set_create_fail =
+      lib.sym<SetCreateFailFn>("cpmdc_fake_set_session_create_failure");
+  set_create_fail(0, nullptr);
+
+  ::capnp::MallocMessageBuilder msg;
+  auto p = msg.initRoot<::CPMDParams>();
+  p.setFunctional("BLYP");
+  p.setCutOffRy(70.0);
+  rgpot::CPMDPot pot(p.asReader());
+  REQUIRE(pot.available());
+
+  ::capnp::MallocMessageBuilder cfg_msg;
+  auto cfg = cfg_msg.initRoot<::PotentialConfig>();
+  auto cp = cfg.initCpmd();
+  cp.setFunctional("BLYP");
+  cp.setCutOffRy(80.0);
+  cp.setEnginePath(path);
+
+  set_create_fail(1, "fake refused params");
+  std::string message;
+  REQUIRE_FALSE(pot.setPotentialConfig(cfg.asReader(), &message));
+  REQUIRE(message ==
+          std::string("rgpot params cpmd arm rejected by embed: "
+                      "functional=BLYP cutoffRy=80.000000 charge=0 mult=1 "
+                      "enginePath=") +
+              path +
+              " (CPMD engine refused the session create: fake refused params)");
+  set_create_fail(0, nullptr);
+}
+
+TEST_CASE("CPMDPot setPotentialConfig reports a session-create refusal "
+          "with an empty reason",
+          "[cpmd][abi]") {
+  const char *path = std::getenv("RGPOT_CPMD_ENGINE");
+  REQUIRE(path != nullptr);
+
+  rgpot::DynLib lib;
+  lib.open(path);
+  using SetCreateFailFn = void (*)(int, const char *);
+  auto set_create_fail =
+      lib.sym<SetCreateFailFn>("cpmdc_fake_set_session_create_failure");
+  using LastErrorFn = const char *(*)(void);
+  auto last_error = lib.sym<LastErrorFn>("cpmdc_last_error");
+  set_create_fail(0, nullptr);
+
+  ::capnp::MallocMessageBuilder msg;
+  auto p = msg.initRoot<::CPMDParams>();
+  p.setFunctional("BLYP");
+  p.setCutOffRy(70.0);
+  rgpot::CPMDPot pot(p.asReader());
+  REQUIRE(pot.available());
+
+  ::capnp::MallocMessageBuilder cfg_msg;
+  auto cfg = cfg_msg.initRoot<::PotentialConfig>();
+  auto cp = cfg.initCpmd();
+  cp.setFunctional("BLYP");
+  cp.setCutOffRy(80.0);
+  cp.setEnginePath(path);
+
+  // An earlier refusal with a reason must not leak into this one.
+  set_create_fail(1, "fake refused params");
+  std::string message;
+  REQUIRE_FALSE(pot.setPotentialConfig(cfg.asReader(), &message));
+
+  set_create_fail(1, "");
+  message.clear();
+  REQUIRE_FALSE(pot.setPotentialConfig(cfg.asReader(), &message));
+  REQUIRE(std::string(last_error()).empty());
+  REQUIRE(message ==
+          std::string("rgpot params cpmd arm rejected by embed: "
+                      "functional=BLYP cutoffRy=80.000000 charge=0 mult=1 "
+                      "enginePath=") +
+              path + " (CPMD engine refused the session create)");
+  REQUIRE_FALSE(pot.available());
+
+  set_create_fail(0, nullptr);
+  REQUIRE(pot.setPotentialConfig(cfg.asReader(), &message));
+  REQUIRE(pot.available());
+}
+
+TEST_CASE("CPMDPot rejects a copy onto a refused orbital key", "[cpmd][abi]") {
+  rgpot::DynLib lib;
+  const char *path = std::getenv("RGPOT_CPMD_ENGINE");
+  REQUIRE(path != nullptr);
+  lib.open(path);
+  using OrbitalFn = double (*)(void);
+  auto last_initial_orbital =
+      lib.sym<OrbitalFn>("cpmdc_fake_last_initial_orbital_state");
+  auto last_final_orbital =
+      lib.sym<OrbitalFn>("cpmdc_fake_last_final_orbital_state");
+
+  ::capnp::MallocMessageBuilder msg;
+  auto p = msg.initRoot<::CPMDParams>();
+  p.setFunctional("BLYP");
+  p.setCutOffRy(70.0);
+  rgpot::CPMDPot pot(p.asReader());
+  REQUIRE(pot.available());
+  REQUIRE(pot.keepsOrbitalsPerKey());
+
+  rgpot::types::AtomMatrix positions = rgpot::types::AtomMatrix::Zero(1, 3);
+  std::vector<int> atmtypes{8};
+  std::array<std::array<double, 3>, 3> box = {
+      {{20.0, 0.0, 0.0}, {0.0, 21.0, 0.0}, {0.0, 0.0, 23.0}}};
+
+  constexpr long long seed = 11;
+  pot.selectOrbitals(seed);
+  (void)pot(positions, atmtypes, box);
+  const double seed_state = last_final_orbital();
+
+  REQUIRE_FALSE(pot.copyOrbitals(seed, -99));
+  REQUIRE_FALSE(pot.copyOrbitals(-99, 12));
+
+  box[2][2] = 24.0;
+  (void)pot(positions, atmtypes, box);
+  REQUIRE_THAT(last_initial_orbital(), WithinAbs(seed_state, 1e-12));
+}
+
+// Naming a key does not store orbitals. Only a converged evaluation does,
+// so a later visit still starts from the orbitals already stored.
+TEST_CASE("CPMDPot does not store an orbital key before it converges",
+          "[cpmd][abi]") {
+  rgpot::DynLib lib;
+  const char *path = std::getenv("RGPOT_CPMD_ENGINE");
+  REQUIRE(path != nullptr);
+  lib.open(path);
+  using OrbitalFn = double (*)(void);
+  auto last_initial_orbital =
+      lib.sym<OrbitalFn>("cpmdc_fake_last_initial_orbital_state");
+  auto last_final_orbital =
+      lib.sym<OrbitalFn>("cpmdc_fake_last_final_orbital_state");
+
+  ::capnp::MallocMessageBuilder msg;
+  auto p = msg.initRoot<::CPMDParams>();
+  p.setFunctional("BLYP");
+  p.setCutOffRy(70.0);
+  rgpot::CPMDPot pot(p.asReader());
+  REQUIRE(pot.available());
+
+  rgpot::types::AtomMatrix positions = rgpot::types::AtomMatrix::Zero(1, 3);
+  std::vector<int> atmtypes{8};
+  std::array<std::array<double, 3>, 3> box = {
+      {{20.0, 0.0, 0.0}, {0.0, 21.0, 0.0}, {0.0, 0.0, 23.0}}};
+
+  constexpr long long held = 1;
+  constexpr long long fresh = 2;
+  pot.selectOrbitals(held);
+  (void)pot(positions, atmtypes, box);
+  const double first = last_final_orbital();
+
+  pot.selectOrbitals(held);
+  pot.selectOrbitals(fresh);
+  pot.selectOrbitals(held);
+  box[2][2] = 24.0;
+  (void)pot(positions, atmtypes, box);
+  const double second = last_final_orbital();
+  REQUIRE(second != first);
+
+  pot.selectOrbitals(fresh);
+  box[2][2] = 23.0;
+  (void)pot(positions, atmtypes, box);
+  REQUIRE_THAT(last_initial_orbital(), WithinAbs(second, 1e-12));
 }

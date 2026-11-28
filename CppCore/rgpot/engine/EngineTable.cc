@@ -3,12 +3,17 @@
 
 #include "rgpot/engine_c_abi.h"
 
+#include "rgpot/GradientJet.hpp"
 #include "rgpot/engine/EngineTable.hpp"
 #include "rgpot/engine/Sha256.hpp"
 
+#include <algorithm>
+#include <atomic>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <exception>
+#include <limits>
 #include <mutex>
 #include <string>
 #include <vector>
@@ -75,6 +80,9 @@ void copy_message(const std::string &message, char *buf, size_t len) {
 } // namespace
 
 struct RgpotEnginePot {
+#ifdef RGPOT_HAS_CACHE
+  std::unique_ptr<rgpot::cache::PotentialCache> cache;
+#endif
   std::unique_ptr<rgpot::engine::Backend> backend;
   rgpot::PotCaps caps;
 
@@ -83,6 +91,8 @@ struct RgpotEnginePot {
 
   /// Serializes calls on this handle when the backend is not shared.
   std::mutex call_mutex;
+  /// Atom count of the last successful force call, for the component record.
+  std::atomic<long> last_atoms{0};
 
   mutable std::mutex digest_mutex;
   mutable bool digest_done = false;
@@ -113,6 +123,10 @@ struct RgpotEnginePot {
 };
 
 namespace {
+
+const rgpot::GradientJet *gradient_jet(const RgpotEnginePot *pot) {
+  return dynamic_cast<const rgpot::GradientJet *>(pot->backend->pot.get());
+}
 
 int fail(RgpotEnginePot *pot, int code, const std::string &message) {
   if (code == 2) {
@@ -175,6 +189,54 @@ RgpotEnginePot *rgpot_engine_create(const void *config, size_t config_len,
 
 void rgpot_engine_destroy(RgpotEnginePot *pot) { delete pot; }
 
+int rgpot_engine_set_cache(RgpotEnginePot *pot, const char *path) {
+  if (!pot || (path && !*path)) {
+    return fail(pot, 1, "invalid result cache argument");
+  }
+  if (path && pot->backend->components) {
+    return fail(pot, RGPOT_ENGINE_ERR_UNSUPPORTED,
+                "the result cache does not store per-term component records");
+  }
+#ifdef RGPOT_HAS_CACHE
+  try {
+    std::unique_ptr<rgpot::cache::PotentialCache> cache;
+    if (path) {
+      cache = std::make_unique<rgpot::cache::PotentialCache>(path);
+      if (!cache->is_open()) {
+        return fail(pot, 2, std::string("cannot open result cache: ") + path);
+      }
+    }
+    pot->backend->pot->setCache(cache.get());
+    pot->cache = std::move(cache);
+    pot->clear_error();
+    return 0;
+  } catch (const std::exception &e) {
+    return fail(pot, 2, e.what());
+  } catch (...) {
+    return fail(pot, 2, "unknown result cache error");
+  }
+#else
+  return fail(pot, 3, "result cache support is disabled");
+#endif
+}
+
+int rgpot_engine_cache_counts(RgpotEnginePot *pot, uint64_t *computed,
+                              uint64_t *served) {
+  if (!pot || !computed || !served) {
+    return fail(pot, 1, "invalid result count argument");
+  }
+#ifdef RGPOT_HAS_CACHE
+  if (pot->cache) {
+    const auto counts = pot->cache->counts();
+    *computed = counts.computed;
+    *served = counts.served;
+    pot->clear_error();
+    return 0;
+  }
+#endif
+  return fail(pot, 3, "no result cache attached");
+}
+
 int rgpot_engine_force(RgpotEnginePot *pot, long nAtoms,
                        const double *positions, const int *atomicNrs,
                        double *forces, double *energy, double *variance,
@@ -210,12 +272,132 @@ int rgpot_engine_force(RgpotEnginePot *pot, long nAtoms,
       *variance = out.variance;
     }
     std::memcpy(forces, Fbuf.data(), Fbuf.size() * sizeof(double));
+    pot->last_atoms = nAtoms;
     pot->clear_error();
     return 0;
   } catch (const std::exception &e) {
     return fail(pot, 2, e.what());
   } catch (...) {
     return fail(pot, 2, "unknown exception");
+  }
+}
+
+int rgpot_engine_hvp(RgpotEnginePot *pot, long nAtoms,
+                     const double *positions, const int *atomicNrs,
+                     const double *direction, double *hv_out,
+                     const double *box) {
+  if (!pot || !pot->backend) {
+    return RGPOT_ENGINE_ERR_INVALID;
+  }
+  if (!pot->caps.analyticHvp) {
+    return fail(pot, RGPOT_ENGINE_ERR_UNSUPPORTED,
+                "potential has no analytic Hessian-vector product");
+  }
+  if (!positions || !atomicNrs || !direction || !hv_out || !box ||
+      nAtoms <= 0 ||
+      static_cast<unsigned long>(nAtoms) >
+          std::numeric_limits<size_t>::max() / (3 * sizeof(double))) {
+    return fail(pot, RGPOT_ENGINE_ERR_INVALID, "invalid HVP argument");
+  }
+  const auto db = reinterpret_cast<std::uintptr_t>(direction);
+  const auto hb = reinterpret_cast<std::uintptr_t>(hv_out);
+  const std::uintptr_t bytes =
+      static_cast<std::uintptr_t>(nAtoms) * 3 * sizeof(double);
+  const auto overlaps = [hb, bytes](const void *input,
+                                    std::uintptr_t inputBytes) {
+    const auto begin = reinterpret_cast<std::uintptr_t>(input);
+    return hb < begin + inputBytes && begin < hb + bytes;
+  };
+  if (overlaps(direction, bytes) || overlaps(positions, bytes) ||
+      overlaps(atomicNrs, static_cast<std::uintptr_t>(nAtoms) * sizeof(int)) ||
+      overlaps(box, 9 * sizeof(double))) {
+    return fail(pot, RGPOT_ENGINE_ERR_INVALID,
+                "HVP output overlaps an input buffer");
+  }
+  try {
+    RgpotEnginePot::CallGuard guard(*pot);
+    SoftGilRelease no_gil;
+    const rgpot::ForceInput in{static_cast<size_t>(nAtoms),
+                               positions, atomicNrs, box};
+    pot->backend->pot->hessianVectorImpl(in, direction, hv_out);
+    pot->clear_error();
+    return RGPOT_ENGINE_OK;
+  } catch (const std::exception &e) {
+    return fail(pot, RGPOT_ENGINE_ERR_EVAL, e.what());
+  } catch (...) {
+    return fail(pot, RGPOT_ENGINE_ERR_EVAL, "unknown exception");
+  }
+}
+
+int rgpot_engine_taylor_jet(RgpotEnginePot *pot, long nSystems, long nAtoms,
+                            const double *positions, const int *atomicNrs,
+                            const double *directions, long order,
+                            double *jet_out,
+                            RgpotEngineDerivativeReport *report,
+                            const double *boxes) {
+  if (!pot || !pot->backend) {
+    return RGPOT_ENGINE_ERR_INVALID;
+  }
+  const rgpot::GradientJet *jet = gradient_jet(pot);
+  if (!jet) {
+    return fail(pot, RGPOT_ENGINE_ERR_UNSUPPORTED,
+                "potential has no gradient jet");
+  }
+  if (!positions || !atomicNrs || !directions || !jet_out || !boxes ||
+      nAtoms <= 0 || nSystems <= 0 || order < 1) {
+    return fail(pot, RGPOT_ENGINE_ERR_INVALID, "invalid jet argument");
+  }
+  if (order > jet->maxJetOrder()) {
+    return fail(pot, RGPOT_ENGINE_ERR_UNSUPPORTED,
+                "jet order " + std::to_string(order) +
+                    " exceeds the highest supported order " +
+                    std::to_string(jet->maxJetOrder()));
+  }
+  const auto limit = std::numeric_limits<size_t>::max() / sizeof(double);
+  const auto atoms = static_cast<size_t>(nAtoms);
+  const auto systems = static_cast<size_t>(nSystems);
+  if (atoms > limit / 3 || systems > limit / 9 / 3 / atoms / static_cast<size_t>(order)) {
+    return fail(pot, RGPOT_ENGINE_ERR_INVALID, "invalid jet argument");
+  }
+  const std::uintptr_t block = systems * atoms * 3 * sizeof(double);
+  const std::uintptr_t jet_bytes = block * static_cast<std::uintptr_t>(order);
+  const auto jb = reinterpret_cast<std::uintptr_t>(jet_out);
+  const auto overlaps = [jb, jet_bytes](const void *input,
+                                        std::uintptr_t inputBytes) {
+    const auto begin = reinterpret_cast<std::uintptr_t>(input);
+    return jb < begin + inputBytes && begin < jb + jet_bytes;
+  };
+  const auto rb = reinterpret_cast<std::uintptr_t>(report);
+  if (overlaps(directions, block) || overlaps(positions, block) ||
+      overlaps(atomicNrs, atoms * sizeof(int)) ||
+      overlaps(boxes, systems * 9 * sizeof(double)) ||
+      (report && overlaps(report, sizeof(*report))) ||
+      (report && rb % alignof(RgpotEngineDerivativeReport) != 0)) {
+    return fail(pot, RGPOT_ENGINE_ERR_INVALID,
+                "jet output overlaps an input buffer");
+  }
+  try {
+    RgpotEnginePot::CallGuard guard(*pot);
+    SoftGilRelease no_gil;
+    // A backend may write part of its buffer and then throw. Hold the jet
+    // until the call returns, so jet_out and report stay byte-identical on
+    // any failure.
+    std::vector<double> scratch(jet_bytes / sizeof(double));
+    const rgpot::DerivativeReport measured =
+        jet->gradientJet(systems, atoms, positions, atomicNrs, boxes,
+                         directions, static_cast<int>(order), scratch.data());
+    std::memcpy(jet_out, scratch.data(), jet_bytes);
+    if (report) {
+      report->tracked = measured.tracked ? 1 : 0;
+      report->operations = measured.tracked ? measured.operations : 0;
+      report->scale = measured.tracked ? measured.scale : 0.0;
+    }
+    pot->clear_error();
+    return RGPOT_ENGINE_OK;
+  } catch (const std::exception &e) {
+    return fail(pot, RGPOT_ENGINE_ERR_EVAL, e.what());
+  } catch (...) {
+    return fail(pot, RGPOT_ENGINE_ERR_EVAL, "unknown exception");
   }
 }
 
@@ -264,6 +446,7 @@ int rgpot_engine_force_batch(RgpotEnginePot *pot, long nSystems, long nAtoms,
         variances[i] = out[i].variance;
       }
     }
+    pot->last_atoms = nAtoms;
     pot->clear_error();
     return 0;
   } catch (const std::exception &e) {
@@ -273,21 +456,14 @@ int rgpot_engine_force_batch(RgpotEnginePot *pot, long nSystems, long nAtoms,
   }
 }
 
-RgpotEngineAbiStamp rgpot_engine_abi_stamp(void) {
-  RgpotEngineAbiStamp stamp;
-  stamp.abi_major = RGPOT_ENGINE_ABI_VERSION;
-  stamp.abi_minor = RGPOT_ENGINE_ABI_MINOR;
-  stamp.layout_revision = RGPOT_ENGINE_ABI_LAYOUT_REVISION;
-  return stamp;
-}
-
-int rgpot_engine_abi_compatible(const RgpotEngineAbiStamp *stamp) {
-  if (!stamp) {
+int rgpot_engine_abi_compatible(const RgpotEngineAbiStamp *host_stamp) {
+  if (!host_stamp) {
     return 0;
   }
-  return stamp->abi_major == RGPOT_ENGINE_ABI_VERSION &&
-                 stamp->layout_revision == RGPOT_ENGINE_ABI_LAYOUT_REVISION &&
-                 stamp->abi_minor <= RGPOT_ENGINE_ABI_MINOR
+  return host_stamp->abi_major == RGPOT_ENGINE_ABI_VERSION &&
+                 host_stamp->layout_revision ==
+                     RGPOT_ENGINE_ABI_LAYOUT_REVISION &&
+                 RGPOT_ENGINE_ABI_MINOR <= host_stamp->abi_minor
              ? 1
              : 0;
 }
@@ -305,6 +481,12 @@ int rgpot_engine_caps(const RgpotEnginePot *pot, RgpotEngineCaps *out) {
   filled.periodic = pot->caps.periodic ? 1 : 0;
   filled.stress = pot->caps.stress ? 1 : 0;
   filled.group_collective = pot->caps.groupCollective ? 1 : 0;
+  filled.orbital_selection = pot->backend->select_orbitals ? 1 : 0;
+  filled.orbital_copy = pot->backend->copy_orbitals ? 1 : 0;
+  filled.analytic_hvp = pot->caps.analyticHvp ? 1 : 0;
+  if (const rgpot::GradientJet *jet = gradient_jet(pot)) {
+    filled.jet_order = jet->maxJetOrder();
+  }
   // The host's struct may be older (smaller) than this engine's: write only
   // the bytes it announced room for.
   const unsigned room = out->size < sizeof(filled) ? out->size : sizeof(filled);
@@ -363,7 +545,7 @@ int rgpot_engine_set_num_threads(RgpotEnginePot *pot, int intra_op,
 }
 
 int rgpot_engine_set_charge_spin(RgpotEnginePot *pot, int charge, int spin) {
-  if (!pot || !pot->backend || spin < 1) {
+  if (!pot || !pot->backend || spin < 0) {
     return 1;
   }
   if (!pot->backend->set_charge_spin) {
@@ -380,6 +562,102 @@ int rgpot_engine_set_charge_spin(RgpotEnginePot *pot, int charge, int spin) {
   } catch (...) {
     return fail(pot, 2, "unknown exception");
   }
+}
+
+int rgpot_engine_select_orbitals(RgpotEnginePot *pot, long long key) {
+  if (!pot || !pot->backend) {
+    return 1;
+  }
+  if (!pot->backend->select_orbitals) {
+    return fail(pot, 3, "backend has no orbital selection");
+  }
+  try {
+    pot->backend->select_orbitals(key);
+    pot->clear_error();
+    return 0;
+  } catch (const rgpot::engine::Unsupported &e) {
+    return fail(pot, 3, e.what());
+  } catch (const std::exception &e) {
+    return fail(pot, 2, e.what());
+  } catch (...) {
+    return fail(pot, 2, "unknown exception");
+  }
+}
+
+int rgpot_engine_copy_orbitals(RgpotEnginePot *pot, long long from_key,
+                               long long to_key) {
+  if (!pot || !pot->backend) {
+    return 1;
+  }
+  if (!pot->backend->copy_orbitals) {
+    return fail(pot, 3, "backend has no orbital copy");
+  }
+  try {
+    pot->backend->copy_orbitals(from_key, to_key);
+    pot->clear_error();
+    return 0;
+  } catch (const rgpot::engine::Unsupported &e) {
+    return fail(pot, 3, e.what());
+  } catch (const std::exception &e) {
+    return fail(pot, 2, e.what());
+  } catch (...) {
+    return fail(pot, 2, "unknown exception");
+  }
+}
+
+long rgpot_engine_last_components(const RgpotEnginePot *pot,
+                                  RgpotEngineComponent *out, double *forces,
+                                  long capacity) {
+  if (!pot || !pot->backend) {
+    return -1;
+  }
+  if (!pot->backend->components) {
+    return 0;
+  }
+  std::lock_guard<std::mutex> lock(const_cast<RgpotEnginePot *>(pot)->call_mutex);
+  const auto &components = pot->backend->components();
+  const long total = static_cast<long>(components.size());
+  if (!out || capacity <= 0) {
+    return total;
+  }
+  const long n = capacity < total ? capacity : total;
+  const std::size_t width = 3 * static_cast<std::size_t>(pot->last_atoms.load());
+  for (long i = 0; i < n; ++i) {
+    const rgpot::SumComponent &c = components[static_cast<std::size_t>(i)];
+    RgpotEngineComponent &o = out[i];
+    std::memset(&o, 0, sizeof(o));
+    o.weight = c.weight;
+    o.energy = c.energy;
+    o.enabled = c.enabled ? 1 : 0;
+    o.evaluated = c.evaluated ? 1 : 0;
+    o.has_stress = c.has_stress ? 1 : 0;
+    std::memcpy(o.stress, c.stress.data(), sizeof(o.stress));
+    if (forces) {
+      double *dst = forces + static_cast<std::size_t>(i) * width;
+      std::fill(dst, dst + width, 0.0);
+      if (c.forces.size() == width) {
+        std::copy(c.forces.begin(), c.forces.end(), dst);
+      }
+    }
+  }
+  return total;
+}
+
+size_t rgpot_engine_component_name(const RgpotEnginePot *pot, long index,
+                                   char *buf, size_t len) {
+  if (!pot || !pot->backend || !pot->backend->components || index < 0) {
+    copy_message("", buf, len);
+    return 0;
+  }
+  std::lock_guard<std::mutex> lock(const_cast<RgpotEnginePot *>(pot)->call_mutex);
+  const auto &components = pot->backend->components();
+  if (static_cast<std::size_t>(index) >= components.size()) {
+    copy_message("", buf, len);
+    return 0;
+  }
+  const std::string &name = components[static_cast<std::size_t>(index)].name;
+  copy_message(name, buf, len);
+  return name.size();
 }
 
 } // extern "C"

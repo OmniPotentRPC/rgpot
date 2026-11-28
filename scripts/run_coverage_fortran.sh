@@ -19,20 +19,35 @@ if [[ ! -d "$BUILD" ]]; then
   exit 1
 fi
 
-# lcov 2 reports template instances in toolchain headers as inconsistent;
-# that one class is tolerated, every other lcov error fails the script.
+# Same lcov 2 ignore-errors classes as scripts/run_coverage_cpp.sh; lcov 1.15
+# does not accept those names. Branch coverage rc names also differ by major
+# version, matching the C++ capture script so Codecov keeps BRDA on Ubuntu's
+# lcov 1.15 (inconsistent/mismatch/negative only on 2.x):
+#   inconsistent: template instances in toolchain headers
+#   mismatch: mismatched exception tag, bits/vector.tcc
+#   negative: non-atomic OpenMP arc counters
 LCOV_MAJOR=$(lcov --version | sed -n 's/.*LCOV version \([0-9][0-9]*\)\..*/\1/p')
 LCOV_ARGS=()
 if [[ "${LCOV_MAJOR:-0}" -ge 2 ]]; then
-  LCOV_ARGS+=(--ignore-errors inconsistent)
+  LCOV_ARGS+=(--ignore-errors "inconsistent,mismatch,negative")
+  LCOV_ARGS+=(--rc branch_coverage=1)
+else
+  LCOV_ARGS+=(--rc lcov_branch_coverage=1)
 fi
 
 echo "==> extract Fortran kernels from meson coverage tree $BUILD"
-RAW=$(mktemp)
-trap 'rm -f "$RAW"' EXIT
+TMP_DIR=$(mktemp -d)
+RAW="$TMP_DIR/fortran.info"
+cleanup_tmp() {
+  rm -f -- "$RAW"
+  rmdir -- "$TMP_DIR"
+}
+trap cleanup_tmp EXIT
 lcov --directory "$BUILD" --capture --output-file "$RAW" "${LCOV_ARGS[@]}"
 lcov --extract "$RAW" '*/CppCore/rgpot/fortran/*' \
   --output-file "$OUT" "${LCOV_ARGS[@]}"
+cleanup_tmp
+trap - EXIT
 
 test -s "$OUT"
 python3 - "$OUT" <<'PY'

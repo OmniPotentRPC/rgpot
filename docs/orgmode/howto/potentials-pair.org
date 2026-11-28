@@ -1,0 +1,1138 @@
+#+COMMENT: Copyright 2023--present rgpot developers
+#+TITLE: Pair and shifted potentials
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+#+STARTUP: content
+
+* Pair and shifted potentials
+
+This page covers the classical pair potentials of rgpot and the three host
+wrappers around the shifted Lennard-Jones form.
+=LJ=, =LJCluster=, =Morse=, =ZBL= and =SuttonChen= are C++ kernels in
+=CppCore/rgpot/=.
+=Lammps=, =Gromacs= and =OpenMM= are the shifted Lennard-Jones potential seen
+through a molecular dynamics engine, in that engine's units where it has any.
+Each section gives the functional form read from the kernel, every parameter
+with its source, a program that runs against the library, and the literature.
+Constructors, configuration structs and error cases are listed in
+[[file:../reference/cpp_potentials.org][C++ potentials]].
+The names that
+=pair_coeff=, PLUMED and =rgpot-eval= accept are in [[file:../reference/potential_names.org][Potential
+names]].
+Energies are eV, lengths are Angstrom, forces are
+eV/Angstrom and stresses are eV/Angstrom^3 unless a section says otherwise.
+
+** =LJ= Lennard-Jones pair potential
+
+*** What it is and how to reach it
+
+=LJ= is the 12-6 Lennard-Jones potential, cut and shifted at a cutoff, with the
+minimum image convention in all three directions.
+Use it for noble-gas style systems and as a stiff, cheap reference pair
+potential in periodic cells.
+In C++ it is =rgpot::LJPot=, built from =rgpot::LJConfig= (header
+=CppCore/rgpot/LennardJones/LJPot.hpp=).
+In Python it is =rgpot.LJPot(u0, cutoff, psi, switch_width)=.
+=pair_coeff * * LJ=, the PLUMED action and =rgpot-eval LJ= take the options =u0=, =psi=, =cutoff= and =switch_width=.
+=potserv <port> LJ= serves the default configuration.
+The constructors and their errors are in the
+[[file:../reference/cpp_potentials.org][C++ potentials]] reference, the option
+names in [[file:../reference/potential_names.org][Potential names]].
+
+*** Functional form
+
+With =r= the pair distance, the kernel in =CppCore/rgpot/LennardJones/LJPot.cc=
+computes, for every pair with =r= up to the cutoff:
+
+- the bare pair energy =v(r) = 4 u0 [(psi/r)^12 - (psi/r)^6]=, evaluated as
+  =4 u0 a (a - 1)= with =a = (psi^2 / r^2)^3=;
+- with =switch_width= 0, the pair energy =v(r) - v(cutoff)=, so the energy is
+  zero at the cutoff and the force jumps there;
+- with =switch_width= =w= above 0, the pair energy =v(r) S(t)= and no shift,
+  where =t = clamp((r - (cutoff - w)) / w, 0, 1)= and
+  =S(t) = 1 - 10 t^3 + 15 t^4 - 6 t^5= (the C^2 quintic of
+  =CppCore/rgpot/PairSwitch.hpp=);
+- the force on atom =i= along =d = r_i - r_j= is =fscale * d= with
+  =fscale = 24 u0 a (2 a - 1) / r^2=; with the switch on, =fscale= is that value
+  times =S(t)= minus =v(r) S'(r) / r=, where =S'= is the derivative of =S= with
+  respect to =r=.
+
+Pairs beyond the cutoff contribute nothing.
+The cell must be given, since every pair uses its minimum image.
+The call writes the stress.
+Atomic numbers are not read.
+
+*** Parameters
+
+| Parameter      | Value | Unit     | Where it is set                 |
+|----------------+-------+----------+---------------------------------|
+| =u0=           |   1.0 | eV       | =LJConfig::u0=                  |
+| =psi=          |   1.0 | Angstrom | =LJConfig::psi=                 |
+| =cutoff=       |  15.0 | Angstrom | =LJConfig::cutoff=              |
+| =switch_width= |   0.0 | Angstrom | =LJConfig::switch_width=        |
+
+The values are the defaults of =LJConfig= in
+=CppCore/rgpot/LennardJones/LJPot.hpp=.
+Each field has an option of the same name in
+=pair_coeff= and =rgpot-eval= (=engines/pot_spec.cpp=), where =cutoff= defaults
+to the host's cutoff.
+=u0= is the well depth, =psi= the zero crossing, so the unshifted minimum is at
+=2^(1/6) psi= and has depth =u0=.
+The defaults are reduced units, not a fitted material.
+No paper supplies them: they are a convention of the code.
+The program below passes its own values (=u0= 0.0104 eV, =psi= 3.40 Angstrom,
+=cutoff= 8.5 Angstrom), which are the numbers of the LAMMPS input in
+[[file:engine-lammps.org][LAMMPS]] and are not a cited argon fit.
+
+*** Example
+
+The program evaluates one dimer at four separations with the shifted and the
+switched kernel, next to the bare pair energy computed from the formula above.
+The switch starts at 6.5 Angstrom, so the first two rows are unchanged by it and
+the last row is almost zero.
+
+#+attr_rgpot: run link=rgpot
+#+begin_src cpp
+#include <cmath>
+#include <cstdio>
+
+#include "rgpot/LennardJones/LJPot.hpp"
+
+int main() {
+  const double u0 = 0.0104;
+  const double psi = 3.40;
+  const double cutoff = 8.5;
+  rgpot::LJPot shifted({.u0 = u0, .cutoff = cutoff, .psi = psi});
+  rgpot::LJPot switched(
+      {.u0 = u0, .cutoff = cutoff, .psi = psi, .switch_width = 2.0});
+
+  const int z[2] = {18, 18};
+  const double box[9] = {40.0, 0.0, 0.0, 0.0, 40.0, 0.0, 0.0, 0.0, 40.0};
+  const double rmin = std::pow(2.0, 1.0 / 6.0) * psi;
+  const double rs[4] = {rmin, 6.0, 7.5, 8.4};
+
+  std::printf("   r (A)   bare (eV)  shifted (eV)  switched (eV)\n");
+  for (const double r : rs) {
+    const double pos[6] = {0.0, 0.0, 0.0, r, 0.0, 0.0};
+    double forces[6] = {};
+    rgpot::ForceInput in{2, pos, z, box};
+    rgpot::ForceOut out{};
+    out.F = forces;
+    shifted.forceImpl(in, &out);
+    const double e_shift = out.energy;
+    switched.forceImpl(in, &out);
+    const double s6 = std::pow(psi / r, 6.0);
+    std::printf("%8.4f %11.6f %13.6f %14.6f\n", r, 4.0 * u0 * s6 * (s6 - 1.0),
+                e_shift, out.energy);
+  }
+  return 0;
+}
+#+end_src
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+   r (A)   bare (eV)  shifted (eV)  switched (eV)
+  3.8164   -0.010400     -0.010230      -0.010400
+  6.0000   -0.001332     -0.001162      -0.001332
+  7.5000   -0.000358     -0.000188      -0.000179
+  8.4000   -0.000182     -0.000012      -0.000000
+#+end_example
+
+The shifted column is the bare column plus the constant 0.000170 eV, the
+negative of =v(cutoff)= at 8.5 Angstrom.
+The switched column equals the bare one up to 6.5 Angstrom and goes to zero
+smoothly at the cutoff.
+
+*** Literature
+
+- Goswami papers: none of those read for this page uses this kernel, so none is
+  listed.
+- J. E. Jones, Proc.
+  R. Soc.
+  A 106, 463-477 (1924), doi:10.1098/rspa.1924.0082, the 12-6 form (the registry
+  lists the single author as J. E. Jones).
+- Parameters: the defaults and the argon-like values of the example have no
+  paper.
+  They are a convention of the code.
+
+** =LJCluster= Lennard-Jones for free clusters
+
+*** What it is and how to reach it
+
+=LJCluster= is the =LJ= pair kernel with no minimum image and no periodic cell,
+so a cluster in a box that is too small, or in no box at all, is not folded.
+Use it for gas-phase clusters and global-optimization landscapes.
+In C++ it is =rgpot::LJClusterPot=, built from =rgpot::LJClusterConfig= (header
+=CppCore/rgpot/LennardJones/LJClusterPot.hpp=).
+In Python it is =rgpot.LJClusterPot(u0, cutoff, psi, switch_width)=.
+=potserv <port> LJCluster= serves the default configuration.
+It has no =pair_coeff= or =rgpot-eval= name.
+The class is documented in
+[[file:../reference/cpp_potentials.org][C++ potentials]].
+The kernel is ported from eOn, as the header says.
+
+*** Functional form
+
+The pair energy, the shift, the switch and the force are those of =LJ= (see
+above), computed from =CppCore/rgpot/LennardJones/LJClusterPot.cc=.
+What differs:
+
+- pair vectors come straight from the coordinates; the cell is never used to
+  fold them, and =caps().periodic= is false;
+- the call writes no stress;
+- a box with a non-positive diagonal entry, or none, is replaced by a cube of
+  1e6 Angstrom;
+- when no switch is set and the whole cluster fits inside the cutoff, the kernel
+  sums every pair directly; otherwise it walks the shared cell list.
+  Both include the same pairs.
+
+A =cutoff= of exactly 0 is not usable for the energy.
+The shift is =4 u0 a (a - 1)= with =a = (psi / cutoff)^6=, which is infinite for
+a zero cutoff, and the energy printed is =-inf= while the forces are finite.
+Use a large positive cutoff to keep every pair of a small cluster.
+
+*** Parameters
+
+| Parameter      | Value | Unit     | Where it is set                 |
+|----------------+-------+----------+---------------------------------|
+| =u0=           |   1.0 | eV       | =LJClusterConfig::u0=           |
+| =psi=          |   1.0 | Angstrom | =LJClusterConfig::psi=          |
+| =cutoff=       |  15.0 | Angstrom | =LJClusterConfig::cutoff=       |
+| =switch_width= |   0.0 | Angstrom | =LJClusterConfig::switch_width= |
+
+The values are the defaults in =CppCore/rgpot/LennardJones/LJClusterPot.hpp=.
+They are reduced units with no paper behind them, as for =LJ=.
+
+*** Example
+
+The first part puts a dimer 9 Angstrom apart in a 10 Angstrom box.
+=LJPot= sees the neighbour image at 1 Angstrom and =LJClusterPot= sees the atoms
+9 Angstrom apart, beyond the 4 Angstrom cutoff.
+The second part builds the 13-atom icosahedron (a centre atom and the 12
+vertices of =(0, +-1, +-phi)= and its cyclic permutations), finds the radius
+with the lowest energy by ternary search, and removes the 78 pair shifts to
+compare with the literature value.
+
+#+attr_rgpot: run link=rgpot
+#+begin_src cpp
+#include <cmath>
+#include <cstdio>
+#include <vector>
+
+#include "rgpot/LennardJones/LJClusterPot.hpp"
+#include "rgpot/LennardJones/LJPot.hpp"
+
+int main() {
+  const int z[2] = {18, 18};
+  const double pos[6] = {0.0, 0.0, 0.0, 9.0, 0.0, 0.0};
+  const double box[9] = {10.0, 0.0, 0.0, 0.0, 10.0, 0.0, 0.0, 0.0, 10.0};
+  double forces[6] = {};
+  rgpot::ForceInput in{2, pos, z, box};
+  rgpot::ForceOut out{};
+  out.F = forces;
+
+  rgpot::LJPot periodic({.u0 = 1.0, .cutoff = 4.0, .psi = 1.0});
+  periodic.forceImpl(in, &out);
+  std::printf("periodic: energy %.6f eV\n", out.energy);
+
+  rgpot::LJClusterPot cluster({.u0 = 1.0, .cutoff = 4.0, .psi = 1.0});
+  cluster.forceImpl(in, &out);
+  std::printf("cluster:  energy %.6f eV\n", out.energy);
+
+  const double phi = 0.5 * (1.0 + std::sqrt(5.0));
+  const double raw[12][3] = {
+      {0, 1, phi}, {0, -1, phi}, {0, 1, -phi}, {0, -1, -phi},
+      {1, phi, 0}, {-1, phi, 0}, {1, -phi, 0}, {-1, -phi, 0},
+      {phi, 0, 1}, {-phi, 0, 1}, {phi, 0, -1}, {-phi, 0, -1}};
+  const double norm = std::sqrt(1.0 + phi * phi);
+  const double cutoff = 15.0;
+  rgpot::LJClusterPot lj13({.u0 = 1.0, .cutoff = cutoff, .psi = 1.0});
+  const int z13[13] = {18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18, 18};
+
+  auto energy = [&](double r) {
+    std::vector<double> p(39, 0.0);
+    std::vector<double> f(39, 0.0);
+    for (int i = 0; i < 12; ++i) {
+      for (int d = 0; d < 3; ++d) {
+        p[3 * (i + 1) + d] = r * raw[i][d] / norm;
+      }
+    }
+    rgpot::ForceInput in13{13, p.data(), z13, box};
+    rgpot::ForceOut out13{};
+    out13.F = f.data();
+    lj13.forceImpl(in13, &out13);
+    return out13.energy;
+  };
+
+  double lo = 0.9;
+  double hi = 1.3;
+  for (int k = 0; k < 80; ++k) {
+    const double m1 = lo + (hi - lo) / 3.0;
+    const double m2 = hi - (hi - lo) / 3.0;
+    if (energy(m1) < energy(m2)) {
+      hi = m2;
+    } else {
+      lo = m1;
+    }
+  }
+  const double r = 0.5 * (lo + hi);
+  const double a = std::pow(1.0 / cutoff, 6.0);
+  const double shift = 4.0 * a * (a - 1.0);
+  std::printf("LJ13 icosahedron: centre-vertex %.5f, shifted %.6f eV\n", r,
+              energy(r));
+  std::printf("pair sum without the 78 shifts: %.6f eV\n",
+              energy(r) + 78.0 * shift);
+  return 0;
+}
+#+end_src
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+periodic: energy 0.000976 eV
+cluster:  energy 0.000000 eV
+LJ13 icosahedron: centre-vertex 1.08184, shifted -44.326774 eV
+pair sum without the 78 shifts: -44.326801 eV
+#+end_example
+
+The periodic energy is the zero crossing at 1 Angstrom minus the shift, which is
+-0.000976 eV, and the cluster energy is 0 because the pair lies beyond the
+cutoff.
+The last value is the 13-atom Ih entry, -44.326801, of the table of Wales and
+Doye, to all six printed decimals.
+
+*** Literature
+
+- Goswami and coauthors, eOn v3.6.0, Zenodo (2026), doi:10.5281/zenodo.18529495,
+  the software release of eOn, from which the header of =LJClusterPot.hpp= says
+  the kernel was ported.
+  No Goswami paper read for this page uses the kernel by name.
+- J. E. Jones, Proc.
+  R. Soc.
+  A 106, 463-477 (1924), doi:10.1098/rspa.1924.0082, the 12-6 form.
+- Wales and Doye, J. Phys.
+  Chem.
+  A 101, 5111-5116 (1997), doi:10.1021/jp970984n, the Lennard-Jones potential in
+  reduced units and the lowest energy clusters; its table lists -44.326801 for
+  the 13-atom Ih cluster, the check above.
+- Parameters: the defaults are reduced units and have no paper.
+
+** =Morse= Morse pair potential with platinum parameters
+
+*** What it is and how to reach it
+
+=Morse= is the pairwise Morse potential, cut and shifted at 9.5 Angstrom, with
+the platinum parameter set as its default.
+Use it for fast metallic surface and cluster work, such as the Pt(111) heptamer
+island benchmark, and as a smooth pair reference that is softer than
+Lennard-Jones.
+In C++ it is =rgpot::MorsePot=, built from =rgpot::MorseConfig= (header
+=CppCore/rgpot/Morse/MorsePot.hpp=).
+In Python it is =rgpot.MorsePot(De, a, re, cutoff, switch_width)=.
+=pair_coeff * * Morse=, the PLUMED action and =rgpot-eval Morse= take the options =de=, =a=, =re=, =cutoff= and =switch_width=,
+with 9.5 Angstrom as the cutoff when the host has none.
+=potserv <port> Morse= loads the platinum defaults.
+The class is documented in
+[[file:../reference/cpp_potentials.org][C++ potentials]] and the names in
+[[file:../reference/potential_names.org][Potential names]].
+
+*** Functional form
+
+From =CppCore/rgpot/Morse/MorsePot.hpp= and =MorsePot.cc=, for every pair with
+=r= up to the cutoff:
+
+- the bare pair energy is =De [1 - exp(-a (r - re))]^2 - De=, so the well has
+  depth =De= at =re= and the energy tends to 0 at large =r=;
+- with =switch_width= 0, the pair energy is the bare one minus its value at the
+  cutoff (the constructor stores it, and =MorsePot::energyShift()= returns it);
+- with =switch_width= above 0 the shift is replaced by the same C^2 quintic
+  switch as in =LJ=, applied to the bare energy;
+- with =x = a (r - re)= the derivative of the bare energy is
+  =2 De a (1 - e^-x) e^-x=, and the force on the pair is minus that along the
+  pair.
+
+The minimum image is used in every direction on an orthogonal or sheared cell.
+The call writes the stress.
+Atomic numbers are not read.
+
+*** Parameters
+
+| Parameter      | Value  | Unit       | Where it is set                  |
+|----------------+--------+------------+----------------------------------|
+| =De=           | 0.7102 | eV         | =MorseConfig::De=, option =de=   |
+| =a=            | 1.6047 | 1/Angstrom | =MorseConfig::a=, option =a=     |
+| =re=           | 2.8970 | Angstrom   | =MorseConfig::re=, option =re=   |
+| =cutoff=       |    9.5 | Angstrom   | =MorseConfig::cutoff=            |
+| =switch_width= |    0.0 | Angstrom   | =MorseConfig::switch_width=      |
+
+The values are the defaults in =CppCore/rgpot/Morse/MorsePot.hpp=, where the
+field comments call them the platinum set.
+The same numbers are in the Python binding
+(=python/bind/bind_module.cpp=), the Cap'n Proto schema default (=rgpot-core/schema/Potentials.capnp=) and the Rust test =rgpot-core/tests/potential_config.rs=.
+
+*Origin of the numbers.* The source names no paper for them.
+The comments in =MorsePot.hpp= say only "platinum", and the header says the
+kernel is ported from eOn, whose original attribution names A. Pedersen or G.
+Henkelman, revised by J.-C.
+C. Berthet.
+Two papers print the same three numbers.
+Sheppard, Terrell and Henkelman use a pairwise Morse potential for a heptamer
+island on an fcc(111) surface with =De= 0.7102 eV, =alpha= 1.6047 per Angstrom
+and =r0= 2.8970 Angstrom, "parameters fit to Pt", cut and shifted to zero at 9.5
+Angstrom, and cite Bassett and Webber for the Pt fit.
+Chill and coauthors give C = 0.7102 eV, a = 1.6047 per Angstrom and r0 = 2.8970
+Angstrom for the Morse systems of their benchmark, "chosen to describe Pt", with
+the same citation.
+Bassett and Webber was not consulted for this page.
+The reference page [[file:../reference/cpp_potentials.org][C++ potentials]]
+attributes the defaults to Sheppard and coauthors.
+That matches the numbers in the paper, but the source does not say it.
+
+*** Example
+
+The program prints the stored parameters, the shift, and the shifted energy and
+force of a platinum dimer at four separations, next to the bare Morse energy
+computed from the formula.
+
+#+attr_rgpot: run link=rgpot
+#+begin_src cpp
+#include <cmath>
+#include <cstdio>
+
+#include "rgpot/Morse/MorsePot.hpp"
+
+int main() {
+  rgpot::MorsePot pot;
+  const rgpot::MorseConfig &cfg = pot.config();
+  std::printf("De %.4f eV, a %.4f 1/A, re %.4f A, cutoff %.1f A\n", cfg.De,
+              cfg.a, cfg.re, cfg.cutoff);
+  std::printf("energy shift %.12f eV\n", pot.energyShift());
+
+  const int z[2] = {78, 78};
+  const double box[9] = {40.0, 0.0, 0.0, 0.0, 40.0, 0.0, 0.0, 0.0, 40.0};
+  const double rs[4] = {2.50, cfg.re, 3.30, 9.40};
+  std::printf("   r (A)   bare (eV)  shifted (eV)  force on atom 1 (eV/A)\n");
+  for (const double r : rs) {
+    const double pos[6] = {0.0, 0.0, 0.0, r, 0.0, 0.0};
+    double forces[6] = {};
+    rgpot::ForceInput in{2, pos, z, box};
+    rgpot::ForceOut out{};
+    out.F = forces;
+    pot.forceImpl(in, &out);
+    const double d = 1.0 - std::exp(-cfg.a * (r - cfg.re));
+    std::printf("%8.4f %11.6f %13.6f %24.6f\n", r, cfg.De * d * d - cfg.De,
+                out.energy, forces[3]);
+  }
+  return 0;
+}
+#+end_src
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+De 0.7102 eV, a 1.6047 1/A, re 2.8970 A, cutoff 9.5 A
+energy shift -0.000035537997 eV
+   r (A)   bare (eV)  shifted (eV)  force on atom 1 (eV/A)
+  2.5000   -0.146481     -0.146446                 3.839898
+  2.8970   -0.710200     -0.710164                 0.000000
+  3.3000   -0.549133     -0.549098                -0.568541
+  9.4000   -0.000042     -0.000006                -0.000067
+#+end_example
+
+At =re= the force is zero, and the shifted energy is the bare -0.7102 eV plus
+the 3.5538e-05 eV that =energyShift()= reports with a negative sign.
+Inside =re= the force on atom 1 is positive (repulsive) and outside it is
+negative.
+
+*** Literature
+
+- Goswami, Gunde and Jónsson, Front.
+  Chem. 14, 1807063 (2026), doi:10.3389/fchem.2026.1807063: the enhanced
+  climbing image NEB paper runs the OptBench Pt(111) heptamer island benchmark
+  with an analytic Morse potential it calls =morse pt=.
+  The text of that paper does not print the parameters; the benchmark paper
+  below prints the three numbers of the table above.
+- Goswami and coauthors, eOn v3.6.0, Zenodo (2026), doi:10.5281/zenodo.18529495,
+  the software release of eOn, from which the header of =MorsePot.hpp= says the
+  kernel was ported.
+- Morse, Phys.
+  Rev. 34, 57-64 (1929), doi:10.1103/PhysRev.34.57, the form.
+- Sheppard, Terrell and Henkelman, J. Chem.
+  Phys. 128, 134106 (2008), doi:10.1063/1.2841941, which prints the three
+  numbers and the 9.5 Angstrom cut and shift.
+- Chill and coauthors, J. Chem.
+  Theory Comput. 10, 5476-5482 (2014), doi:10.1021/ct5008718, the benchmark
+  paper that prints the same numbers for the Pt heptamer island.
+- Bassett and Webber, Surf.
+  Sci. 70, 520-531 (1978), doi:10.1016/0039-6028(78)90429-6, the paper that both
+  of the above cite for the Pt parameters; it was not consulted.
+
+** =ZBL= Screened nuclear repulsion
+
+*** What it is and how to reach it
+
+=ZBL= is the universal Ziegler-Biersack-Littmark screened Coulomb repulsion
+between nuclei, taken to zero at a cutoff with a polynomial switch.
+Use it for short-range repulsion at small separations, for example under another
+potential in radiation damage work.
+In C++ it is =rgpot::ZBLPot=, built from =rgpot::ZBLConfig= (header
+=CppCore/rgpot/ZBL/ZBLPot.hpp=).
+Python has no ZBL class and =pair_coeff= has no ZBL name.
+=potserv <port> ZBL= serves the default configuration.
+The class is documented in
+[[file:../reference/cpp_potentials.org][C++ potentials]].
+The kernel is ported from eOn, which adapts the LAMMPS =pair_zbl= code, as the
+headers say.
+
+*** Functional form
+
+From =CppCore/rgpot/ZBL/ZBLPot.cc=, for a pair of atomic numbers =Zi= and =Zj=
+(read from the atomic numbers of the call) and every pair with =r= up to
+=cut_global=:
+
+- the screening length is
+  =a_ij = 0.46850 / (Zi^0.23 + Zj^0.23)= Angstrom and =x = r / a_ij=;
+- the unswitched energy is
+  =Zi Zj e2 / r * (0.18175 exp(-3.19980 x) + 0.50986 exp(-0.94229 x)=
+  =+ 0.28022 exp(-0.40290 x) + 0.02817 exp(-0.20162 x))=, with =e2 = 14.399645=
+  eV Angstrom;
+- the pair energy adds a constant =sw5= everywhere, and above
+  =cut_inner= the cubic and quartic terms =t^3 (sw3 + sw4 t)= with =t = r - cut_inner=;
+- with =tc = cut_global - cut_inner= and =fc=, =fcp=, =fcpp= the unswitched
+  energy and its first and second derivatives at =cut_global=:
+  =swa = (-3 fcp + tc fcpp) / tc^2=, =swb = (2 fcp - tc fcpp) / tc^3=,
+  =sw3 = swa / 3=, =sw4 = swb / 4= and
+  =sw5 = -fc + (tc / 2) fcp - (tc^2 / 12) fcpp=.
+  Energy and force are then both zero at =cut_global=;
+- pairs beyond =cut_global= contribute nothing.
+
+Boundaries are free: no minimum image is applied and =caps().periodic= is false.
+The call writes the stress when the cell volume is positive.
+The source comments that its screening exponents are those carried by the LAMMPS
+source and differ from the published values in the last digits.
+
+*** Parameters
+
+| Parameter        | Value                | Unit        | Where it is set  |
+|------------------+----------------------+-------------+------------------|
+| =cut_inner=      | 2.0                  | Angstrom    | =ZBLConfig=      |
+| =cut_global=     | 2.5                  | Angstrom    | =ZBLConfig=      |
+| weight 1 (=c=)   | 0.18175              | none        | =kC4=            |
+| weight 2         | 0.50986              | none        | =kC3=            |
+| weight 3         | 0.28022              | none        | =kC2=            |
+| weight 4         | 0.02817              | none        | =kC1=            |
+| exponent 1 (=d=) | 3.19980              | none        | =kD1=            |
+| exponent 2       | 0.94229              | none        | =kD2=            |
+| exponent 3       | 0.40290              | none        | =kD3=            |
+| exponent 4       | 0.20162              | none        | =kD4=            |
+| power of =Z=     | 0.23                 | none        | =kPZBL=          |
+| length prefactor | 0.46850              | Angstrom    | =kA0=            |
+| =e2=             | 14.399645            | eV Angstrom | =kQQR2E=         |
+
+The cutoffs are the defaults of =ZBLConfig= in =CppCore/rgpot/ZBL/ZBLPot.hpp=,
+matching eOn's =[ZBLPot]= options (the comment in the header).
+The constants are those of =ZBLPot.cc=, where the comments name them the
+universal screening function coefficients (=pair_zbl_const.h= of LAMMPS) and the
+LAMMPS metal-unit Coulomb conversion.
+The four =c= weights sum to 1.
+The book cited below was not consulted for this page, so the constants are given
+as the source carries them.
+
+*** Example
+
+The program evaluates homonuclear dimers of H, Si and Pt at four separations,
+two of them inside the switching region.
+It reads the atomic numbers to build the coefficients, so a different =Z= needs
+no setup.
+
+#+attr_rgpot: run link=rgpot
+#+begin_src cpp
+#include <cmath>
+#include <cstdio>
+
+#include "rgpot/ZBL/ZBLPot.hpp"
+
+int main() {
+  rgpot::ZBLPot pot;
+  const rgpot::ZBLConfig &cfg = pot.config();
+  std::printf("cut_inner %.1f A, cut_global %.1f A\n", cfg.cut_inner,
+              cfg.cut_global);
+
+  const double box[9] = {40.0, 0.0, 0.0, 0.0, 40.0, 0.0, 0.0, 0.0, 40.0};
+  const int zs[3] = {1, 14, 78};
+  const double rs[4] = {0.5, 1.0, 2.2, 2.49};
+  std::printf("  Z-Z   r (A)   energy (eV)  force on atom 1 (eV/A)\n");
+  for (const int zz : zs) {
+    const int z[2] = {zz, zz};
+    for (const double r : rs) {
+      const double pos[6] = {0.0, 0.0, 0.0, r, 0.0, 0.0};
+      double forces[6] = {};
+      rgpot::ForceInput in{2, pos, z, box};
+      rgpot::ForceOut out{};
+      out.F = forces;
+      pot.forceImpl(in, &out);
+      std::printf("%3d-%-3d %5.2f %14.6f %20.6f\n", zz, zz, r, out.energy,
+                  forces[3]);
+    }
+  }
+  return 0;
+}
+#+end_src
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+cut_inner 2.0 A, cut_global 2.5 A
+  Z-Z   r (A)   energy (eV)  force on atom 1 (eV/A)
+  1-1    0.50       5.851709            26.135385
+  1-1    1.00       0.964123             2.944889
+  1-1    2.20       0.010804             0.097809
+  1-1    2.49       0.000001             0.000153
+ 14-14   0.50     469.268591          2615.591909
+ 14-14   1.00      49.749855           189.796219
+ 14-14   2.20       0.298981             2.761733
+ 14-14   2.49       0.000014             0.004082
+ 78-78   0.50    6614.171853         43013.531125
+ 78-78   1.00     458.722043          2089.530609
+ 78-78   2.20       1.707216            15.985966
+ 78-78   2.49       0.000076             0.022703
+#+end_example
+
+An independent evaluation of the formula above in double precision gives
+49.749855 eV for Si-Si at 1.0 Angstrom, 0.298981 eV at 2.2 Angstrom and
+6614.171853 eV for Pt-Pt at 0.5 Angstrom, matching the rows printed here.
+At 2.49 Angstrom, 0.01 Angstrom inside the cutoff, the energy is at most 7.6e-5
+eV in the rows above.
+
+*** Literature
+
+- Goswami and coauthors, eOn v3.6.0, Zenodo (2026), doi:10.5281/zenodo.18529495,
+  the software release of eOn, from which the header of =ZBLPot.hpp= says the
+  kernel was ported.
+  No Goswami paper read for this page uses the kernel by name.
+- Ziegler, Biersack and Littmark, The Stopping and Range of Ions in Matter,
+  Pergamon (1985), the universal screening function; the book has no DOI and was
+  not consulted.
+- Thompson and coauthors, Comput.
+  Phys.
+  Commun. 271, 108171 (2022), doi:10.1016/j.cpc.2021.108171, LAMMPS, whose
+  =pair_zbl= the eOn kernel adapts and whose constants =ZBLPot.cc= carries.
+- The cutoffs 2.0 and 2.5 Angstrom have no paper: they are eOn defaults.
+
+** =SuttonChen= Sutton-Chen many-body potential
+
+*** What it is and how to reach it
+
+=SuttonChen= is the Sutton-Chen embedded-atom style potential: a repulsive pair
+term and a square-root embedding of a pair density, with exponents 10 and 8 and
+reduced units by default, plus the platinum and gold rows in eV and Angstrom.
+Use it for fcc transition metal clusters and crystals.
+In C++ it is =rgpot::SuttonChenPot=, built from =rgpot::SuttonChenConfig=
+(header
+=CppCore/rgpot/SuttonChen/SuttonChenPot.hpp=); the presets are =rgpot::sutton_chen_platinum()= and =rgpot::sutton_chen_gold()= (=CppCore/rgpot/SuttonChen/SuttonChenScales.hpp=).
+There is also a C entry point, =rgpot_sutton_chen_energy_forces=.
+Python has no class for it and =potserv= has no type for it.
+=pair_coeff * * SuttonChen=, the PLUMED action and =rgpot-eval SuttonChen= take
+=preset= (=platinum= or =gold=), =epsilon=, =c=, =a=, =n=, =m= and =cutoff=, and
+build it periodic with the stress on.
+The convention, the stress, the thread rules and the checks are in the
+[[file:../reference/sutton_chen.org][Sutton-Chen reference]] and are not
+repeated here.
+A crystal run is in [[file:sutton-chen-stress.org][the stress how-to]], and the
+LAMMPS route is in [[file:engine-lammps.org][LAMMPS]].
+
+*** Functional form
+
+From the header of =CppCore/rgpot/SuttonChen/SuttonChenPot.cc= and the kernel:
+
+- =E = epsilon * [ S_pair - c * sum_i sqrt(rho_i) ]= with =S_pair = sum over pairs i < j of (a / r_ij)^n=,
+  so each unordered pair contributes =epsilon (a / r)^n= once;
+- =rho_i = sum over j other than i of (a / r_ij)^m= (no factor 1/2);
+- only pairs with
+  =r_ij= up to =cutoff= enter, in the density and the pair term, with no energy shift; an atom with =rho_i=
+  not above 0 has no embedding term;
+- the force on atom =i= along =d = r_i - r_j= is =fscale * d= with
+  =fscale = -(dE/dr) / r=, including the embedding weight
+  =epsilon c / (2 sqrt(rho))= of both atoms;
+- =epsilon= sets the energy unit and =a= the length unit, so a reduced result is
+  rescaled by multiplying the energy by =epsilon= and the coordinates by =a=.
+
+Periodic evaluation uses the minimum image and throws =std::invalid_argument=
+for a cutoff that is not positive; otherwise no cell folding happens.
+
+*** Parameters
+
+| Parameter  | Default |    Pt row |    Au row | Unit             |
+|------------+---------+-----------+-----------+------------------|
+| =epsilon=  |     1.0 | 1.98330e-2 | 1.27930e-2 | eV (energy unit) |
+| =a=        |     1.0 |      3.92 |      4.08 | Angstrom         |
+| =c=        |  34.408 |    34.408 |    34.408 | none             |
+| =n=        |      10 |        10 |        10 | none             |
+| =m=        |       8 |         8 |         8 | none             |
+| =cutoff=   |    40.0 |      40.0 |      40.0 | coordinate unit  |
+| =periodic= |   false |     false |     false | none             |
+| =stress=   |   false |     false |     false | none             |
+
+The rows are the fields of =rgpot::SuttonChenConfig=, in that order.
+=a= is the length unit and the cutoff is in the coordinate unit.
+
+The defaults are in =CppCore/rgpot/SuttonChen/SuttonChenPot.hpp=.
+The two rows are the functions =sutton_chen_platinum()= and =sutton_chen_gold()=
+in =CppCore/rgpot/SuttonChen/SuttonChenScales.cc=, which set =c=, =n= and =m= to
+the table values and take only =epsilon= and =a= from the row.
+The
+=pair_coeff= and =rgpot-eval= route sets =periodic= and =stress= true (=engines/pot_spec.cpp=).
+
+The numbers agree with the literature.
+Table I of Çağın, Dereli, Uludoğan and Tomak (arXiv:cond-mat/9709114) lists, as
+=a=, =D= (in units of 1e-2 eV), =c=, =m=, =n=: Pt 3.92, 1.98330, 34.408, 8, 10
+and Au 4.08, 1.27930, 34.408, 8, 10.
+Doye and Wales write that for Au and Pt =n= is 10, =m= is 8 and =c= is 34.408,
+that their tables are in reduced units with =epsilon= and =a= equal to 1, and
+that the energy is rescaled by =epsilon= and the coordinates by =a=.
+The first line of the deposited point file read by the example below carries the
+same five numbers.
+The header of =SuttonChenPot.hpp= also records that the cutoff 40 matches the
+cutoff of the optbench globalopt Lennard-Jones problems, a convention of the
+code and not a paper value.
+
+*** Example
+
+The program reads the deposited 38-atom Oh cluster from
+=CppCore/tests/data/sc108/pt38=, evaluates it in reduced units, then scales it
+to the platinum row, and prints the bulk scales of that row.
+Run it from the repository root, since the file name is relative.
+
+#+attr_rgpot: run link=rgpot
+#+begin_src cpp
+#include <cstdio>
+#include <fstream>
+#include <vector>
+
+#include "rgpot/SuttonChen/SuttonChenPot.hpp"
+#include "rgpot/SuttonChen/SuttonChenScales.hpp"
+
+int main() {
+  std::ifstream file("CppCore/tests/data/sc108/pt38");
+  double header[5];
+  for (double &h : header) {
+    file >> h;
+  }
+  std::vector<double> pos;
+  for (double x; file >> x;) {
+    pos.push_back(x);
+  }
+  const std::size_t n = pos.size() / 3;
+  const std::vector<int> z(n, 78);
+  const double box[9] = {80.0, 0.0, 0.0, 0.0, 80.0, 0.0, 0.0, 0.0, 80.0};
+  std::vector<double> forces(pos.size());
+
+  rgpot::SuttonChenPot reduced;
+  rgpot::ForceInput in{n, pos.data(), z.data(), box};
+  rgpot::ForceOut out{};
+  out.F = forces.data();
+  reduced.forceImpl(in, &out);
+  std::printf("file header: %g %g %g %g %g\n", header[0], header[1],
+              header[2], header[3], header[4]);
+  std::printf("Pt%zu, reduced 10-8: %.4f epsilon\n", n, out.energy);
+
+  const rgpot::SuttonChenConfig pt = rgpot::sutton_chen_platinum();
+  for (double &x : pos) {
+    x *= pt.a;
+  }
+  rgpot::SuttonChenPot physical(pt);
+  rgpot::ForceInput in_pt{n, pos.data(), z.data(), box};
+  physical.forceImpl(in_pt, &out);
+  std::printf("Pt%zu, platinum row: %.4f eV (epsilon %.5e eV, a %.2f A)\n", n,
+              out.energy, pt.epsilon, pt.a);
+
+  const rgpot::SuttonChenScales s = rgpot::sutton_chen_scales(pt);
+  std::printf("bulk nearest neighbour %.4f A, well depth %.4f eV\n",
+              s.nearest_neighbor, s.well_depth);
+  return 0;
+}
+#+end_src
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+file header: 1 34.408 1 10 8
+Pt38, reduced 10-8: -10117.2454 epsilon
+Pt38, platinum row: -200.6553 eV (epsilon 1.98330e-02 eV, a 3.92 A)
+bulk nearest neighbour 2.7719 A, well depth 5.8599 eV
+#+end_example
+
+The reduced energy is the -10117.2454 that Doye and Wales tabulate for the
+38-atom Oh cluster of the 10-8 potential.
+The platinum energy is that value times =epsilon= 1.98330e-2 eV.
+The nearest-neighbour distance is =a / sqrt(2)= at the static fcc minimum, and
+the well depth is minus the energy per atom there.
+
+*** Literature
+
+- Goswami papers: none of those read for this page uses this potential, so none
+  is listed.
+- Sutton and Chen, Philos.
+  Mag.
+  Lett. 61, 139-146 (1990), doi:10.1080/09500839008206493, the functional form.
+- Çağın, Dereli, Uludoğan and Tomak,
+  arXiv:cond-mat/9709114 (1997), doi:10.48550/arXiv.cond-mat/9709114, whose
+  Table I gives the platinum and gold rows.
+- Doye and Wales, New J. Chem. 22, 733-744 (1998), doi:10.1039/a709249k, the
+  10-8 cluster minima and the reduced-unit convention, source of the Pt38 energy
+  checked above.
+
+** =Lammps= Shifted Lennard-Jones through the engine plugin
+
+*** What it is and how to reach it
+
+=Lammps= is the shifted 12-6 Lennard-Jones potential evaluated by a dynamically
+loaded engine plugin, the route a LAMMPS-side or other external host uses.
+Use it to exercise the engine ABI with a known, cheap potential and to compare a
+host with the in-tree kernel.
+In C++ it is =rgpot::LammpsPot=, made by =rgpot::rgpot_lammps_potential= from an
+=rgpot::ExternalLjConfig= (header =CppCore/rgpot/ExternalPot/ExternalPot.hpp=).
+In Python it is =rgpot.rgpot_lammps_potential(u0, cutoff, psi, engine_path)=
+returning =rgpot.LammpsPot=.
+The C ABI is =rgpot_lammps_potential= in
+=CppCore/rgpot/ExternalPot/external_potentials.h=.
+It has no =pair_coeff=, =rgpot-eval= or =potserv= name.
+Inside LAMMPS, =pair_coeff * * u0 psi= under =pair_style rgpot= is the shifted
+Lennard-Jones =LJ= kernel; see [[file:engine-lammps.org][LAMMPS]].
+The ABI is in [[file:../reference/external_abi.org][External ABI]].
+
+*** Functional form
+
+The constructor opens an engine library and keeps it as the backend.
+The library is searched in this order, from
+=lammps_paths= in =CppCore/rgpot/ExternalPot/ExternalPot.cc=: =engine_path=
+alone when it is set; otherwise =RGPOT_LAMMPS_ENGINE=,
+=LAMMPS_ENGINE=, =liblammps_engine.so= and =liblj_engine.so= (with the
+platform's suffix).
+The in-tree =liblj_engine.so= (=engines/lj_engine.cpp=) passes the three
+parameters to =rgpot_lj_eval=
+(=engines/lj_eval.cpp=), which builds an =LJ= kernel with =switch_width= 0.
+So the energy is that of =LJ= with the shift: for every pair with =r= up to the
+cutoff, =4 u0 [(psi/r)^12 - (psi/r)^6]= minus the same at the cutoff, with the
+minimum image in every direction.
+The positions, cell, energy and forces cross the plugin boundary in Angstrom and
+eV.
+A call writes no stress (=has_stress= is 0), the potential reports
+=caps().periodic= true, and every call is serialised by a mutex.
+
+*** Parameters
+
+| Parameter     | Value | Unit     | Where it is set                  |
+|---------------+-------+----------+----------------------------------|
+| =u0=          |   1.0 | eV       | =ExternalLjConfig::u0=           |
+| =cutoff=      |   8.0 | Angstrom | =ExternalLjConfig::cutoff=       |
+| =psi=         |   1.0 | Angstrom | =ExternalLjConfig::psi=          |
+| =engine_path= | empty | none     | =ExternalLjConfig::engine_path=  |
+
+The values are the defaults in
+=CppCore/rgpot/ExternalPot/ExternalPot.hpp= and the Python stub =python/rgpot/_core.pyi=.
+The constructor throws
+=std::invalid_argument= unless =u0=, =cutoff= and =psi= are positive and finite, and =std::runtime_error=
+when no engine library opens.
+The defaults are a convention of the code and no paper supplies them.
+
+*** Example
+
+The program builds the potential with an empty engine path, so the search above
+finds =liblj_engine.so=, and evaluates an argon-like dimer at the minimum.
+It needs that library to be built and findable, which meson does by default for
+the tests and the how-to pages.
+The energy equals the shifted column of the =LJ= example at 3.8164 Angstrom
+(-0.010230 eV) to the precision of the 3.816 Angstrom separation used here.
+
+#+attr_rgpot: run link=rgpot
+#+begin_src cpp
+#include <cstdio>
+
+#include "rgpot/ExternalPot/ExternalPot.hpp"
+
+int main() {
+  rgpot::ExternalLjConfig cfg;
+  cfg.u0 = 0.0104;
+  cfg.cutoff = 8.5;
+  cfg.psi = 3.40;
+  auto pot = rgpot::rgpot_lammps_potential(cfg);
+
+  const int z[2] = {18, 18};
+  const double pos[6] = {0.0, 0.0, 0.0, 3.816, 0.0, 0.0};
+  const double box[9] = {40.0, 0.0, 0.0, 0.0, 40.0, 0.0, 0.0, 0.0, 40.0};
+  double forces[6] = {};
+  rgpot::ForceInput in{2, pos, z, box};
+  rgpot::ForceOut out{};
+  out.F = forces;
+  pot->forceImpl(in, &out);
+  std::printf("energy %.8f eV\n", out.energy);
+  return 0;
+}
+#+end_src
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+energy -0.01023030 eV
+#+end_example
+
+To run a real LAMMPS engine, set =RGPOT_LAMMPS_ENGINE= or
+=engine_path= to a library that exports =rgpot_engine_create=, =rgpot_engine_destroy= and =rgpot_engine_force= (=CppCore/rgpot/engine_c_abi.h=).
+Building the =pair_style rgpot= plugin needs a LAMMPS source tree; see
+[[file:engine-lammps.org][LAMMPS]] and
+[[file:engine-plugins.org][Engine plugins]].
+
+*** Literature
+
+- Goswami papers: none of those read for this page uses this wrapper, so none is
+  listed.
+- J. E. Jones, Proc.
+  R. Soc.
+  A 106, 463-477 (1924), doi:10.1098/rspa.1924.0082, the 12-6 form.
+- Thompson and coauthors, Comput.
+  Phys.
+  Commun. 271, 108171 (2022), doi:10.1016/j.cpc.2021.108171, LAMMPS, the host of
+  =pair_style rgpot=.
+- The parameters =u0= 1, =cutoff= 8 and =psi= 1 have no paper: they are a
+  convention of the code.
+
+** =Gromacs= Shifted Lennard-Jones in nanometres and kJ/mol
+
+*** What it is and how to reach it
+
+=Gromacs= is the same shifted Lennard-Jones potential, with the parameters
+stored once in GROMACS units.
+Use it to check a GROMACS-side evaluation in nanometres and
+kJ/mol against the eV and Angstrom kernel. In C++ it is =rgpot::GromacsPot=, made by =rgpot::rgpot_gromacs_potential= from an =rgpot::ExternalLjConfig= (header =CppCore/rgpot/ExternalPot/ExternalPot.hpp=).
+In Python it is
+=rgpot.rgpot_gromacs_potential(u0, cutoff, psi, engine_path)= returning =rgpot.GromacsPot=, which also has =native_u0=,
+=native_cutoff= and =native_psi=. The C ABI is =rgpot_gromacs_potential= in
+=CppCore/rgpot/ExternalPot/external_potentials.h=. It has no =pair_coeff=, =rgpot-eval= or =potserv= name. The constructor, the units and the test with GROMACS itself are in [[file:engine-gromacs.org][GROMACS]]; the drop-in library is in [[file:../reference/gromacs_dropin.org][the
+GROMACS drop-in reference]].
+
+*** Functional form
+
+The constructor multiplies =u0= by =rgpot_md_kj_per_ev()= (96.48533212331
+kJ/mol per eV) and the two lengths by 0.1 nm per Angstrom (=CppCore/rgpot/ExternalPot/md_units.hpp=). With an empty =engine_path=
+the call runs an =LJ= kernel with
+=switch_width= 0 in Angstrom and eV, so the energy is the shifted =4 u0 [(psi/r)^12 - (psi/r)^6]= minus its value at the cutoff, with the minimum image, and the call writes the stress. With an =engine_path=
+the library must export =rgpot_engine_create=, =rgpot_engine_destroy= and
+=rgpot_md_native_force=; every call converts positions and cell to nanometres, passes them on, and converts the energy and forces back to eV and eV/Angstrom, and the stress is not written. The in-tree =engines/native_lj_engine.cpp=
+is such a library.
+
+*** Parameters
+
+| Parameter     | Value | Unit     | Where it is set                  |
+|---------------+-------+----------+----------------------------------|
+| =u0=          |   1.0 | eV       | =ExternalLjConfig::u0=           |
+| =cutoff=      |   8.0 | Angstrom | =ExternalLjConfig::cutoff=       |
+| =psi=         |   1.0 | Angstrom | =ExternalLjConfig::psi=          |
+| =engine_path= | empty | none     | =ExternalLjConfig::engine_path=  |
+
+The stored forms are =nativeU0()= in kJ/mol, =nativeCutoff()= and =nativePsi()=
+in nanometres.
+The values are the defaults in =CppCore/rgpot/ExternalPot/ExternalPot.hpp=.
+They are a convention of the code and no paper supplies them.
+
+*** Example
+
+The program stores the defaults in GROMACS units and evaluates a dimer at 1.5
+Angstrom in process.
+The energy is the value that =engine-gromacs.org= quotes for these parameters.
+
+#+attr_rgpot: run link=rgpot
+#+begin_src cpp
+#include <cstdio>
+
+#include "rgpot/ExternalPot/ExternalPot.hpp"
+
+int main() {
+  rgpot::ExternalLjConfig cfg;
+  cfg.u0 = 1.0;
+  cfg.cutoff = 8.0;
+  cfg.psi = 1.0;
+  auto pot = rgpot::rgpot_gromacs_potential(cfg);
+  std::printf("stored: %.11f kJ/mol, %.1f nm, %.1f nm\n", pot->nativeU0(),
+              pot->nativeCutoff(), pot->nativePsi());
+
+  const int z[2] = {1, 1};
+  const double pos[6] = {0.0, 0.0, 0.0, 1.5, 0.0, 0.0};
+  const double box[9] = {20.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 20.0};
+  double forces[6] = {};
+  rgpot::ForceInput in{2, pos, z, box};
+  rgpot::ForceOut out{};
+  out.F = forces;
+  pot->forceImpl(in, &out);
+  std::printf("energy %.10f eV, force on atom 1 %.10f eV/A\n", out.energy,
+              forces[3]);
+  std::printf("has_stress %d\n", out.has_stress);
+  return 0;
+}
+#+end_src
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+stored: 96.48533212331 kJ/mol, 0.8 nm, 0.1 nm
+energy -0.3203213355 eV, force on atom 1 -1.1580288310 eV/A
+has_stress 1
+#+end_example
+
+Running GROMACS itself needs =gmx= and the PLUMED module, which are not required
+for this program; the zero-step and Sutton-Chen runs are in
+[[file:engine-gromacs.org][GROMACS]].
+
+*** Literature
+
+- Goswami papers: none of those read for this page uses this wrapper, so none is
+  listed.
+- J. E. Jones, Proc.
+  R. Soc.
+  A 106, 463-477 (1924), doi:10.1098/rspa.1924.0082, the 12-6 form.
+- Abraham and coauthors, SoftwareX 1-2, 19-25 (2015),
+  doi:10.1016/j.softx.2015.06.001, GROMACS, whose units the factors follow.
+- The parameters =u0= 1, =cutoff= 8 and =psi= 1 have no paper: they are a
+  convention of the code.
+
+** =OpenMM= Shifted Lennard-Jones through an OpenMM engine
+
+*** What it is and how to reach it
+
+=OpenMM= is the same shifted Lennard-Jones potential with the parameters stored
+once in nanometres and kJ/mol, and an optional engine library that evaluates it
+as an OpenMM =CustomNonbondedForce=.
+Use it to compare an OpenMM context with the eV and Angstrom kernel.
+In C++ it is =rgpot::OpenMMPot=, made by =rgpot::rgpot_openmm_potential= from an
+=rgpot::ExternalLjConfig= (header =CppCore/rgpot/ExternalPot/ExternalPot.hpp=).
+In Python it is
+=rgpot.rgpot_openmm_potential(u0, cutoff, psi, engine_path)= returning =rgpot.OpenMMPot=, which also has =native_u0=,
+=native_cutoff= and =native_psi=.
+The C ABI is =rgpot_openmm_potential= in
+=CppCore/rgpot/ExternalPot/external_potentials.h=.
+It has no =pair_coeff=, =rgpot-eval= or =potserv= name.
+The constructor, the engine library and its test are in
+[[file:engine-openmm.org][OpenMM]].
+
+*** Functional form
+
+The conversions and the in-process path are those of =Gromacs=: =u0= times
+96.48533212331
+kJ/mol per eV, lengths times 0.1 nm per Angstrom, and an empty =engine_path= runs the =LJ= kernel in Angstrom and eV with =switch_width= 0. With an =engine_path= the library has to export =rgpot_engine_create=, =rgpot_engine_destroy= and =rgpot_md_native_force=. The in-tree =engines/openmm/openmm_engine.cpp= builds a =CustomNonbondedForce= with the expression =4*sqrt(eps1*eps2)*((sqrt(sig1*sig2)/r)^12-(sqrt(sig1*sig2)/r)^6)= minus the same expression at =r = rc=, per-particle =eps= equal to =u0= in kJ/mol
+and =sig= equal to =psi= in nanometres, a global =rc= equal to the cutoff in
+nanometres, the =CutoffPeriodic= method and the CPU platform.
+With equal parameters on every atom the geometric combination reduces to =u0=
+and =psi=.
+
+*** Parameters
+
+| Parameter     | Value | Unit     | Where it is set                  |
+|---------------+-------+----------+----------------------------------|
+| =u0=          |   1.0 | eV       | =ExternalLjConfig::u0=           |
+| =cutoff=      |   8.0 | Angstrom | =ExternalLjConfig::cutoff=       |
+| =psi=         |   1.0 | Angstrom | =ExternalLjConfig::psi=          |
+| =engine_path= | empty | none     | =ExternalLjConfig::engine_path=  |
+
+The stored forms are =nativeU0()= in kJ/mol, =nativeCutoff()= and =nativePsi()=
+in nanometres.
+The values are the defaults in =CppCore/rgpot/ExternalPot/ExternalPot.hpp=.
+They are a convention of the code and no paper supplies them.
+
+*** Example
+
+The first program is a trimer in a 14 Angstrom cell, where the third atom
+reaches the first through the periodic boundary at 3.5 Angstrom.
+It evaluates the potential in process and the =LJ= kernel with the same
+parameters and prints both.
+OpenMM itself is not involved, so it runs anywhere.
+
+#+attr_rgpot: run link=rgpot
+#+begin_src cpp
+#include <cstdio>
+
+#include "rgpot/ExternalPot/ExternalPot.hpp"
+#include "rgpot/LennardJones/LJPot.hpp"
+
+int main() {
+  rgpot::ExternalLjConfig cfg;
+  cfg.u0 = 0.0104;
+  cfg.cutoff = 8.5;
+  cfg.psi = 3.40;
+  auto omm = rgpot::rgpot_openmm_potential(cfg);
+  rgpot::LJPot host({.u0 = cfg.u0, .cutoff = cfg.cutoff, .psi = cfg.psi});
+  std::printf("stored: %.6f kJ/mol, %.2f nm, %.2f nm\n", omm->nativeU0(),
+              omm->nativeCutoff(), omm->nativePsi());
+
+  const int z[3] = {18, 18, 18};
+  const double pos[9] = {0.0, 0.0, 0.0, 3.8, 0.0, 0.0, 10.5, 0.0, 0.0};
+  const double box[9] = {14.0, 0.0, 0.0, 0.0, 14.0, 0.0, 0.0, 0.0, 14.0};
+  double f_omm[9] = {};
+  double f_host[9] = {};
+  rgpot::ForceInput in{3, pos, z, box};
+  rgpot::ForceOut out_omm{};
+  rgpot::ForceOut out_host{};
+  out_omm.F = f_omm;
+  out_host.F = f_host;
+  omm->forceImpl(in, &out_omm);
+  host.forceImpl(in, &out_host);
+  std::printf("OpenMMPot energy %.10f eV, LJPot energy %.10f eV\n",
+              out_omm.energy, out_host.energy);
+  std::printf("force on atom 0, x: %.10f and %.10f eV/A\n", f_omm[0],
+              f_host[0]);
+  return 0;
+}
+#+end_src
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+stored: 1.003447 kJ/mol, 0.85 nm, 0.34 nm
+OpenMMPot energy -0.0161629635 eV, LJPot energy -0.0161629635 eV
+force on atom 0, x: 0.0399147328 and 0.0399147328 eV/A
+#+end_example
+
+The second program passes an engine path, so the evaluation goes through OpenMM.
+This machine has no OpenMM, so it is only compiled.
+Running it needs the =openmm= Python package or libraries, a build with
+=-Dwith_openmm=enabled= that produces =libopenmm_engine.so=, and the library on
+the path given (or in =RGPOT_OPENMM_ENGINE= for the meson test).
+
+#+attr_rgpot: compile link=rgpot
+#+begin_src cpp
+#include <cstdio>
+#include <exception>
+
+#include "rgpot/ExternalPot/ExternalPot.hpp"
+
+int main() {
+  rgpot::ExternalLjConfig cfg;
+  cfg.u0 = 1.0;
+  cfg.cutoff = 8.0;
+  cfg.psi = 1.0;
+  cfg.engine_path = "libopenmm_engine.so";
+  try {
+    auto pot = rgpot::rgpot_openmm_potential(cfg);
+    const int z[2] = {1, 1};
+    const double pos[6] = {0.0, 0.0, 0.0, 1.5, 0.0, 0.0};
+    const double box[9] = {20.0, 0.0, 0.0, 0.0, 20.0, 0.0, 0.0, 0.0, 20.0};
+    double forces[6] = {};
+    rgpot::ForceInput in{2, pos, z, box};
+    rgpot::ForceOut out{};
+    out.F = forces;
+    pot->forceImpl(in, &out);
+    std::printf("%.10f eV\n", out.energy);
+  } catch (const std::exception &error) {
+    std::fprintf(stderr, "%s\n", error.what());
+    return 1;
+  }
+  return 0;
+}
+#+end_src
+
+For these parameters =engine-openmm.org= quotes -0.3203213355 eV from
+=rgpot-lj=, the value the engine has to reproduce.
+
+*** Literature
+
+- Goswami papers: none of those read for this page uses this wrapper, so none is
+  listed.
+- J. E. Jones, Proc.
+  R. Soc.
+  A 106, 463-477 (1924), doi:10.1098/rspa.1924.0082, the 12-6 form.
+- Eastman and coauthors, PLoS Comput.
+  Biol. 13, e1005659 (2017), doi:10.1371/journal.pcbi.1005659, OpenMM, which
+  supplies the =CustomNonbondedForce=.
+- The parameters =u0= 1, =cutoff= 8 and =psi= 1 have no paper: they are a
+  convention of the code.

@@ -8,6 +8,7 @@
 #include <cmath>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <vector>
 
 namespace {
@@ -75,6 +76,109 @@ TEST_CASE("cluster Lennard-Jones dimer is minus one at the minimum", "[lj][cambr
   for (double component : gradient) {
     REQUIRE(std::abs(component) < 1e-9);
   }
+}
+
+TEST_CASE("Cambridge Morse and cluster LJ stretched dimer gradients match a "
+          "central difference",
+          "[morse][cambridge][lj]") {
+  const double x[6] = {0.0, 0.0, 0.0, 1.2, -0.3, 0.4};
+  const double rho = 3.0;
+  const double h = 1.0e-6;
+  double morse_energy = 0.0;
+  double morse_gradient[6] = {};
+  rgpot_cambridge_morse(x, 2, rho, &morse_energy, morse_gradient);
+  double lj_energy = 0.0;
+  double lj_gradient[6] = {};
+  rgpot_cluster_lj(x, 2, &lj_energy, lj_gradient);
+  for (std::size_t coord = 0; coord < 6; ++coord) {
+    double up[6];
+    double down[6];
+    for (std::size_t k = 0; k < 6; ++k) {
+      up[k] = x[k];
+      down[k] = x[k];
+    }
+    up[coord] += h;
+    down[coord] -= h;
+    double morse_up = 0.0;
+    double morse_down = 0.0;
+    double unused[6];
+    rgpot_cambridge_morse(up, 2, rho, &morse_up, unused);
+    rgpot_cambridge_morse(down, 2, rho, &morse_down, unused);
+    const double morse_numeric = (morse_up - morse_down) / (2.0 * h);
+    REQUIRE(std::abs(morse_numeric) > 1.0e-2);
+    REQUIRE(morse_gradient[coord] ==
+            Catch::Approx(morse_numeric).margin(1.0e-7));
+
+    double lj_up = 0.0;
+    double lj_down = 0.0;
+    rgpot_cluster_lj(up, 2, &lj_up, unused);
+    rgpot_cluster_lj(down, 2, &lj_down, unused);
+    const double lj_numeric = (lj_up - lj_down) / (2.0 * h);
+    REQUIRE(std::abs(lj_numeric) > 1.0e-2);
+    REQUIRE(lj_gradient[coord] == Catch::Approx(lj_numeric).margin(1.0e-7));
+  }
+}
+
+TEST_CASE("Cambridge Morse and cluster LJ with fewer than two atoms are zero",
+          "[morse][cambridge][lj]") {
+  // The pair loop does not run, so a NaN coordinate is never read.
+  const double nan = std::numeric_limits<double>::quiet_NaN();
+  const double one[3] = {nan, 0.0, 0.0};
+  double energy = 5.0;
+  double gradient[3] = {7.0, 7.0, 7.0};
+  rgpot_cambridge_morse(one, 1, 3.0, &energy, gradient);
+  REQUIRE(energy == 0.0);
+  for (double component : gradient) {
+    REQUIRE(component == 0.0);
+  }
+  energy = 5.0;
+  rgpot_cambridge_morse(one, 0, 3.0, &energy, gradient);
+  REQUIRE(energy == 0.0);
+
+  energy = 5.0;
+  gradient[0] = 7.0;
+  gradient[1] = 7.0;
+  gradient[2] = 7.0;
+  rgpot_cluster_lj(one, 1, &energy, gradient);
+  REQUIRE(energy == 0.0);
+  for (double component : gradient) {
+    REQUIRE(component == 0.0);
+  }
+  energy = 5.0;
+  rgpot_cluster_lj(one, 0, &energy, gradient);
+  REQUIRE(energy == 0.0);
+}
+
+TEST_CASE("Cambridge Morse and cluster LJ skip a coincidence and propagate NaN",
+          "[morse][cambridge][lj]") {
+  const double coin[6] = {1.0, 2.0, 3.0, 1.0, 2.0, 3.0};
+  double energy = 5.0;
+  double gradient[6] = {7.0, 7.0, 7.0, 7.0, 7.0, 7.0};
+  rgpot_cambridge_morse(coin, 2, 3.0, &energy, gradient);
+  REQUIRE(energy == 0.0);
+  for (double component : gradient) {
+    REQUIRE(component == 0.0);
+  }
+  energy = 5.0;
+  for (double &component : gradient) {
+    component = 7.0;
+  }
+  rgpot_cluster_lj(coin, 2, &energy, gradient);
+  REQUIRE(energy == 0.0);
+  for (double component : gradient) {
+    REQUIRE(component == 0.0);
+  }
+
+  // The coincident pair is skipped. The pairs that touch atom 2 are NaN.
+  const double nan = std::numeric_limits<double>::quiet_NaN();
+  const double mixed[9] = {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, nan, 0.0, 0.0};
+  double mixed_gradient[9];
+  rgpot_cambridge_morse(mixed, 3, 3.0, &energy, mixed_gradient);
+  REQUIRE(std::isnan(energy));
+  REQUIRE(std::isnan(mixed_gradient[0]));
+  rgpot_cluster_lj(mixed, 3, &energy, mixed_gradient);
+  REQUIRE(std::isnan(energy));
+  REQUIRE(std::isnan(mixed_gradient[0]));
 }
 
 TEST_CASE("Cambridge Morse at 80 atoms", "[.][benchmark][cambridge]") {

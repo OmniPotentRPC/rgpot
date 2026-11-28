@@ -18,6 +18,7 @@
 #include "rgpot/ExternalPot/external_potentials.h"
 #include "rgpot/Potential.hpp"
 
+#include <cstdint>
 #include <memory>
 #include <string>
 
@@ -37,6 +38,8 @@ struct ExternalLjConfig {
 class LammpsPot : public Potential<LammpsPot> {
 public:
   explicit LammpsPot(const ExternalLjConfig &config);
+  LammpsPot(const void *config_capnp, size_t config_capnp_size,
+            const std::string &engine_path = "");
   ~LammpsPot() override;
   LammpsPot(const LammpsPot &) = delete;
   LammpsPot &operator=(const LammpsPot &) = delete;
@@ -45,9 +48,13 @@ public:
 
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
-  [[nodiscard]] PotCaps caps() const noexcept override {
-    return {.reentrancy = Reentrancy::PerInstance, .periodic = true};
-  }
+  [[nodiscard]] PotCaps caps() const noexcept override;
+
+  /// Fingerprint of the backend that loaded (the canonical path of the mapped
+  /// file, and for lammpc the version and ABI it reports) with either the LJ
+  /// parameters or the lammpc config bytes. Requested paths that resolve to
+  /// one file share a key, and no two configurations do.
+  [[nodiscard]] uint64_t paramsKey() const noexcept override;
 
   [[nodiscard]] const ExternalLjConfig &config() const noexcept {
     return config_;
@@ -120,6 +127,9 @@ private:
 
 std::unique_ptr<LammpsPot>
 rgpot_lammps_potential(const ExternalLjConfig &config);
+std::unique_ptr<LammpsPot> rgpot_lammpc_potential(const void *config_capnp,
+                                                  size_t config_capnp_size,
+                                                  const std::string &engine_path = "");
 std::unique_ptr<GromacsPot>
 rgpot_gromacs_potential(const ExternalLjConfig &config);
 std::unique_ptr<OpenMMPot>

@@ -1,9 +1,17 @@
-cmake_minimum_required(VERSION 3.16)
+# Policy max is the newest CMake this tree is tested with (3.31.8).
+# That makes CMP0110 NEW on the directory stack, so CTest keeps a spaced
+# name such as "CuH2 Utils Test" as one test. CMake 3.16 through 3.18
+# still configure. They have no CMP0110, so a spaced name stays unquoted.
+cmake_minimum_required(VERSION 3.16...3.31.8)
+
+if(POLICY CMP0110)
+  cmake_policy(SET CMP0110 NEW)
+endif()
 
 project(
   rgpot
   # [[[cog import rgpot_version as v; cog.outl(f"  VERSION {v.VERSION}")]]]
-  VERSION 3.7.0
+  VERSION 3.8.0
   # [[[end]]]
   DESCRIPTION "Cpp core for potential energy surface functionality"
   HOMEPAGE_URL "https://github.com/OmniPotentRPC/rgpot"
@@ -54,12 +62,35 @@ else()
   endif()
 endif()
 
+# rgpot/rgpot_api.h exports the C ABI from a DLL when RGPOT_BUILDING is
+# set. Every target here defines it, as the meson build does for the
+# library archives and the tests.
+if(WIN32)
+  add_compile_definitions(RGPOT_BUILDING)
+endif()
+
 option(RGPOT_WITH_EAM_TABLE
        "EAM and Finnis-Sinclair potentials read from LAMMPS tables" OFF)
+option(RGPOT_WITH_ORCA
+       "ORCAPot: ORCA energy and gradient through the orca executable run as a child process (POSIX)"
+       OFF)
+if(RGPOT_WITH_ORCA AND WIN32)
+  message(
+    FATAL_ERROR
+      "RGPOT_WITH_ORCA runs ORCA through fork and exec and cannot be enabled on Windows"
+  )
+endif()
+option(RGPOT_WITH_CBE "CH5 2008 surface of the linked potlibc library" OFF)
+option(RGPOT_WITH_MDI
+       "Optional MDI engine frontend over rgpot_potential_t (builds rgpot-core with cargo; uses the official MDI Library at runtime)"
+       OFF)
 option(RGPOT_BUILD_TESTS "Build tests" ${RGPOT_IS_TOP_LEVEL})
 option(RGPOT_WITH_CP2K
        "CP2KPot, the potserv CP2K backend and libcp2kc_rgpot against libcp2k (pkg-config libcp2k)" OFF)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_C_STANDARD 99)
+set(CMAKE_C_STANDARD_REQUIRED ON)
+set(CMAKE_C_EXTENSIONS ON)
 
 # librgpot's ELF soversion is kCxxSoversion in CxxLayout.hpp, the same
 # constant Meson reads. The C ABI macros in rgpot.h are a different stamp
@@ -83,6 +114,24 @@ endif()
 
 # 1. Server/Physics Dependencies
 if(NOT RGPOT_RPC_CLIENT_ONLY)
+  include(CheckCXXSourceCompiles)
+  check_cxx_source_compiles(
+    "#include <atomic>\n#include <cstdint>\nint main() { std::uint64_t w = 0; std::atomic_ref<std::uint64_t>(w).fetch_or(1u, std::memory_order_relaxed); return 0; }"
+    RGPOT_HAS_STD_ATOMIC_REF)
+  if(NOT RGPOT_HAS_STD_ATOMIC_REF)
+    check_cxx_source_compiles(
+      "#include <cstdint>\n#if defined(_MSC_VER)\n#include <intrin.h>\n#endif\nint main() {\n  std::uint64_t w = 0;\n#if defined(__GNUC__) || defined(__clang__)\n  __atomic_fetch_or(&w, 1u, __ATOMIC_RELAXED);\n#elif defined(_MSC_VER)\n  _InterlockedOr64(reinterpret_cast<volatile long long *>(&w), 1LL);\n#else\n#error \"no atomic_fetch_or fallback\"\n#endif\n  return 0;\n}"
+      RGPOT_HAS_ATOMIC_FETCH_OR_FALLBACK)
+    if(NOT RGPOT_HAS_ATOMIC_FETCH_OR_FALLBACK)
+      message(
+        FATAL_ERROR
+          "std::atomic_ref requires libc++ 19 or newer (or a compiler with __atomic_fetch_or)"
+      )
+    endif()
+    message(
+      STATUS
+        "std::atomic_ref unavailable, using compiler atomic fetch_or fallback")
+  endif()
   # Core builds provide every public Fortran potential. The RPC-only
   # bridge has no numerical kernels and does not need a Fortran compiler.
   enable_language(Fortran)
@@ -133,35 +182,16 @@ endif()
 
 # --- Build Targets ---
 
-# The compiled schema is the vendored copy (the pinned potentials-schema
-# file) with the rgpot-local series applied. capnp_generate_cpp needs the
-# file at configure time, so the series is applied here and a change to it
-# reconfigures. The neighbour tests read it without the RPC stack.
+# The compiled schema is the vendored rgconf potential.capnp and the
+# common.capnp it imports, as they are. The neighbour tests read it without
+# the RPC stack.
 if(RGPOT_WITH_RPC OR RGPOT_BUILD_TESTS)
   find_package(Python3 COMPONENTS Interpreter REQUIRED)
-  set(RGPOT_SCHEMA_SRC_PREFIX "${CMAKE_CURRENT_BINARY_DIR}/schema")
-  set(RGPOT_EFFECTIVE_SCHEMA
-      "${RGPOT_SCHEMA_SRC_PREFIX}/CppCore/rgpot/rpc/Potentials.capnp")
-  set(_rgpot_schema_dir "${CMAKE_CURRENT_SOURCE_DIR}/CppCore/rgpot/rpc")
-  file(STRINGS "${_rgpot_schema_dir}/local/series" _rgpot_series_lines)
-  set(_rgpot_schema_inputs "${_rgpot_schema_dir}/Potentials.capnp"
-                           "${_rgpot_schema_dir}/local/series")
-  foreach(_line IN LISTS _rgpot_series_lines)
-    string(STRIP "${_line}" _line)
-    if(_line AND NOT _line MATCHES "^#")
-      list(APPEND _rgpot_schema_inputs "${_rgpot_schema_dir}/local/${_line}")
-    endif()
-  endforeach()
-  set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
-                                         ${_rgpot_schema_inputs})
-  execute_process(
-    COMMAND "${Python3_EXECUTABLE}" "${_rgpot_schema_dir}/schema_ledger.py"
-            apply --root "${CMAKE_CURRENT_SOURCE_DIR}"
-            --out "${RGPOT_EFFECTIVE_SCHEMA}"
-    RESULT_VARIABLE _rgpot_schema_result)
-  if(NOT _rgpot_schema_result EQUAL 0)
-    message(FATAL_ERROR "schema_ledger.py apply failed: ${_rgpot_schema_result}")
-  endif()
+  set(RGPOT_SCHEMA_SRC_PREFIX "${CMAKE_CURRENT_SOURCE_DIR}")
+  set(RGPOT_POTENTIALS_SCHEMA
+      "${CMAKE_CURRENT_SOURCE_DIR}/CppCore/rgpot/rpc/Potentials.capnp")
+  set(RGPOT_COMMON_SCHEMA
+      "${CMAKE_CURRENT_SOURCE_DIR}/CppCore/rgpot/rpc/common.capnp")
 endif()
 
 if(RGPOT_WITH_RPC)
@@ -170,7 +200,8 @@ if(RGPOT_WITH_RPC)
 
   set(CAPNPC_SRC_PREFIX "${RGPOT_SCHEMA_SRC_PREFIX}")
   set(CAPNPC_OUTPUT_DIR "${CMAKE_CURRENT_BINARY_DIR}")
-  capnp_generate_cpp(CAPNP_SOURCES CAPNP_HEADERS "${RGPOT_EFFECTIVE_SCHEMA}")
+  capnp_generate_cpp(CAPNP_SOURCES CAPNP_HEADERS "${RGPOT_POTENTIALS_SCHEMA}"
+                     "${RGPOT_COMMON_SCHEMA}")
 
   # On Apple, static intermediate RPC libs avoid install_name / mixed
   # toolchain dylib issues when system clang links conda Cap'n Proto; the
@@ -218,6 +249,9 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
       CppCore/rgpot/CalculatorGroup.cc
       CppCore/rgpot/PotHelpers.cc
       CppCore/rgpot/units.cc
+      CppCore/rgpot/SumPot/SumPot.cc
+      CppCore/rgpot/D2Pot/D2CpmdPot.cc
+      CppCore/rgpot/D2Pot/D2Pot.cc
       CppCore/rgpot/abi/CxxLayout.cc
       CppCore/rgpot/plugin/PluginRegistry.cc
       CppCore/rgpot/plugin/PluginBridge.cc
@@ -226,6 +260,8 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
       CppCore/rgpot/LennardJones/LJClusterPot.cc
       CppCore/rgpot/LennardJones/LJClusterKernel.cc
       CppCore/rgpot/Morse/MorsePot.cc
+      CppCore/rgpot/Models/ModelPots.cc
+      CppCore/rgpot/Models/ModelCapi.cc
       CppCore/rgpot/ZBL/ZBLPot.cc
       CppCore/rgpot/simd/dispatch.cc
       CppCore/rgpot/simd/scalar_kernels.cc
@@ -237,7 +273,10 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
       CppCore/rgpot/nlist/HalfShellWalk.cc
       CppCore/rgpot/nlist/HalfShell.cc
       CppCore/rgpot/StillingerWeber/SWSi.cc
-      CppCore/rgpot/Tersoff/TersoffSiC.cc)
+      CppCore/rgpot/Tersoff/TersoffSiC.cc
+      CppCore/rgpot/MEAM/MEAMModel.cc
+      CppCore/rgpot/MEAM/MEAMReader.cc
+      CppCore/rgpot/MEAM/MEAMPot.cc)
   # The rest of Meson's librgpot: pots potserv does not serve, and the
   # MOPAC, XTB and external-engine frontends, which load their engines at
   # run time.
@@ -260,8 +299,10 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
        CppCore/rgpot/EAM/EAM.cpp
        CppCore/rgpot/EAM/EAMPot.cc
        CppCore/rgpot/MOPACPot/MOPACPot.cc
+       CppCore/rgpot/ORCACPot/ORCACPot.cc
        CppCore/rgpot/XTBPot/XTBDlopen.cc
        CppCore/rgpot/ExternalPot/ExternalPot.cc
+       CppCore/rgpot/ExternalPot/detail/LoadedIdentity.cc
        ${_rgpot_emt_sources})
   # Asap's short includes (Atoms.h, EMT.h) resolve in its own directory.
   set_source_files_properties(${_rgpot_emt_sources} PROPERTIES
@@ -276,9 +317,12 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
   # NWChemPot / CPMDPot are pure dlopen consumers of the split nwchemc / cpmdc
   # engines (parity with meson). Cap'n Proto params live in the generated schema,
   # so the frontends are only compiled when RGPOT_WITH_RPC enables ptlrpc.
+  # makePotential (PotentialFactory.cc) reads PotentialConfig and builds
+  # engine-library arms through EnginePot, so both come with the RPC stack too.
   if(RGPOT_WITH_RPC)
     list(APPEND RGPOT_SOURCES CppCore/rgpot/NWChemPot/NWChemPot.cc
-         CppCore/rgpot/CPMDPot/CPMDPot.cc)
+         CppCore/rgpot/CPMDPot/CPMDPot.cc CppCore/rgpot/EnginePot/EnginePot.cc
+         CppCore/rgpot/PotentialFactory.cc)
   endif()
   # CP2KPot dlopens the libcp2k shim. It is built only with the shim, so a
   # build without libcp2k compiles no CP2K code.
@@ -318,7 +362,13 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
   endif()
 
   if(RGPOT_WITH_EAM_TABLE)
-    list(APPEND RGPOT_SOURCES CppCore/rgpot/EAMTable/EAMTablePot.cc)
+    list(APPEND RGPOT_SOURCES CppCore/rgpot/EAMTable/EAMTablePot.cc
+         CppCore/rgpot/EAMTable/EAMTableImages.cc)
+  endif()
+
+  if(RGPOT_WITH_ORCA)
+    list(APPEND RGPOT_SOURCES CppCore/rgpot/ORCAPot/ORCAFiles.cc
+         CppCore/rgpot/ORCAPot/ORCAPot.cc)
   endif()
 
   if(RGPOT_BUILD_TESTS)
@@ -340,6 +390,26 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
     target_link_libraries(rgpot_nlist PUBLIC OpenMP::OpenMP_CXX)
   endif()
   set_target_properties(rgpot_nlist PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+  file(STRINGS "${CMAKE_CURRENT_SOURCE_DIR}/third_party/vesin/VERSION"
+       _rgpot_vesin_versions REGEX "^[0-9]+\\.[0-9]+\\.[0-9]+$")
+  list(LENGTH _rgpot_vesin_versions _rgpot_vesin_version_count)
+  if(NOT _rgpot_vesin_version_count EQUAL 1)
+    message(
+      FATAL_ERROR
+        "third_party/vesin/VERSION must contain exactly one version")
+  endif()
+  list(GET _rgpot_vesin_versions 0 RGPOT_VESIN_VERSION)
+  file(STRINGS
+       "${CMAKE_CURRENT_SOURCE_DIR}/third_party/vesin/vesin-single-build.cpp"
+       _rgpot_vesin_source_version REGEX "^// vesin version: ")
+  if(NOT _rgpot_vesin_source_version STREQUAL
+     "// vesin version: ${RGPOT_VESIN_VERSION}")
+    message(
+      FATAL_ERROR
+        "vendored vesin source does not match VERSION ${RGPOT_VESIN_VERSION}")
+  endif()
+
   add_library(rgpot_vesin STATIC third_party/vesin/vesin-single-build.cpp)
   add_library(rgpot::vesin ALIAS rgpot_vesin)
   set_target_properties(rgpot_vesin PROPERTIES
@@ -351,16 +421,20 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
            $<INSTALL_INTERFACE:include/rgpot/vesin>)
   target_link_libraries(rgpot_vesin PRIVATE Threads::Threads)
   # The sources meson compiles without contraction: rgpot_core,
-  # rgpot_minimage, rgpot_exact_fma, and the lennard_jones, morse, gupta,
-  # sutton_chen, tersoff_sic, reduced_pair and eam_cell libraries. Tests
-  # compare their bits with unfused references, and arm64 contracts a*b+c
-  # by default, so a source missing here fails there and nowhere else.
+  # rgpot_minimage, rgpot_exact_fma, and the lennard_jones, morse, zbl,
+  # gupta, sutton_chen, tersoff_sic, reduced_pair and eam_cell libraries.
+  # Tests compare their bits with unfused references, and arm64 contracts
+  # a*b+c by default, so a source missing here fails there and nowhere else.
   # tools/check_test_parity.sh checks this list against meson.
   set(_rgpot_unfused_sources
       CppCore/rgpot/CalculatorGroup.cc
       CppCore/rgpot/PotHelpers.cc
       CppCore/rgpot/PotentialCache.cc
+      CppCore/rgpot/Slices.cc
       CppCore/rgpot/units.cc
+      CppCore/rgpot/SumPot/SumPot.cc
+      CppCore/rgpot/D2Pot/D2CpmdPot.cc
+      CppCore/rgpot/D2Pot/D2Pot.cc
       CppCore/rgpot/abi/CxxLayout.cc
       CppCore/rgpot/plugin/PluginRegistry.cc
       CppCore/rgpot/plugin/PluginBridge.cc
@@ -376,10 +450,14 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
       CppCore/rgpot/LennardJones/LJClusterKernel.cc
       CppCore/rgpot/Morse/MorsePot.cc
       CppCore/rgpot/Morse/cambridge_morse.c
+      CppCore/rgpot/ZBL/ZBLPot.cc
       CppCore/rgpot/Gupta/gupta.c
       CppCore/rgpot/SuttonChen/SuttonChenPot.cc
       CppCore/rgpot/SuttonChen/SuttonChenScales.cc
       CppCore/rgpot/Tersoff/TersoffSiC.cc
+      CppCore/rgpot/MEAM/MEAMModel.cc
+      CppCore/rgpot/MEAM/MEAMReader.cc
+      CppCore/rgpot/MEAM/MEAMPot.cc
       CppCore/rgpot/ReducedPair/ReducedPair.cc
       CppCore/rgpot/EAM/EAM.cpp
       CppCore/rgpot/EAM/EAMPot.cc)
@@ -409,7 +487,29 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
       APPEND PROPERTY COMPILE_OPTIONS ${RGPOT_VECTOR_LOOP_FLAGS})
   endif()
   add_subdirectory(CppCore/rgpot/fortran)
+  if(RGPOT_WITH_CBE)
+    find_package(PkgConfig REQUIRED)
+    pkg_check_modules(POTLIBC REQUIRED potlibc)
+    find_path(POTLIBC_HEADER_DIR NAMES potlibc.h HINTS ${POTLIBC_INCLUDE_DIRS}
+              NO_DEFAULT_PATH REQUIRED)
+    find_library(POTLIBC_LIBRARY NAMES potlibc HINTS ${POTLIBC_LIBRARY_DIRS}
+                 NO_DEFAULT_PATH REQUIRED)
+    list(APPEND RGPOT_SOURCES CppCore/rgpot/CBEPot/CBEPot.cc)
+  endif()
   add_library(rgpot ${RGPOT_SOURCES})
+  # A static rgpot passes rgpot_nlist's OpenMP::OpenMP_CXX to its consumers
+  # as a link-only dependency, so the installed package has to define it.
+  get_target_property(_rgpot_type rgpot TYPE)
+  set(RGPOT_CONFIG_FIND_OPENMP OFF)
+  if(OpenMP_CXX_FOUND AND _rgpot_type STREQUAL "STATIC_LIBRARY")
+    set(RGPOT_CONFIG_FIND_OPENMP ON)
+  endif()
+  target_compile_definitions(rgpot PRIVATE RGPOT_MODEL_BUILD)
+  if(WIN32 AND _rgpot_type STREQUAL "STATIC_LIBRARY")
+    target_compile_definitions(rgpot INTERFACE
+      $<BUILD_INTERFACE:RGPOT_STATIC>
+      $<INSTALL_INTERFACE:RGPOT_STATIC>)
+  endif()
   if(RGPOT_WITH_HIGHWAY)
     target_link_libraries(rgpot PRIVATE hwy)
     target_compile_definitions(rgpot PRIVATE RGPOT_WITH_HIGHWAY)
@@ -419,6 +519,37 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
                                         VERSION ${PROJECT_VERSION}
                                         SOVERSION ${RGPOT_CXX_SOVERSION})
   target_link_libraries(rgpot PRIVATE rgpot_fortran_kernels rgpot_nlist Threads::Threads)
+  if(TARGET rgpot_cuh2)
+    # A static umbrella would otherwise pull rgpot_nlist into this plugin
+    # and define a second Neighbours generation counter. Link the built
+    # file: a shared umbrella records a dependency on librgpot, and a
+    # static umbrella leaves the neighbour symbols undefined so they bind
+    # to the process that dlopens the plugin.
+    add_dependencies(rgpot_cuh2 rgpot)
+    target_link_libraries(rgpot_cuh2 PRIVATE "$<TARGET_FILE:rgpot>")
+  endif()
+  # A static librgpot does not absorb rgpot_nlist, so the ABI check reads
+  # that archive too. On Linux a shared librgpot names every neighbour
+  # export as undefined, so a link that drops unreferenced sections still
+  # keeps that C ABI. The session calls rgpot_nlist_build, which pulls the
+  # object that defines those exports.
+  get_target_property(_rgpot_library_type rgpot TYPE)
+  if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND _rgpot_library_type STREQUAL "SHARED_LIBRARY")
+    foreach(_rgpot_nlist_sym IN ITEMS
+            rgpot_nlist_abi_version rgpot_nlist_build rgpot_nlist_builder_close
+            rgpot_nlist_builder_open rgpot_nlist_builder_update
+            rgpot_nlist_build_systems rgpot_nlist_fortran_build
+            rgpot_nlist_fortran_close rgpot_nlist_fortran_open
+            rgpot_nlist_request_init rgpot_nlist_strerror rgpot_nlist_walk_close
+            rgpot_nlist_walk_open rgpot_nlist_walk_pull)
+      target_link_options(rgpot PRIVATE "LINKER:--undefined=${_rgpot_nlist_sym}")
+    endforeach()
+  endif()
+  if(RGPOT_WITH_CBE)
+    target_include_directories(rgpot PRIVATE ${POTLIBC_HEADER_DIR})
+    target_link_libraries(rgpot PRIVATE ${POTLIBC_LIBRARY})
+    target_compile_definitions(rgpot PUBLIC RGPOT_HAS_CBE)
+  endif()
   if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_link_options(
       rgpot PRIVATE
@@ -485,8 +616,16 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
     target_compile_definitions(rgpot PUBLIC RGPOT_HAS_EAM_TABLE)
   endif()
 
+  if(RGPOT_WITH_ORCA)
+    target_compile_definitions(rgpot PUBLIC RGPOT_HAS_ORCA)
+  endif()
+
   if(RGPOT_WITH_RPC)
     target_link_libraries(rgpot PUBLIC ptlrpc)
+    # ExternalPot.cc includes the generated Potentials.capnp.h. Listing the
+    # generated headers as sources orders them before its compile in a
+    # parallel build, as ptlrpc_hdr_dep does for Meson.
+    target_sources(rgpot PRIVATE ${CAPNP_HEADERS})
     target_compile_definitions(rgpot PUBLIC RGPOT_HAS_NWCHEM_FRONTEND
                                             RGPOT_HAS_CPMD_FRONTEND)
     # DynLib / dlopen for libnwchemc.so / libcpmdc.so at runtime
@@ -496,6 +635,15 @@ if(NOT RGPOT_RPC_CLIENT_ONLY)
       target_link_libraries(rgpot PUBLIC dl)
     endif()
   endif()
+
+  if(RGPOT_WITH_RPC)
+    set(_rgpot_lammpc_profile 1)
+  else()
+    set(_rgpot_lammpc_profile 0)
+  endif()
+  set_source_files_properties(CppCore/rgpot/ExternalPot/ExternalPot.cc
+    PROPERTIES COMPILE_DEFINITIONS
+    RGPOT_HAS_LAMMPC_PROFILE=${_rgpot_lammpc_profile})
 
   add_library(rgpot::rgpot ALIAS rgpot)
 
@@ -558,6 +706,95 @@ if(RGPOT_WITH_RPC AND NOT RGPOT_RPC_CLIENT_ONLY)
   endif()
 endif()
 
+# --- MDI frontend ---
+# rgpot-core is built with cargo only for this option, with the Cargo features
+# meson passes for its with_rust_core and with_mdi options. rgpot-mdi and
+# rgpot-eval follow meson's engines/: they are not built on Windows or in the
+# client-only build.
+if(RGPOT_WITH_MDI)
+  find_program(RGPOT_CARGO cargo)
+  if(NOT RGPOT_CARGO)
+    message(FATAL_ERROR "RGPOT_WITH_MDI needs cargo to build rgpot-core")
+  endif()
+  find_package(Python3 COMPONENTS Interpreter REQUIRED)
+  find_package(Threads REQUIRED)
+
+  set(_rgpot_cargo_features mdi)
+  if(RGPOT_WITH_RPC)
+    list(APPEND _rgpot_cargo_features rpc)
+  endif()
+  if(RGPOT_WITH_CACHE)
+    list(APPEND _rgpot_cargo_features cache)
+  endif()
+  list(JOIN _rgpot_cargo_features "," _rgpot_cargo_feature_list)
+  set(_rgpot_cargo_profile debug)
+  if(CMAKE_BUILD_TYPE STREQUAL "Release")
+    set(_rgpot_cargo_profile release)
+  endif()
+  if(MSVC)
+    set(_rgpot_rust_archive rgpot_core.lib)
+  else()
+    set(_rgpot_rust_archive librgpot_core.a)
+  endif()
+  set(_rgpot_rust_dir "${CMAKE_CURRENT_BINARY_DIR}/rust-core")
+  set(_rgpot_rust_built "${_rgpot_rust_dir}/${_rgpot_rust_archive}")
+  file(MAKE_DIRECTORY "${_rgpot_rust_dir}")
+  add_custom_target(
+    rgpot_rust_core_build
+    COMMAND
+      "${Python3_EXECUTABLE}"
+      "${CMAKE_CURRENT_SOURCE_DIR}/scripts/build_rust_core.py" --cargo
+      "${RGPOT_CARGO}" --manifest
+      "${CMAKE_CURRENT_SOURCE_DIR}/rgpot-core/Cargo.toml" --target-dir
+      "${_rgpot_rust_dir}/cargo-target" --profile ${_rgpot_cargo_profile}
+      --artifact ${_rgpot_rust_archive} --features
+      "${_rgpot_cargo_feature_list}" "${_rgpot_rust_built}"
+      "${_rgpot_rust_dir}/rgpot_rust_built.h"
+    BYPRODUCTS "${_rgpot_rust_built}" "${_rgpot_rust_dir}/rgpot_rust_built.h"
+    COMMENT "Building rgpot-core with cargo (features: ${_rgpot_cargo_feature_list})"
+    USES_TERMINAL)
+  add_library(rgpot_rust_core STATIC IMPORTED GLOBAL)
+  set_target_properties(
+    rgpot_rust_core
+    PROPERTIES IMPORTED_LOCATION "${_rgpot_rust_built}"
+               INTERFACE_INCLUDE_DIRECTORIES
+               "${CMAKE_CURRENT_SOURCE_DIR}/rgpot-core/include"
+               INTERFACE_LINK_LIBRARIES "Threads::Threads;${CMAKE_DL_LIBS}")
+  add_dependencies(rgpot_rust_core rgpot_rust_core_build)
+
+  if(RGPOT_RPC_CLIENT_ONLY OR WIN32)
+    message(
+      STATUS
+        "rgpot-mdi is not built: engines/ is skipped on Windows and in the client-only build")
+  else()
+    set(_rgpot_engines_dir "${CMAKE_CURRENT_SOURCE_DIR}/engines")
+    add_library(rgpot_pot_spec STATIC "${_rgpot_engines_dir}/pot_spec.cpp")
+    target_include_directories(
+      rgpot_pot_spec PUBLIC "${_rgpot_engines_dir}"
+                            "${CMAKE_CURRENT_SOURCE_DIR}/rgpot-core/include")
+    target_compile_definitions(rgpot_pot_spec PUBLIC RGPOT_HAS_FORTRAN_POTS)
+    target_link_libraries(rgpot_pot_spec PUBLIC rgpot::rgpot)
+    set_target_properties(rgpot_pot_spec PROPERTIES POSITION_INDEPENDENT_CODE ON)
+
+    add_executable(rgpot-mdi "${_rgpot_engines_dir}/rgpot_mdi.cpp")
+    target_link_libraries(rgpot-mdi PRIVATE rgpot_pot_spec rgpot_rust_core
+                                            rgpot_vesin ${CMAKE_DL_LIBS})
+    add_executable(rgpot-eval "${_rgpot_engines_dir}/rgpot_eval.cpp")
+    target_link_libraries(rgpot-eval PRIVATE rgpot_pot_spec rgpot_vesin)
+    foreach(_rgpot_engine rgpot-mdi rgpot-eval)
+      set_target_properties(${_rgpot_engine} PROPERTIES LINKER_LANGUAGE CXX)
+      if(OpenMP_CXX_FOUND)
+        target_link_libraries(${_rgpot_engine} PRIVATE OpenMP::OpenMP_CXX)
+      endif()
+      if(MSVC)
+        target_compile_options(${_rgpot_engine} PRIVATE /W4)
+      else()
+        target_compile_options(${_rgpot_engine} PRIVATE -Wall -Wextra -Wpedantic)
+      endif()
+    endforeach()
+  endif()
+endif()
+
 # --- Installation ---
 include(GNUInstallDirs)
 
@@ -569,6 +806,9 @@ if(RGPOT_IS_TOP_LEVEL)
     install(TARGETS potserv_mpi nwchem_mpi_force_host
             RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
   endif()
+  if(TARGET rgpot-mdi)
+    install(TARGETS rgpot-mdi RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+  endif()
   if(RGPOT_WITH_RPC)
     install(
       TARGETS ptlrpc rgpot_client_bridge
@@ -579,7 +819,8 @@ if(RGPOT_IS_TOP_LEVEL)
     # Install the bridge header in the correct directory structure
     install(FILES CppCore/rgpot/rpc/pot_bridge.h
             DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/rgpot/rpc)
-    install(FILES ${CAPNP_HEADERS} "${RGPOT_EFFECTIVE_SCHEMA}"
+    install(FILES ${CAPNP_HEADERS} "${RGPOT_POTENTIALS_SCHEMA}"
+                  "${RGPOT_COMMON_SCHEMA}"
             DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/rgpot/rpc)
   endif()
 
@@ -608,6 +849,9 @@ if(RGPOT_IS_TOP_LEVEL)
       DIRECTORY CppCore/rgpot
       DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}
       FILES_MATCHING
+      PATTERN "ExternalPot/detail" EXCLUDE
+      PATTERN "Morse/detail" EXCLUDE
+      PATTERN "SuttonChen/detail" EXCLUDE
       PATTERN "*.hpp"
       PATTERN "*.h")
   endif()

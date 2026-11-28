@@ -41,12 +41,22 @@ The cell is periodic in each direction.
 =energyAndGradient= writes the energy and dE/dx for one configuration.
 =energyAndGradientBatch= writes both for several configurations that share one
 cell and one species list, so a caller enters the library once per batch.
+A configuration is spread across the threads =OMP_NUM_THREADS= requests when
+=TersoffSiC= would not open a team for that atom count.
+=teamSize= decides, from =TersoffSiC::kTeamMinAtoms= and
+=TersoffSiC::kTeamFrom=, and a call already inside a team or with one thread
+requested does not spread.
+Each configuration is evaluated whole.
+A configuration that would open a team, or a batch that contains one, stays on
+the calling thread.
+The bits match a one-thread batch and a fresh =energyAndGradient= of the same
+configuration.
 The Python method =energy_gradient= accepts positions of shape =(n_atoms, 3)= or
 =(n_config, n_atoms, 3)= and uses that entry.
 
-Every call takes its pairs from the instance's shared neighbour layer
-(=nlist::updateCells=), searched to the silicon outer cutoff, 3.0 Angstrom, the
-longest in this set.
+=forceImpl= and =energyAndGradient= take their pairs from the instance neighbour
+layer (=nlist::updateCells=), searched to the silicon outer cutoff, 3.0
+Angstrom, the longest in this set.
 The skin is that of a =nlist::NeighborList= passed to =energyAndGradient= when
 it is positive.
 Otherwise it is one fifth of that cutoff, 0.6 Angstrom, or 0 under
@@ -54,7 +64,11 @@ Otherwise it is one fifth of that cutoff, 0.6 Angstrom, or 0 under
 The pairs are reused while each atom has moved by at most half the skin and the
 cell and the atom count are unchanged.
 With skin 0 they are reused only for identical coordinates.
-=energyAndGradientBatch= passes no =nlist::NeighborList=.
+=energyAndGradientBatch= builds a new layer for each configuration, on the
+thread that evaluates it, and passes no =nlist::NeighborList=.
+That layer starts empty, so it is not reused across configurations.
+Its skin is the same default.
+Species and kind scratch stay =thread_local=.
 
 ** Held list on the force path
 
@@ -115,12 +129,42 @@ The cells are compressed cubic silicon, a sheared silicon cell, and a sheared,
 rattled silicon carbide cell whose Si-Si pairs sit inside the cutoff taper.
 The tolerance is 5e-10 eV/Angstrom^3.
 
-=TersoffPot= keeps =caps().stress= false, since its all-silicon calls run the
-Fortran gather, which writes no stress.
-A call with any other species reaches this kernel, and =TersoffPot= then drops
-its stress.
-Every =TersoffPot= call leaves =has_stress= at 0 and the nine entries at zero,
-so a reused output keeps no tensor from an earlier call.
+=TersoffPot= keeps =caps().stress= true.
+All-silicon calls run the Fortran gather and publish its Cauchy stress; mixed
+silicon-carbon calls dispatch to =TersoffSiC= and publish the same stress and
+forces as that kernel.
+A zero-atom call with a null box succeeds without stress.
+=has_stress= stays 0 and the nine entries are zero.
+A call with no atoms does the same for any box.
+An all-silicon call with atoms and a null box throws
+=std::runtime_error= =Tersoff potential failed (status 2): rgpot_neighbors: a required neighbour pointer is null=.
+An all-silicon call with atoms and a zero-volume or non-finite box throws
+=std::runtime_error= =Tersoff potential failed (status 4): rgpot_neighbors: box must be finite, and a periodic box must have positive volume=.
+A mixed-species call with atoms and a null box throws =std::invalid_argument=
+=TersoffSiC: null cell=.
+A mixed-species call with atoms and a zero-volume orthorhombic cell leaves
+=has_stress= at 0 and the nine entries at zero.
+A mixed-species call with atoms and a singular skewed cell throws
+=std::invalid_argument= =periodic cell must be nonsingular=.
+A mixed-species call with a non-finite cell throws =std::invalid_argument=
+=periodic cell must be finite=.
+
+** Domain decomposition
+
+=locality= returns the silicon outer cutoff, 3 Angstrom, with a full neighbour
+list and a reach of 2, so the copies a host must hold go out to twice that
+cutoff.
+=densityStage= writes nothing.
+=forceStage= evaluates owned centres on that full list.
+Every directed bond is kept, because the 1989 sum already carries the one half,
+and the partner's owner counts the bond that leaves the partner.
+Pairs beyond a pair's own outer cutoff are skipped.
+With newton on, the host adds the forces written on copies back to their owners
+and sums the owned energies.
+=Staged3BodyTest= checks a periodic silicon carbide cell, split into 2, 4 and 8
+slabs, against =forceImpl= to a relative tolerance of 1e-10, including a
+triclinic cell and a slab thinner than two cutoffs.
+The whole-cell call is unchanged.
 
 ** Diamond energies
 

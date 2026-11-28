@@ -6,8 +6,7 @@
 #include "rgpot/KeptPotential.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/engine_c_abi.h"
-
-#include <dlfcn.h>
+#include "rgpot/plugin/DynLib.hpp"
 
 #include <cstdio>
 #include <cstring>
@@ -42,30 +41,36 @@ int rgpot_lj_eval(const double *xyz, const int *atomic_numbers, size_t n,
   // atom count and atomic numbers.
   rgpot::KeptKey key;
   key.f64(u0).f64(cutoff).f64(psi).atoms(n, n > 0 ? atomic_numbers : nullptr);
-  rgpot::Kept<rgpot::LJPot>::with(
-      key,
-      [&] {
-        rgpot::LJConfig config;
-        config.u0 = u0;
-        config.cutoff = cutoff;
-        config.psi = psi;
-        return std::make_unique<rgpot::LJPot>(config);
-      },
-      [&](const rgpot::LJPot &pot) {
-        rgpot::ForceOut out{forces, 0.0, 0.0, {}, 0};
-        const rgpot::ForceInput in{n, xyz, atomic_numbers, box9};
-        pot.forceImpl(in, &out);
-        *energy = out.energy;
-        *has_stress = out.has_stress;
-        std::memcpy(stress, out.stress, 9 * sizeof(double));
-      });
+  try {
+    rgpot::Kept<rgpot::LJPot>::with(
+        key,
+        [&] {
+          rgpot::LJConfig config;
+          config.u0 = u0;
+          config.cutoff = cutoff;
+          config.psi = psi;
+          return std::make_unique<rgpot::LJPot>(config);
+        },
+        [&](const rgpot::LJPot &pot) {
+          rgpot::ForceOut out{forces, 0.0, 0.0, {}, 0};
+          const rgpot::ForceInput in{n, xyz, atomic_numbers, box9};
+          pot.forceImpl(in, &out);
+          *energy = out.energy;
+          *has_stress = out.has_stress;
+          std::memcpy(stress, out.stress, 9 * sizeof(double));
+        });
+  } catch (...) {
+    return 1;
+  }
   return 0;
 }
 
 namespace {
 
+namespace dynlib = rgpot::plugin::dynlib;
+
 struct Engine {
-  void *library = nullptr;
+  dynlib::Handle library = nullptr;
   RgpotEnginePot *pot = nullptr;
   int (*force)(RgpotEnginePot *, long, const double *, const int *, double *,
                double *, double *, const double *, rgpot_engine_coord_transform,
@@ -91,15 +96,16 @@ int rgpot_engine_eval(const char *library, const void *config, size_t config_len
   }
   Engine &engine = cached();
   if (engine.library == nullptr) {
-    engine.library = dlopen(library, RTLD_NOW | RTLD_LOCAL);
+    engine.library = dynlib::open(library);
     if (engine.library == nullptr) {
-      fail(err, err_len, dlerror() != nullptr ? dlerror() : "dlopen failed");
+      const std::string why = dynlib::error();
+      fail(err, err_len, why.empty() ? "loading the engine library failed" : why.c_str());
       return 1;
     }
-    auto *create = reinterpret_cast<RgpotEnginePot *(*)(const void *, size_t, char *, size_t)>(
-        dlsym(engine.library, "rgpot_engine_create"));
-    engine.force = reinterpret_cast<decltype(engine.force)>(
-        dlsym(engine.library, "rgpot_engine_force"));
+    auto *create = dynlib::loadSym<RgpotEnginePot *(*)(const void *, size_t, char *, size_t)>(
+        engine.library, "rgpot_engine_create");
+    engine.force =
+        dynlib::loadSym<decltype(engine.force)>(engine.library, "rgpot_engine_force");
     if (create == nullptr || engine.force == nullptr) {
       fail(err, err_len, "engine library has no rgpot_engine_create/force");
       return 1;

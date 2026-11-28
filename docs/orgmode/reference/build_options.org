@@ -23,11 +23,15 @@ A =feature= option takes =enabled=, =disabled= or =auto=.
 | =with_eigen= | boolean | =false= | Link Eigen3. A missing Eigen3 is an error only when this option is true. |
 | =with_rpc= | boolean | =false= | Build the Cap'n Proto RPC stack and the =potserv= server. |
 | =with_rpc_client_only= | boolean | =false= | Build only the RPC client and the dlopen frontends. Implies the RPC stack; disables the server and the cache. |
+| =with_mdi= | boolean | =false= | Build the optional =rgpot-mdi= compatibility frontend over =rgpot_potential_t=. Needs =with_rust_core=true= and the official MDI Library at runtime. |
 | =with_cache= | boolean | =false= | Link RocksDB and xxhash and build =PotentialCache=. |
 | =pure_lib= | boolean | =true= | When false, link fmt and define =NOT_PURE_LIB=. |
-| =with_rust_core= | boolean | =false= | Build =rgpot-core= with cargo and link =librgpot_core.a=. The cargo features =rpc= and =cache= follow =with_rpc= and =with_cache=. The C header is the checked-in =rgpot-core/include/rgpot.h=; cbindgen does not run. |
+| =use_openmp= | boolean | =true= | Compile the OpenMP regions of the cell walk and the potentials. Off builds every target serially, with no OpenMP flag or runtime on =librgpot= or its consumers. |
+| =with_rust_core= | boolean | =false= | Build =rgpot-core= with cargo and link =librgpot_core.a=, or =librgpot_bundle.a= when the fast pair list is on too. The cargo features =rpc=, =mdi= and =cache= follow =with_rpc=, =with_mdi= and =with_cache=. The C header is the checked-in =rgpot-core/include/rgpot.h=; cbindgen does not run. |
+| =team_min_atoms= | integer | =8192= | Minimum atom count for opening an OpenMP team in a call without a threshold of its own, such as a neighbour-list build or =EMTPot=. Each classical potential keeps its own counts as =kTeamFrom=. |
 | =with_fast_nlist= | feature | =auto= | linkcell/minimage pair list. Auto when cargo and rustc 1.89 or newer are found; otherwise the C++ pair scan is used. |
 | =with_cp2k= | feature | =disabled= | CP2KPot, the potserv CP2K backend and libcp2kc_rgpot.so against libcp2k (pkg-config libcp2k); needs with_rpc |
+| =with_potlibc= | feature | =disabled= | Build =libpotlibc_engine.so= against the potlibc C API. |
 | =with_mpi= | feature | =disabled= | Build =librgpot_mpi=, which =librgpot= loads with =dlopen= so calculator groups can split and share across ranks. =librgpot= itself never links MPI. |
 | =with_xtb= | boolean | =false= | Link xtb (=dependency('xtb')=) and build =XTBPot=. |
 | =with_xckernel= | boolean | =false= | Build the in-process libxckernel XC kernel (=XcKernel=, generated C ABI; not a Potential). |
@@ -37,6 +41,7 @@ A =feature= option takes =enabled=, =disabled= or =auto=.
 | =with_expr= | boolean | =false= | Compile the vendored OpenMM Lepton (=third_party/lepton=) and build =ExprPot=. |
 | =with_tblite= | boolean | =false= | Link tblite and build =TBLitePot=. |
 | =with_metatomic= | boolean | =false= | Build the Metatomic potential and engine against torch and metatomic. |
+| =with_uma= | boolean | =false= | Build the UMA potential (=UmaPot=) and engine plugin against torch alone, without the metatensor and metatomic packages. Torch is a Python package or a libtorch tree named by =RGPOT_TORCH_ROOT= (=lib=, =include= and a =build-version= file), and without =with_metatomic= the plugin records that library directory as its run path. =with_metatomic= builds the plugin too. The plugin needs =with_rpc=. Neither =UmaPot= nor the plugin is built when =with_python= is true. |
 | =with_skala= | boolean | =false= | Build =SkalaPot=, Skala XC through NWChemPot and =libnwchemc=. Needs =with_rpc= or =with_rpc_client_only=. |
 | =with_python= | boolean | =false= | Build the pip-installable Python package (=rgpot._core=). |
 | =with_fortran_pots= | feature | =auto= | Fortran 2018 kernels in =CppCore/rgpot/fortran= (CuH2, EDIP, LenoskySi, EAMAl, FeHe, WaterH, SWSi and the Tersoff silicon gather). =auto= builds them when a Fortran compiler is found. Independent of the RPC options. |
@@ -44,6 +49,9 @@ A =feature= option takes =enabled=, =disabled= or =auto=.
 | =with_ipi= | feature | =auto= | i-PI socket server Potential (IPIPot), driver client (IPIDriver) and rgpot-ipi-driver (POSIX sockets). auto is on except on Windows. |
 | =with_water= | boolean | =false= | Flexible TIP4P, SPC/E and TIP4P-Pt kernels. Defaults false, matching the eOn with_water option. |
 | =with_eam_table= | boolean | =false= | EAM and Finnis-Sinclair potentials read from LAMMPS funcfl, setfl and eam/fs tables. |
+| =with_orca= | boolean | =false= | ORCAPot: ORCA energy and gradient through the orca executable run as a child process (POSIX). The executable is found at run time. |
+| =orcac_main= | feature | =disabled= | Tests: build liborcac from the orcac commit pinned in =subprojects/orcac.wrap= and run the orca arm of =makePotential= against it (=PotentialFactoryTest=, =OrcacMainExports=). |
+| =with_cbe= | feature | =disabled= | Link =potlibc= and build the CBE (CH5 2008) H + CH4 frontend. potlibc must provide =potlibc_gradient_jet=. |
 | =with_lammps= | feature | =auto= | LAMMPS pair_style rgpot and the lj/cut comparison. Needs the lammps Python module. pair_style rgpot also needs lammps_src. |
 | =lammps_src= | string | =(empty)= | LAMMPS src directory that contains pair.h, matching the liblammps that will load the plugin. |
 | =lammps_exe= | string | =(empty)= | lmp built from lammps_src. When set, the LAMMPS test also runs pair_style rgpot. |
@@ -51,6 +59,10 @@ A =feature= option takes =enabled=, =disabled= or =auto=.
 | =with_gromacs_dropin= | feature | =disabled= | librgpot_gromacs, the libcp2k API that GROMACS built with =-DGMX_CP2K=ON= links, so mdrun takes QM/MM energies and forces from any rgpot potential. |
 | =gromacs_dropin_gmx= | string | =(empty)= | gmx of a double-precision GROMACS linked against librgpot_gromacs. Empty looks for gmx_d on PATH and skips the mdrun tests without it. |
 | =with_openmm= | feature | =auto= | OpenMM shifted Lennard-Jones comparison. |
+| =with_nblib= | feature | =auto= | GROMACS nblib MD session engine. |
+| =nblib_prefix= | string | =(empty)= | Prefix of GROMACS built with the installed nblib API. |
+| =nblib_source= | string | =(empty)= | GROMACS source tree of nblib_prefix, for the TPR session. |
+| =nblib_build= | string | =(empty)= | GROMACS build tree of nblib_prefix, for the TPR session. |
 | =with_plumed= | feature | =auto= | PLUMED RGPOT collective variable. |
 | =with_long_range= | boolean | =false= | Build the Ewald, PME, dispersion and NLH summands (=CppCore/rgpot/LongRange=). |
 | =with_cuda= | boolean | =false= | Compile the long-range CUDA path with nvcc and link cudart. Used only with =with_long_range=. |
@@ -71,5 +83,8 @@ Pass an option as =-DNAME=ON= or =-DNAME=OFF= to =cmake=.
 | =RGPOT_WITH_HIGHWAY= | BOOL | ON | Google Highway runtime ISA dispatch. |
 | =RGPOT_WITH_IPI= | BOOL | ON (OFF on Windows) | i-PI socket server potential and driver client. Enabling it on Windows is a configure error. |
 | =RGPOT_WITH_EAM_TABLE= | BOOL | OFF | EAM and Finnis-Sinclair potentials read from LAMMPS tables. |
+| =RGPOT_WITH_ORCA= | BOOL | OFF | =ORCAPot=, as Meson's =with_orca=. Enabling it on Windows is a configure error. |
+| =RGPOT_WITH_CBE= | BOOL | OFF | Link =potlibc= and build the CBE (CH5 2008) H + CH4 frontend. potlibc must provide =potlibc_gradient_jet=. |
+| =RGPOT_WITH_MDI= | BOOL | OFF | Build the optional =rgpot-mdi= compatibility frontend, as Meson's =with_mdi=. It builds =rgpot-core= with cargo and the Cargo feature =mdi=, which Meson does through =with_rust_core=, and needs the official MDI Library at runtime. =rgpot-mdi= and =rgpot-eval= are not built on Windows or with =RGPOT_RPC_CLIENT_ONLY=. The test =mdi_concrete_potentials= runs when python can import =mdi=. |
 | =RGPOT_BUILD_TESTS= | BOOL | ON when rgpot is the top-level project, else OFF | Build the tests. |
 | =RGPOT_WITH_CP2K= | BOOL | OFF | =CP2KPot=, the =potserv= CP2K backend and =libcp2kc_rgpot= against libcp2k. |

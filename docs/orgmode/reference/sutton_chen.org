@@ -12,7 +12,8 @@ E = epsilon * [ 1/2 sum_i sum_{j != i} (a / r_ij)^n
 rho_i = sum_{j != i} (a / r_ij)^m
 #+end_example
 
-The form is Sutton and Chen, Philosophical Magazine Letters 61, 139 (1990).
+The form is Sutton and Chen, Philosophical Magazine Letters 61, 139 (1990),
+doi:10.1080/09500839008206493.
 The default parameters are the reduced gold and platinum set: =n = 10=, =m = 8=,
 =c = 34.408=, =epsilon = 1=, =a = 1=.
 Doye and Wales use that set for the 10-8 cluster tables and write it on the
@@ -45,22 +46,56 @@ of one fifth of the cutoff, or none in =nlist::Mode::Stream=.
 With =cutoff = 0= the layer searches without a bound: it bins nothing, stores no
 list, and each pass takes the pairs straight from the coordinates, in the order
 of the one bin that a search wider than the cluster gives.
-A team of =OMP_NUM_THREADS= threads splits the atoms into as many runs, where
-that one bin went to a single thread.
-Every run is walked, also when the runtime starts fewer threads, so the result
-depends on the count asked for and not on the threads that ran.
-The forces keep their bits, and the energy, summed per run, can move in the last
-bits: by up to 1.5e-14 of the energy in clusters of up to 561 atoms on 2 to 8
+A call on fewer than =SuttonChenPot::kTeamMinAtoms= atoms runs on the calling
+thread whatever =OMP_NUM_THREADS= asks for, since starting a team costs more
+than such a call.
+From there up each atom keeps the energy and strain of its pairs with
+higher-index partners, and the atoms are added in index order.
+When the call has at least the atoms =SuttonChenPot::kTeamFrom= asks of the
+=OMP_NUM_THREADS= threads, a team splits the atoms into as many runs.
+One thread walks each pair once, in the order of those rows.
+On a stored neighbour list, that team runs one three-phase OpenMP region over an
+upper-pair index when the candidate upper pairs are at least 4096
+(=kMinParallelHalfPairs=), =total_up <= term_limit= and
+=pairScratchFits(total_up, atoms, scratch_avail)= holds: phase 0 evaluates each
+upper pair once across work-balanced atom slices rounded to 8-atom boundaries,
+phase 1 accumulates per-atom densities and embedding weights in pair-index
+order, and phase 2 sums forces, stress, and per-atom virials from the stored
+pair terms.
+=pairScratchFits= checks that the per-slot vectors fit within half of
+=nlist::availableBytes()= (or allows the path when =availableBytes()= returns
+0): 69 bytes per candidate upper pair (=active= 1 byte +
+=pair_phi= 8 + =pair_force= 48 + =up_j= 4 + =lo_refs= 8), or 77 bytes when
+=atoms.energy= is non-null (=pair_he= adds 8).
+Per-atom vectors (=up_off=, =lo_off=, =rho=, =weight=, =row_e=, =row_emb=, and
+=row_s= with stress) are =O(nAtoms)=, already bounded by =Neighbours::buildCells= and present as =rho_=
+and =weight_= on the two-pass walk, so they are not counted against the
+pair-slot budget; the per-call scratch vectors in the thread-local workspace are
+released when the three-phase call finishes while the half-pair index and slice
+splits stay cached for Verlet reuse.
+When
+=est_half_pairs > term_limit= the three-phase path is skipped before =buildStoredHalfIndex=, and when =total_up > term_limit=
+or =pairScratchFits= refuses the call falls back to the threaded two-pass row
+walk.
+Sparser stored lists stay on one thread, and streaming or unbounded walks still
+evaluate each atom's row on its owning slice when the team opens.
+The energy, the forces, the stress and the per-atom terms therefore keep the
+bits of one thread on any thread count, also when the runtime starts fewer
 threads.
-One pass builds the densities and a second pass writes the forces.
-The density pass keeps the powers and =1/r^2= that the force of each pair takes,
-and the force pass reads them back instead of raising the distance to =n= and
-=m= again.
+On the two-pass walks, one pass builds the densities and a second pass writes
+the forces.
+The density pass keeps the powers and =1/r^2= that the force of each pair takes
+in =PairTerms<3>= (24 bytes per pair), and the force pass reads them back
+instead of raising the distance to =n= and =m= in the second pass.
 With =a = 1= those are the density's own powers; otherwise the force's powers of
 =a^2 (1/r^2)= are kept, since they can differ from those of =a^2 / r^2= in the
 last bit.
-=SuttonChenPot::setPairTermLimit= bounds the store, 32 MiB by default, and the
-force pass computes the pairs past it again, with the same bits.
+=SuttonChenPot::setPairTermLimit= takes a pair count =pairs=, defaulting to
+=PairTerms<3>::kDefaultLimit= (1398101 pairs, which is 32 MiB of two-pass
+=PairTerms<3>= storage at 24 bytes per pair): it requires =total_up <= pairs= on
+the three-phase stored path and caps the two-pass =PairTerms<3>= buffer at
+=pairs / lanes= per lane, while the two-pass force pass computes the terms of
+any pairs past the kept room from the coordinates, with the same bits.
 
 =rgpot_sutton_chen_energy_forces= is the C entry point.
 It takes an =rgpot_sc_config= and writes one energy and one force array.
@@ -135,6 +170,15 @@ half the smallest face spacing of the cell.
 
 ** Checks
 
+=rgpot-pair= independently checks the bulk scale against a conventional
+four-site fcc cell summed inside a spherical cutoff.
+Its Cu, Ag, Au and Ni rows recover the published conventional lattice constants
+3.61, 4.09, 4.08 and 3.52 Angstrom within 1e-5 Angstrom and the cohesive
+energies 3.50, 2.96, 3.78 and 4.44 eV within 2e-4 eV.
+The production sum instead walks half-cell integer triples with =i + j + k=
+even, which is fcc; restricting the triples to all even or all odd would be bcc.
+Thus the reported fcc-neighbour bug does not apply to the current solver.
+
 =SuttonChenPotTest= compares the platinum row with the Large-scale
 Atomic/Molecular Massively Parallel Simulator (LAMMPS), version 22 Jul 2025.
 LAMMPS runs the potential as =pair_style eam/fs=, the embedded atom method (EAM)
@@ -180,3 +224,69 @@ without the stress and 930 with it.
 A 4000-atom cell with a cutoff of 19 Angstrom takes about 25800 and 27500.
 With the flag clear, six cases from 108 to 4000 atoms take the same time as
 before the flag existed, to within 4 percent.
+
+** C entry points
+
+=rgpot_sutton_chen_energy_forces= does not carry the stress flag.
+=box= may be null when =periodic= is 0.
+Each thread keeps the potential of its last call when the parameters and the
+atom count match.
+
+*** =rgpot_sc_config=
+
+- Inputs :: =epsilon=, =c=, =a=, =n=, =m=, =cutoff= and =periodic=.
+  Field order is part of the ABI.
+- Units :: =epsilon= sets the energy unit and =a= the length unit.
+  =cutoff= is in the coordinate unit.
+  =c=, =n=, =m= and =periodic= are dimensionless.
+- Outputs :: the parameter block of =rgpot_sutton_chen_energy_forces= and
+  =rgpot_sutton_chen_scales=.
+- Errors :: none.
+  The call that reads the block reports a bad value.
+
+*** =rgpot_sutton_chen_energy_forces=
+
+#+attr_rgpot: signature
+#+begin_src c
+int rgpot_sutton_chen_energy_forces(const rgpot_sc_config *cfg,
+                                    int32_t natoms, const double *positions,
+                                    const double *box, double *energy,
+                                    double *forces);
+#+end_src
+
+- Inputs :: =cfg=, =natoms=, positions (3 =natoms= doubles), =box= (nine
+  doubles, one cell vector per row) and the energy and force pointers.
+- Units :: positions, =box= and =cutoff= in the coordinate unit.
+  Energy in the unit of =epsilon=, forces in energy per length.
+- Outputs :: one energy and 3 =natoms= forces, which are minus the gradient.
+  Returns 0 on success.
+- Errors :: returns 1 when =cfg= or =energy= is null, =natoms= is negative,
+  =natoms= is positive and =positions= or =forces= is null, or the config is
+  rejected.
+  A periodic call also returns 1 when the cutoff is not positive or the cell is
+  not usable.
+
+*** =rgpot_sc_scales=
+
+- Inputs :: =nearest_neighbor= and =well_depth=.
+- Units :: =nearest_neighbor= in the coordinate unit.
+  =well_depth= in the energy unit, and it is positive.
+- Outputs :: the bulk scales written by =rgpot_sutton_chen_scales=.
+- Errors :: none.
+
+*** =rgpot_sutton_chen_scales=
+
+#+attr_rgpot: signature
+#+begin_src c
+int rgpot_sutton_chen_scales(const rgpot_sc_config *cfg,
+                             rgpot_sc_scales *out);
+#+end_src
+
+- Inputs :: =cfg= and =out=.
+- Units :: as =rgpot_sc_config= and =rgpot_sc_scales=.
+  The length is the static fcc minimum and the depth is minus the energy per
+  atom there.
+- Outputs :: the two scales.
+  Returns 0 on success.
+- Errors :: returns 1 when =cfg= or =out= is null, or when the config is
+  rejected.

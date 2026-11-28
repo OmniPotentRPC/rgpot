@@ -48,6 +48,8 @@ private:
 
   EMTConfig m_config;
   uint64_t m_paramsKey = 0;
+  // Installed layout. m_cell addresses the cached kernel. The other pointers
+  // observe the objects that kernel owns.
   mutable long m_nAtoms = 0;
   mutable std::vector<int> m_numbers;
   mutable void *m_cell = nullptr;

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compare two Potentials.capnp files, ignoring CR/LF differences."""
+"""Compare a vendored schema file with the pinned one, ignoring CR/LF differences."""
 import pathlib
 import sys
 
@@ -13,7 +13,7 @@ def main() -> int:
     if a == b:
         return 0
     print(
-        "vendored Potentials.capnp diverges from pinned potentials-schema release",
+        "vendored schema file diverges from the pinned rgconf schema",
         file=sys.stderr,
     )
     return 1

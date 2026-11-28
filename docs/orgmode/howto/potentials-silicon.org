@@ -1,0 +1,843 @@
+#+COMMENT: Copyright 2023--present rgpot developers
+#+TITLE: Silicon potentials
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+#+STARTUP: content
+
+* Silicon potentials
+
+Five =PotType= enumerators evaluate crystalline silicon in a periodic cell: the
+Stillinger-Weber potential in two variants (=SWSi= and =SWSi1985=), the
+environment-dependent interatomic potential (=EDIP=), the Lenosky potential
+(=LenoskySi=) and the Tersoff potential (=TersoffSi=).
+Each section below says how to reach the potential, gives its functional form as
+the kernel evaluates it, lists the parameters with their source, runs a program,
+and cites the literature.
+The names a host accepts (=rgpot-eval=,
+=pair_coeff=, the PLUMED =POTENTIAL= keyword) are in [[file:../reference/potential_names.org][Potential
+names]].
+The class contracts are in
+[[file:../reference/cpp_potentials.org][C++ potentials]].
+
+Lengths are Angstrom, energies are eV, forces are
+eV/Angstrom and the stress is eV/Angstrom^3.
+All five potentials read the cell as periodic in every direction and ignore the
+atomic numbers, except =TersoffSi=, which also accepts carbon.
+
+The examples share one geometry: the conventional eight-atom diamond cell of
+silicon with lattice constant 5.431 Angstrom, the usual value for silicon.
+The 1985 Stillinger-Weber potential has a pressure of only -0.0028 GPa there.
+The positions are the face-centred-cubic sites and the same sites shifted by a
+quarter of the cell along each axis.
+Each program prints the energy per atom of the perfect crystal, whether
+=has_stress= is set, and, for a crystal with atom 0 moved by 0.1 Angstrom, the
+analytic force on that atom next to a central difference of the energy with step
+1e-4 Angstrom.
+
+Energy per atom of the perfect crystal at 5.431 Angstrom, as the examples below
+print it:
+
+| Name        | Class               | eV/atom   | Stress |
+|-------------+---------------------+-----------+--------|
+| =SWSi1985=  | =StillingerWeberSi= | -4.334478 | yes    |
+| =SWSi=      | =SWPot=             | -4.629989 | yes    |
+| =EDIP=      | =EDIPPot=           | -4.649953 | no     |
+| =LenoskySi= | =LenoskyPot=        | -4.612422 | no     |
+| =TersoffSi= | =TersoffSiC=        | -4.629593 | yes    |
+
+** =SWSi= Stillinger-Weber silicon with eOn's epsilon
+
+*** What it is and how to reach it
+
+This is the Stillinger-Weber (SW) silicon potential with the energy scale eOn
+uses, 2.3149945 eV, which is 1.068176741337 times the published value.
+Use it to reproduce eOn's silicon numbers; use =SWSi1985= below for the
+published epsilon.
+
+- C++: =rgpot::fortranpots::SWPot= in =CppCore/rgpot/fortran/FortranPots.hpp=,
+  built with =-Dwith_fortran_pots=enabled=.
+- Python: =rgpot.SWPot=.
+- =rgpot-eval=, LAMMPS
+  =pair_coeff= and PLUMED name: =SWSi= (a build with the Fortran potentials), as in =pair_coeff * * SWSi Si=.
+- =potserv=: no type name.
+- Reference: [[file:../reference/cpp_potentials.org][C++ potentials]] and
+  [[file:../reference/sw_si.org][Stillinger-Weber silicon (1985)]], which
+  explains why this class is not the 1985 kernel.
+
+*** Functional form
+
+The kernel is =CppCore/rgpot/fortran/rgpot_sw.f90=.
+With =rho = r / sigma= and =alpha= the reduced cutoff:
+
+- Pair term, once per pair with =r < alpha * sigma=:
+  =epsilon * A * (beta * rho^(-p) - 1) * exp(1 / (rho - alpha))=.
+- Three-body term, for each centre atom =i= and each unordered pair of its
+  neighbours =j= and =k= inside the cutoff:
+  =epsilon * lambda * w_ij * w_ik * (cos(theta_jik) + 1/3)^2=, with =w_ij = exp(gamma / (rho_ij - alpha))=.
+- The cutoff is =alpha * sigma= = 3.77118 Angstrom.
+  Both terms go smoothly to zero there.
+  An exponent below -300 is set to zero before =exp= is called.
+- When =a0= is not zero, the pair energy gains =a0 * (cos(pi * r / s0) + 1)= for
+  =r <= s0=.
+  The default =a0= is 0, so the term is not used.
+
+The class writes the Cauchy stress (=has_stress= 1) from the folded bond vectors
+of its neighbour table.
+=forceBatch= skips the virial.
+Because both SW kernels are linear in =epsilon=, this class gives the energy,
+forces and stress of =SWSi1985= multiplied by 1.068176741337.
+
+*** Parameters
+
+The values are the defaults of =sw_params_t= in
+=CppCore/rgpot/fortran/rgpot_sw.f90=.
+A caller of =SWPot= has no way to change them.
+
+| Parameter           | Field     | Value        | Unit              |
+|---------------------+-----------+--------------+-------------------|
+| length scale        | =sigma=   | 2.0951       | Angstrom          |
+| reduced cutoff      | =alpha=   | 1.8          | in units of sigma |
+| energy scale        | =epsilon= | 2.3149945    | eV                |
+| three-body strength | =lambda=  | 21.0         | dimensionless     |
+| pair prefactor      | =a=       | 7.049556277  | dimensionless     |
+| repulsion weight    | =beta=    | 0.6022245584 | dimensionless     |
+| three-body decay    | =gamma=   | 1.2          | dimensionless     |
+| repulsion exponent  | =p=       | 4            | dimensionless     |
+| binary range        | =s0=      | 3.6          | Angstrom          |
+| binary strength     | =a0=      | 0.0          | eV                |
+
+The epsilon is the product =2.16826 * 1.06767385=, two literals copied from
+eOn's =SWFortran.f90=; the source says the factor 1.06767385 is untraced.
+The rows from =sigma= to =p= other than =epsilon= are the 1985 values (see
+=SWSi1985=); lambda is 21 and is not rescaled.
+=s0= and =a0= belong to the optional binary term and are not used by default.
+
+*** Example
+
+This program needs a build with =-Dwith_fortran_pots=enabled=.
+
+#+attr_rgpot: run link=rgpot requires=has_fortran_pots
+#+begin_src cpp
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <vector>
+
+#include "rgpot/fortran/FortranPots.hpp"
+
+int main() {
+  const double a = 5.431;
+  const double fcc[4][3] = {
+      {0.0, 0.0, 0.0}, {0.0, 0.5, 0.5}, {0.5, 0.0, 0.5}, {0.5, 0.5, 0.0}};
+  std::vector<double> pos;
+  for (const auto &b : fcc)
+    for (double shift : {0.0, 0.25})
+      for (int k = 0; k < 3; ++k)
+        pos.push_back((b[k] + shift) * a);
+  const int z[8] = {14, 14, 14, 14, 14, 14, 14, 14};
+  const double box[9] = {a, 0.0, 0.0, 0.0, a, 0.0, 0.0, 0.0, a};
+  std::vector<double> forces(pos.size());
+
+  rgpot::fortranpots::SWPot pot;
+  rgpot::ForceInput in{8, pos.data(), z, box};
+  rgpot::ForceOut out{};
+  out.F = forces.data();
+  auto energy = [&] {
+    pot.forceImpl(in, &out);
+    return out.energy;
+  };
+
+  const double e0 = energy();
+  double fmax = 0.0;
+  for (double f : forces) fmax = std::max(fmax, std::fabs(f));
+  std::printf("diamond, a = %.3f: %.6f eV/atom, forces vanish: %s\n", a,
+              e0 / 8.0, fmax < 1e-9 ? "yes" : "no");
+  std::printf("has_stress %d", out.has_stress);
+  if (out.has_stress) {
+    const double trace = out.stress[0] + out.stress[4] + out.stress[8];
+    std::printf(", pressure %.4f GPa", -trace / 3.0 * 160.2176634);
+  }
+  std::printf("\n");
+
+  pos[0] += 0.1;
+  energy();
+  const double fx = forces[0];
+  const double h = 1e-4;
+  pos[0] += h;
+  const double e_plus = energy();
+  pos[0] -= 2.0 * h;
+  const double e_minus = energy();
+  std::printf("atom 0 moved 0.1 A: Fx %.6f, -dE/dx %.6f eV/A\n", fx,
+              -(e_plus - e_minus) / (2.0 * h));
+  return 0;
+}
+#+end_src
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+diamond, a = 5.431: -4.629989 eV/atom, forces vanish: yes
+has_stress 1, pressure -0.0030 GPa
+atom 0 moved 0.1 A: Fx -1.886477, -dE/dx -1.886477 eV/A
+#+end_example
+
+The energy per atom is close to minus twice epsilon, 2 * 2.3149945 = 4.629989
+eV, as the reference page derives for the diamond lattice.
+The pressure is near zero because 5.431 Angstrom is close to the minimum of the
+energy.
+=has_stress= is 1, and the analytic force agrees with the difference.
+
+*** Literature
+
+- Goswami and coauthors, eOn v3.6.0, Zenodo (2026), doi:10.5281/zenodo.18529495.
+  eOn v3.6.0 builds its silicon Stillinger-Weber potential as
+  =rgpot::fortranpots::SWPot=, the class of this section.
+- Stillinger and Weber, Phys.
+  Rev. B 31, 5262-5271 (1985), doi:10.1103/PhysRevB.31.5262.
+  The functional form, and the parameters apart from epsilon.
+- The epsilon 2.3149945 eV has no paper: it is eOn's value, and its factor is
+  untraced in the source.
+- Thompson, Plimpton and Mattson, J. Chem.
+  Phys. 131, 154107 (2009), doi:10.1063/1.3245303.
+  The many-body virial behind the stress.
+
+** =SWSi1985= Stillinger-Weber silicon with the published epsilon
+
+*** What it is and how to reach it
+
+This is the Stillinger-Weber silicon potential with the parameters of the 1985
+paper.
+Use it when you need the published energy scale, 2.16723920 eV.
+It is a C++ kernel, so it needs no Fortran build.
+
+- C++: =rgpot::StillingerWeberSi= in =CppCore/rgpot/StillingerWeber/SWSi.hpp=.
+- Python: =rgpot.StillingerWeberSi=.
+- =rgpot-eval=, LAMMPS
+  =pair_coeff= and PLUMED name: =SWSi1985=, which takes no options, as in =pair_coeff * * SWSi1985 Si=.
+- =potserv=: no type name.
+- Reference: [[file:../reference/sw_si.org][Stillinger-Weber silicon (1985)]]
+  and [[file:../reference/cpp_potentials.org][C++ potentials]].
+
+*** Functional form
+
+The kernel is =CppCore/rgpot/StillingerWeber/SWSi.cc=, with =u = r / kSigma= and
+=kCut= the reduced cutoff:
+
+- Pair term, once per pair with =u < kCut=:
+  =kEpsilon * kA * (kB * u^(-kP) - 1) * exp(1 / (u - kCut))=.
+- Three-body term, for each centre atom and each unordered pair of its
+  neighbours:
+  =kEpsilon * kLambda * w_ij * w_ik * (cos(theta_jik) + 1/3)^2=, with =w_ij = exp(kGamma / (u_ij - kCut))=.
+- The cutoff is =kCut * kSigma= = 3.77118 Angstrom.
+  A pair whose exponent =1 / (u - kCut)= is below -700 is dropped.
+- Atomic numbers are not read.
+  The force call writes the Cauchy stress.
+
+*** Parameters
+
+The values are the static members of =rgpot::StillingerWeberSi= in
+=CppCore/rgpot/StillingerWeber/SWSi.hpp=.
+The paper's Eq. (2.7) gives the dimensionless set and Eq. (2.9) gives sigma and
+epsilon, as recorded in that header.
+
+| Parameter           | Member     | Value        | Unit              |
+|---------------------+------------+--------------+-------------------|
+| energy scale        | =kEpsilon= | 2.16723920   | eV                |
+| length scale        | =kSigma=   | 2.0951       | Angstrom          |
+| pair prefactor      | =kA=       | 7.049556277  | dimensionless     |
+| repulsion weight    | =kB=       | 0.6022245584 | dimensionless     |
+| repulsion exponent  | =kP=       | 4.0          | dimensionless     |
+| reduced cutoff      | =kCut=     | 1.80         | in units of sigma |
+| three-body strength | =kLambda=  | 21.0         | dimensionless     |
+| three-body decay    | =kGamma=   | 1.20         | dimensionless     |
+
+=kEpsilon= is the paper's 3.4723e-12 erg, evaluated in the header as
+=3.4723e-12 * 1.0e-7 / 1.602176634e-19= with 1 erg = 1e-7 J and the CODATA
+electron-volt.
+The members are compile-time constants, so this class has no configuration
+struct.
+
+*** Example
+
+This program has no build requirement beyond =librgpot=.
+
+#+attr_rgpot: run link=rgpot
+#+begin_src cpp
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <vector>
+
+#include "rgpot/StillingerWeber/SWSi.hpp"
+
+int main() {
+  const double a = 5.431;
+  const double fcc[4][3] = {
+      {0.0, 0.0, 0.0}, {0.0, 0.5, 0.5}, {0.5, 0.0, 0.5}, {0.5, 0.5, 0.0}};
+  std::vector<double> pos;
+  for (const auto &b : fcc)
+    for (double shift : {0.0, 0.25})
+      for (int k = 0; k < 3; ++k)
+        pos.push_back((b[k] + shift) * a);
+  const int z[8] = {14, 14, 14, 14, 14, 14, 14, 14};
+  const double box[9] = {a, 0.0, 0.0, 0.0, a, 0.0, 0.0, 0.0, a};
+  std::vector<double> forces(pos.size());
+
+  rgpot::StillingerWeberSi pot;
+  rgpot::ForceInput in{8, pos.data(), z, box};
+  rgpot::ForceOut out{};
+  out.F = forces.data();
+  auto energy = [&] {
+    pot.forceImpl(in, &out);
+    return out.energy;
+  };
+
+  const double e0 = energy();
+  double fmax = 0.0;
+  for (double f : forces) fmax = std::max(fmax, std::fabs(f));
+  std::printf("diamond, a = %.3f: %.6f eV/atom, forces vanish: %s\n", a,
+              e0 / 8.0, fmax < 1e-9 ? "yes" : "no");
+  std::printf("has_stress %d", out.has_stress);
+  if (out.has_stress) {
+    const double trace = out.stress[0] + out.stress[4] + out.stress[8];
+    std::printf(", pressure %.4f GPa", -trace / 3.0 * 160.2176634);
+  }
+  std::printf("\n");
+
+  pos[0] += 0.1;
+  energy();
+  const double fx = forces[0];
+  const double h = 1e-4;
+  pos[0] += h;
+  const double e_plus = energy();
+  pos[0] -= 2.0 * h;
+  const double e_minus = energy();
+  std::printf("atom 0 moved 0.1 A: Fx %.6f, -dE/dx %.6f eV/A\n", fx,
+              -(e_plus - e_minus) / (2.0 * h));
+  return 0;
+}
+#+end_src
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+diamond, a = 5.431: -4.334478 eV/atom, forces vanish: yes
+has_stress 1, pressure -0.0028 GPa
+atom 0 moved 0.1 A: Fx -1.766072, -dE/dx -1.766072 eV/A
+#+end_example
+
+The energy per atom is -2 epsilon, 2 * 2.16723920 = 4.334478 eV.
+The ratio to the =SWSi= energy of the previous section is 1.068177.
+The pressure is -0.0028 GPa, so 5.431 Angstrom is within a few thousandths of a
+GPa of the minimum of this potential.
+
+*** Literature
+
+- Stillinger and Weber, Phys.
+  Rev. B 31, 5262-5271 (1985), doi:10.1103/PhysRevB.31.5262.
+  The functional form and the parameters (Eqs. 2.7 and 2.9).
+- Thompson, Plimpton and Mattson, J. Chem.
+  Phys. 131, 154107 (2009), doi:10.1063/1.3245303.
+  The many-body virial behind the stress.
+
+** =EDIP= Environment-dependent interatomic potential for silicon
+
+*** What it is and how to reach it
+
+EDIP gives each silicon atom a pair sum and a three-body sum whose strengths
+depend on an effective coordination number, so one parameter set covers the
+diamond crystal, defects and disordered phases.
+Use it for silicon defects and disordered phases, the cases its parameterization
+paper targets.
+The class does not write a stress.
+
+- C++: =rgpot::fortranpots::EDIPPot= in =CppCore/rgpot/fortran/FortranPots.hpp=,
+  built with =-Dwith_fortran_pots=enabled=.
+- Python: =rgpot.EDIPPot=.
+- =rgpot-eval=, LAMMPS
+  =pair_coeff= and PLUMED name: =EDIP= (a build with the Fortran potentials), as in =pair_coeff * * EDIP Si=.
+- =potserv=: no type name.
+- Reference: [[file:../reference/cpp_potentials.org][C++ potentials]].
+
+*** Functional form
+
+The kernel is =CppCore/rgpot/fortran/rgpot_edip.f90=.
+The energy is =E = sum_i E_i= with
+
+- =E_i = sum_j V2(r_ij, Z_i) + sum_(j<k) V3(r_ij, r_ik, theta_jik, Z_i)=.
+- Coordination: =Z_i = sum_m f(r_im)=, where =f(r)= is 1 for =r < c=, 0 for
+  =r >= b=, and =exp(alpha / (1 - x^(-3)))= between, with
+  =x = (r - c) / (b - c)=.
+- Pair term for =r < a=:
+  =V2 = cap_a * ((cap_b / r)^rh - palp * exp(-bet * Z^2)) * exp(sig / (r - a))=.
+- Three-body term, for neighbours inside =a=:
+  =V3 = g(r_ij) * g(r_ik) * h(cos(theta), Z)= with =g(r) = exp(gam / (r - a))=.
+- Angular function: =h = lam * (1 - exp(-x^2) + (delta / qo) * x^2)= with
+  =x = (cos(theta) + tau(Z)) * sqrt(qo) * exp(-mu * Z / 2)=, and
+  =tau(Z) = u1 + u2 * (u3 * exp(-u4 * Z) - exp(-2 * u4 * Z))=.
+- The cutoff is the larger of =a= and =b=, 3.1213820 Angstrom.
+  A triplet whose two ends are one atom reached through two periodic images is
+  dropped, so the force is the exact gradient of the reported energy.
+- The call throws =std::runtime_error= when the smallest perpendicular width of
+  the cell is below the cutoff.
+- The force call does not write a stress and leaves =has_stress= as set.
+
+*** Parameters
+
+The values are the defaults of =edip_params_t= in
+=CppCore/rgpot/fortran/rgpot_edip.f90=, copied from the eOn kernel (Bazant's
+routine as adapted by Goedecker).
+The kernel splits the paper's =A= and =B= into =cap_a=, =cap_b= and =palp=; see
+below the table.
+A caller of =EDIPPot= has no way to change them.
+
+| Field   | Paper symbol     | Value       | Unit          |
+|---------+------------------+-------------+---------------|
+| =cap_a= | see text         | 5.6714030   | eV            |
+| =cap_b= | see text         | 2.0002804   | Angstrom      |
+| =rh=    | rho              | 1.2085196   | dimensionless |
+| =a=     | a                | 3.1213820   | Angstrom      |
+| =sig=   | sigma            | 0.5774108   | Angstrom      |
+| =lam=   | lambda           | 1.4533108   | eV            |
+| =gam=   | gamma            | 1.1247945   | Angstrom      |
+| =b=     | a (coordination) | 3.1213820   | Angstrom      |
+| =c=     | c                | 2.5609104   | Angstrom      |
+| =delta= | eta * Q0         | 78.7590539  | dimensionless |
+| =mu=    | mu               | 0.6966326   | dimensionless |
+| =qo=    | Q0               | 312.1341346 | dimensionless |
+| =palp=  | see text         | 1.4074424   | dimensionless |
+| =bet=   | beta             | 0.0070975   | dimensionless |
+| =alp=   | alpha            | 3.1083847   | dimensionless |
+| =u1=    | u1               | -0.165799   | dimensionless |
+| =u2=    | u2               | 32.557      | dimensionless |
+| =u3=    | u3               | 0.286198    | dimensionless |
+| =u4=    | u4               | 0.66        | dimensionless |
+
+The set is Table I of Justo and coauthors (1998), with the four =u= values from
+the text after their Eq. (10).
+Their table prints =A= = 7.9821730 eV, =B= = 1.5075463 Angstrom and =eta= =
+0.2523244.
+The kernel's =delta / qo= is 78.7590539 / 312.1341346 = 0.252324, and its
+=cap_a * palp= is 7.98217305 eV.
+The pair term =cap_a * (cap_b)^rh= is 13.1088543 eV Angstrom^rh against
+=A * B^rho= = 13.1088539 from the table, a relative difference below 4e-8.
+With =cap_a * palp= equal to =A=, the kernel's pair term is the paper's to the
+digits the paper prints.
+The paper uses one length =a= for the coordination cutoff, the pair cutoff and
+the three-body cutoff; the kernel keeps =b= for the first and =a= for the other
+two, and both are 3.1213820.
+
+*** Example
+
+This program needs a build with =-Dwith_fortran_pots=enabled=.
+
+#+attr_rgpot: run link=rgpot requires=has_fortran_pots
+#+begin_src cpp
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <vector>
+
+#include "rgpot/fortran/FortranPots.hpp"
+
+int main() {
+  const double a = 5.431;
+  const double fcc[4][3] = {
+      {0.0, 0.0, 0.0}, {0.0, 0.5, 0.5}, {0.5, 0.0, 0.5}, {0.5, 0.5, 0.0}};
+  std::vector<double> pos;
+  for (const auto &b : fcc)
+    for (double shift : {0.0, 0.25})
+      for (int k = 0; k < 3; ++k)
+        pos.push_back((b[k] + shift) * a);
+  const int z[8] = {14, 14, 14, 14, 14, 14, 14, 14};
+  const double box[9] = {a, 0.0, 0.0, 0.0, a, 0.0, 0.0, 0.0, a};
+  std::vector<double> forces(pos.size());
+
+  rgpot::fortranpots::EDIPPot pot;
+  rgpot::ForceInput in{8, pos.data(), z, box};
+  rgpot::ForceOut out{};
+  out.F = forces.data();
+  auto energy = [&] {
+    pot.forceImpl(in, &out);
+    return out.energy;
+  };
+
+  const double e0 = energy();
+  double fmax = 0.0;
+  for (double f : forces) fmax = std::max(fmax, std::fabs(f));
+  std::printf("diamond, a = %.3f: %.6f eV/atom, forces vanish: %s\n", a,
+              e0 / 8.0, fmax < 1e-9 ? "yes" : "no");
+  std::printf("has_stress %d", out.has_stress);
+  if (out.has_stress) {
+    const double trace = out.stress[0] + out.stress[4] + out.stress[8];
+    std::printf(", pressure %.4f GPa", -trace / 3.0 * 160.2176634);
+  }
+  std::printf("\n");
+
+  pos[0] += 0.1;
+  energy();
+  const double fx = forces[0];
+  const double h = 1e-4;
+  pos[0] += h;
+  const double e_plus = energy();
+  pos[0] -= 2.0 * h;
+  const double e_minus = energy();
+  std::printf("atom 0 moved 0.1 A: Fx %.6f, -dE/dx %.6f eV/A\n", fx,
+              -(e_plus - e_minus) / (2.0 * h));
+  return 0;
+}
+#+end_src
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+diamond, a = 5.431: -4.649953 eV/atom, forces vanish: yes
+has_stress 0
+atom 0 moved 0.1 A: Fx -1.914432, -dE/dx -1.914432 eV/A
+#+end_example
+
+=has_stress= stays 0.
+The energy per atom is -4.649953 eV at 5.431 Angstrom; Table II of Justo and
+coauthors lists -4.650 eV for EDIP at 5.430 Angstrom.
+
+*** Literature
+
+- Goswami and coauthors, eOn v3.6.0, Zenodo (2026), doi:10.5281/zenodo.18529495.
+  eOn v3.6.0 builds its EDIP potential as =rgpot::fortranpots::EDIPPot=, the
+  class of this section.
+- Bazant, Kaxiras and Justo, Phys.
+  Rev. B 56, 8542-8552 (1997), doi:10.1103/PhysRevB.56.8542.
+  The functional form; its abstract states that the parameterization is in a
+  companion paper.
+- Justo, Bazant, Kaxiras, Bulatov and Yip, Phys.
+  Rev. B 58, 2539-2550 (1998), doi:10.1103/PhysRevB.58.2539.
+  The parameters (Table I and the text after Eq. 10).
+
+** =LenoskySi= Lenosky silicon, a spline MEAM model
+
+*** What it is and how to reach it
+
+The Lenosky potential has the modified-embedded-atom form: a pair term plus an
+embedding energy of a local density that sums two-body and three-body pieces.
+All five functions are cubic splines fitted by force matching.
+The paper reports phonons, elastic constants, point defects, dislocation core
+reconstructions and interstitial clusters.
+The class does not write a stress.
+
+- C++: =rgpot::fortranpots::LenoskyPot= in
+  =CppCore/rgpot/fortran/FortranPots.hpp=, built with
+  =-Dwith_fortran_pots=enabled=.
+- Python: =rgpot.LenoskyPot=.
+- =rgpot-eval=, LAMMPS
+  =pair_coeff= and PLUMED name: =LenoskySi= (a build with the Fortran potentials), as in =pair_coeff * * LenoskySi Si=.
+- =potserv=: no type name.
+- Reference: [[file:../reference/cpp_potentials.org][C++ potentials]].
+
+*** Functional form
+
+The kernel is =CppCore/rgpot/fortran/rgpot_lenosky.f90=.
+For each atom =i=:
+
+- Density:
+  =dens_i = sum_j rho(r_ij) + sum_(j<k) f(r_ij) * f(r_ik) * g(cos(theta_jik))=.
+- Energy: =E_i = sum_j phi(r_ij) / 2 + U(dens_i)=, and =E = sum_i E_i=.
+- =phi=, =rho=, =f=, =U= and =g= are cubic splines on uniform knots.
+  Outside the knot range each is continued linearly with the end slope.
+- The neighbour cutoff is =lenosky_params_t%cutoff=, 4.5 Angstrom.
+  =rho= and =f= end at 3.5 Angstrom with a last knot value of 0.0, and =phi=
+  ends at 4.5 Angstrom with a last knot value of 0.0.
+- The force call does not write a stress and leaves =has_stress= as set.
+
+*** Parameters
+
+The spline data are in
+=CppCore/rgpot/fortran/rgpot_lenosky.f90= as the arrays =cof_<stem>= (knot
+values) and =dof_<stem>= (the spline second derivatives at the knots), which
+descend from eOn.
+They are not copied here.
+The five stems and their knot grids are:
+
+| Stem | Role                 | Knots | Range                         |
+|------+----------------------+-------+-------------------------------|
+| phi  | pair energy, eV      | 10    | 1.5 to 4.5 Angstrom           |
+| rho  | two-body density     | 11    | 1.5 to 3.5 Angstrom           |
+| fff  | three-body radial    | 10    | 1.5 to 3.5 Angstrom           |
+| uuu  | embedding energy, eV | 8     | -1.77093 to 7.90852 (density) |
+| ggg  | three-body angular   | 8     | -1.0 to 0.80014 (cosine)      |
+
+Anchor values read from the source, first and last knot of each =cof_*= array:
+
+| Array     | First knot value | Last knot value |
+|-----------+------------------+-----------------|
+| =cof_phi= | 6.92994          | 0.0             |
+| =cof_rho= | 0.13747          | 0.0             |
+| =cof_fff= | 1.25031          | 0.0             |
+| =cof_uuu= | -1.07493         | 2.39618         |
+| =cof_ggg= | 5.25416          | 5.61799         |
+
+I did not compare the arrays with the tables of the paper.
+=lenosky_params_t= holds only the cutoff; the splines are fixed data.
+
+*** Example
+
+This program needs a build with =-Dwith_fortran_pots=enabled=.
+
+#+attr_rgpot: run link=rgpot requires=has_fortran_pots
+#+begin_src cpp
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <vector>
+
+#include "rgpot/fortran/FortranPots.hpp"
+
+int main() {
+  const double a = 5.431;
+  const double fcc[4][3] = {
+      {0.0, 0.0, 0.0}, {0.0, 0.5, 0.5}, {0.5, 0.0, 0.5}, {0.5, 0.5, 0.0}};
+  std::vector<double> pos;
+  for (const auto &b : fcc)
+    for (double shift : {0.0, 0.25})
+      for (int k = 0; k < 3; ++k)
+        pos.push_back((b[k] + shift) * a);
+  const int z[8] = {14, 14, 14, 14, 14, 14, 14, 14};
+  const double box[9] = {a, 0.0, 0.0, 0.0, a, 0.0, 0.0, 0.0, a};
+  std::vector<double> forces(pos.size());
+
+  rgpot::fortranpots::LenoskyPot pot;
+  rgpot::ForceInput in{8, pos.data(), z, box};
+  rgpot::ForceOut out{};
+  out.F = forces.data();
+  auto energy = [&] {
+    pot.forceImpl(in, &out);
+    return out.energy;
+  };
+
+  const double e0 = energy();
+  double fmax = 0.0;
+  for (double f : forces) fmax = std::max(fmax, std::fabs(f));
+  std::printf("diamond, a = %.3f: %.6f eV/atom, forces vanish: %s\n", a,
+              e0 / 8.0, fmax < 1e-9 ? "yes" : "no");
+  std::printf("has_stress %d", out.has_stress);
+  if (out.has_stress) {
+    const double trace = out.stress[0] + out.stress[4] + out.stress[8];
+    std::printf(", pressure %.4f GPa", -trace / 3.0 * 160.2176634);
+  }
+  std::printf("\n");
+
+  pos[0] += 0.1;
+  energy();
+  const double fx = forces[0];
+  const double h = 1e-4;
+  pos[0] += h;
+  const double e_plus = energy();
+  pos[0] -= 2.0 * h;
+  const double e_minus = energy();
+  std::printf("atom 0 moved 0.1 A: Fx %.6f, -dE/dx %.6f eV/A\n", fx,
+              -(e_plus - e_minus) / (2.0 * h));
+  return 0;
+}
+#+end_src
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+diamond, a = 5.431: -4.612422 eV/atom, forces vanish: yes
+has_stress 0
+atom 0 moved 0.1 A: Fx -1.363769, -dE/dx -1.363769 eV/A
+#+end_example
+
+=has_stress= stays 0.
+The analytic force, which comes from a three-pass gather over the density
+derivatives, matches the central difference of the energy.
+
+*** Literature
+
+- Goswami and coauthors, eOn v3.6.0, Zenodo (2026), doi:10.5281/zenodo.18529495.
+  eOn v3.6.0 builds its Lenosky silicon potential as
+  =rgpot::fortranpots::LenoskyPot=, the class of this section.
+- Lenosky, Sadigh, Alonso, Bulatov, Diaz de la Rubia, Kim, Voter and Kress,
+  Modelling Simul.
+  Mater.
+  Sci.
+  Eng. 8, 825-841 (2000), doi:10.1088/0965-0393/8/6/305.
+  The functional form and the fitted splines.
+  The abstract describes the MEAM form with five cubic splines fitted to a large
+  database by force matching.
+
+** =TersoffSi= Tersoff silicon, with the 1989 silicon-carbon kernel
+
+*** What it is and how to reach it
+
+This is the Tersoff bond-order potential for silicon.
+Its bond order weakens an attractive pair term according to the angles to the
+other neighbours of an atom, so it describes the diamond crystal, and the
+=PotType= also covers silicon carbide: a call in which any atomic number is not
+14 runs the 1989 silicon-carbon kernel.
+The all-silicon constants of both kernels are the same, and the energies agree
+in the example.
+
+- C++: =rgpot::TersoffSiC= in
+  =CppCore/rgpot/Tersoff/TersoffSiC.hpp=, which always evaluates the 1989 form and writes the stress; =rgpot::fortranpots::TersoffPot= in =CppCore/rgpot/fortran/FortranPots.hpp=,
+  which runs a Fortran gather for an all-silicon call and writes no stress.
+- Python: =rgpot.TersoffSiC= and =rgpot.TersoffPot=.
+- =rgpot-eval=, LAMMPS
+  =pair_coeff= and PLUMED name: =TersoffSi=, which builds =TersoffSiC=, as in =pair_coeff * * TersoffSi Si=.
+  The name needs no Fortran build.
+- =potserv=: no type name.
+- Reference:
+  [[file:../reference/tersoff_sic.org][Tersoff silicon-carbon (1989)]] and
+  [[file:../reference/cpp_potentials.org][C++ potentials]].
+  That page has the carbon column, the Si-C mixing rules and the diamond
+  energies at the fitted lattice constants; this section covers silicon.
+
+*** Functional form
+
+The kernels are
+=CppCore/rgpot/Tersoff/TersoffSiC.cc= and =CppCore/rgpot/fortran/rgpot_tersoff.f90=.
+For silicon alone:
+
+- Energy: =E = 1/2 * sum_i sum_j fc(r_ij) * (fR(r_ij) + b_ij * fA(r_ij))=, with
+  =j= running over the atoms other than =i=.
+- Repulsion and attraction: =fR(r) = A * exp(-lambda1 * r)= and
+  =fA(r) = -B * exp(-lambda2 * r)=.
+- Cutoff taper: =fc(r) = 1= for =r <= R=,
+  =fc(r) = 0.5 + 0.5 * cos(pi * (r - R) / (S - R))= for =R < r < S=, and
+  =fc(r) = 0= for =r >= S=.
+- Bond order: =b_ij = chi * (1 + (beta * zeta_ij)^n)^(-1 / (2 * n))=, where
+  =zeta_ij = sum_k fc(r_ik) * g(cos(theta_jik))= runs over the atoms =k= other
+  than =i= and =j=.
+- Angular function: =g(c) = 1 + C^2 / d^2 - C^2 / (d^2 + (h - c)^2)=, where =C=
+  is the parameter =c= below.
+- The coordination factor =exp(lambda3^m (r_ij - r_ik)^m)= is identically 1
+  because lambda3 is 0, so neither kernel evaluates it.
+- The cutoff is =S=, 3.0 Angstrom.
+  =chi= is 1 for one species and, in the C++ kernel, =gamma= (a factor on =g=)
+  is 1.
+
+=TersoffSiC= writes the Cauchy stress; =TersoffPot= does not, and sets
+=has_stress= to 0 on every call.
+
+*** Parameters
+
+=kSi= in
+=CppCore/rgpot/Tersoff/TersoffSiC.cc= (fields =big_a=, =big_b=, =lambda1=, =lambda2=, =beta=, =n=, =c=, =d=, =h=, =rin=, =rout=, =gamma=) and the defaults of =tersoff_params_t= in =CppCore/rgpot/fortran/rgpot_tersoff.f90=
+(fields =a=, =b=, =lambda1=, =lambda2=, =beta=, =n=, =c=, =d=, =h=, =r=, =s=,
+=chi=) hold the same numbers:
+
+| Parameter            | Symbol  | Value              | Unit          |
+|----------------------+---------+--------------------+---------------|
+| repulsive prefactor  | A       | 1830.8             | eV            |
+| attractive prefactor | B       | 471.18             | eV            |
+| repulsive decay      | lambda1 | 2.4799             | 1/Angstrom    |
+| attractive decay     | lambda2 | 1.7322             | 1/Angstrom    |
+| bond-order weight    | beta    | 1.1e-6             | dimensionless |
+| bond-order exponent  | n       | 0.78734            | dimensionless |
+| angular numerator    | c       | 100390 (1.0039e+5) | dimensionless |
+| angular width        | d       | 16.217             | dimensionless |
+| preferred cosine     | h       | -0.59825           | dimensionless |
+| taper start          | R       | 2.7                | Angstrom      |
+| taper end and cutoff | S       | 3.0                | Angstrom      |
+
+The Fortran comment names this set "Tersoff's Si(C)", the parameterization of
+the 1988 paper below, but its numbers are the silicon column the C++ kernel
+documents as the 1989 set.
+The LAMMPS file =SiCGe.tersoff= lists Si(C) with =d= 16.218, =h= -0.59826 and
+=beta= 1.0999e-6, and the 1989 silicon entry (its Si(D)) with the values in the
+table, so the rgpot numbers are the 1989 ones.
+=chi= for the silicon-carbon cross term is 0.9776 in the C++ class.
+
+*** Example
+
+This program links both kernels, so it needs a build with
+=-Dwith_fortran_pots=enabled=.
+
+#+attr_rgpot: run link=rgpot requires=has_fortran_pots
+#+begin_src cpp
+#include <algorithm>
+#include <cmath>
+#include <cstdio>
+#include <vector>
+
+#include "rgpot/Tersoff/TersoffSiC.hpp"
+#include "rgpot/fortran/FortranPots.hpp"
+
+int main() {
+  const double a = 5.431;
+  const double fcc[4][3] = {
+      {0.0, 0.0, 0.0}, {0.0, 0.5, 0.5}, {0.5, 0.0, 0.5}, {0.5, 0.5, 0.0}};
+  std::vector<double> pos;
+  for (const auto &b : fcc)
+    for (double shift : {0.0, 0.25})
+      for (int k = 0; k < 3; ++k)
+        pos.push_back((b[k] + shift) * a);
+  const int z[8] = {14, 14, 14, 14, 14, 14, 14, 14};
+  const double box[9] = {a, 0.0, 0.0, 0.0, a, 0.0, 0.0, 0.0, a};
+  std::vector<double> forces(pos.size());
+
+  rgpot::TersoffSiC pot;
+  rgpot::ForceInput in{8, pos.data(), z, box};
+  rgpot::ForceOut out{};
+  out.F = forces.data();
+  auto energy = [&] {
+    pot.forceImpl(in, &out);
+    return out.energy;
+  };
+
+  const double e0 = energy();
+  double fmax = 0.0;
+  for (double f : forces) fmax = std::max(fmax, std::fabs(f));
+  std::printf("diamond, a = %.3f: %.6f eV/atom, forces vanish: %s\n", a,
+              e0 / 8.0, fmax < 1e-9 ? "yes" : "no");
+  std::printf("has_stress %d", out.has_stress);
+  if (out.has_stress) {
+    const double trace = out.stress[0] + out.stress[4] + out.stress[8];
+    std::printf(", pressure %.4f GPa", -trace / 3.0 * 160.2176634);
+  }
+  std::printf("\n");
+
+  rgpot::fortranpots::TersoffPot gather;
+  std::vector<double> gather_forces(pos.size());
+  rgpot::ForceOut gather_out{};
+  gather_out.F = gather_forces.data();
+  gather.forceImpl(in, &gather_out);
+  std::printf("Fortran gather: %.6f eV/atom, has_stress %d\n",
+              gather_out.energy / 8.0, gather_out.has_stress);
+
+  pos[0] += 0.1;
+  energy();
+  const double fx = forces[0];
+  const double h = 1e-4;
+  pos[0] += h;
+  const double e_plus = energy();
+  pos[0] -= 2.0 * h;
+  const double e_minus = energy();
+  std::printf("atom 0 moved 0.1 A: Fx %.6f, -dE/dx %.6f eV/A\n", fx,
+              -(e_plus - e_minus) / (2.0 * h));
+  return 0;
+}
+#+end_src
+
+#+attr_rgpot: output printed by the block above
+#+begin_example
+diamond, a = 5.431: -4.629593 eV/atom, forces vanish: yes
+has_stress 1, pressure 0.0543 GPa
+Fortran gather: -4.629593 eV/atom, has_stress 0
+atom 0 moved 0.1 A: Fx -1.573481, -dE/dx -1.573481 eV/A
+#+end_example
+
+=rgpot::TersoffSiC= sets =has_stress= and the Fortran gather does not.
+The two energies agree to the digits printed.
+The pressure of 0.0543 GPa is at 5.431 Angstrom; the reference page gives the
+energy at its own lattice constant, 5.432 Angstrom.
+
+*** Literature
+
+- Goswami and coauthors, eOn v3.6.0, Zenodo (2026), doi:10.5281/zenodo.18529495.
+  eOn v3.6.0 builds its Tersoff silicon potential as
+  =rgpot::fortranpots::TersoffPot=, the class of this section.
+- Tersoff, Phys.
+  Rev. B 39, 5566-5568 (1989), doi:10.1103/PhysRevB.39.5566.
+  The functional form for multicomponent systems and the parameters of the
+  silicon column used here.
+- Tersoff, Phys.
+  Rev. B 38, 9902-9905 (1988), doi:10.1103/PhysRevB.38.9902.
+  The Si(C) silicon parameterization that the Fortran file header names.
+- Thompson, Plimpton and Mattson, J. Chem.
+  Phys. 131, 154107 (2009), doi:10.1063/1.3245303.
+  The many-body virial behind the stress of =TersoffSiC=.

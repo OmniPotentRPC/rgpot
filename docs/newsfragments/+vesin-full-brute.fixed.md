@@ -1,0 +1,1 @@
+The vendored brute-force neighbour list no longer hangs when asked for a full list. An empty list grew to one row on every attempt, and a full list writes two rows per pair, so the first pair never fitted. The metatomic potential is the caller that can request a full list from it.

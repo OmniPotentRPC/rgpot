@@ -13,10 +13,11 @@
  * messages both directions, plain C calls in-process.
  */
 
-#include "rgpot/NWChemPot/DynLib.hpp"
+#include "rgpot/abi/DynLib.hpp"
+#include "rgpot/abi/EngineDlopen.hpp"
 
 #include <cstddef>
-#include <cstdlib>
+#include <initializer_list>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -63,24 +64,48 @@ public:
    * platform default names. */
   static std::vector<std::string>
   candidates(const std::string &prefix, const std::string &explicit_path) {
-    std::vector<std::string> out;
-    if (!explicit_path.empty())
-      out.emplace_back(explicit_path);
     std::string upper;
     for (char c : prefix)
       upper.push_back(static_cast<char>(
           c >= 'a' && c <= 'z' ? c - ('a' - 'A') : c));
-    for (const std::string &var :
-         {upper + "_LIBRARY", "RGPOT_" + upper + "_ENGINE"}) {
-      if (const char *e = std::getenv(var.c_str()))
-        out.emplace_back(e);
+    const std::string env_lib = upper + "_LIBRARY";
+    const std::string env_eng = "RGPOT_" + upper + "_ENGINE";
+    return engine_candidates(
+        prefix, explicit_path, {env_lib.c_str(), env_eng.c_str()},
+        CandidateOptions{.exclusive_explicit = true, .exclusive_env = true});
+  }
+
+  void clear() {
+    lib_.close();
+    prefix_.clear();
+    loaded_path_.clear();
+    abi_version = nullptr;
+    version = nullptr;
+    last_error = nullptr;
+    available = nullptr;
+    finalize = nullptr;
+    configure = nullptr;
+    session_create_from_config = nullptr;
+    session_configure = nullptr;
+    session_destroy = nullptr;
+    session_calculate_result = nullptr;
+    calculate_result_from_config = nullptr;
+    potential_result_size_for_force_input = nullptr;
+    capabilities_result = nullptr;
+  }
+
+  /** Open the first loadable library in @p cands and resolve any available
+   * minimum-profile symbols without throwing on partial/legacy engines. */
+  bool open_candidates(const std::string &prefix,
+                       const std::vector<std::string> &cands,
+                       std::string *open_error = nullptr) {
+    clear();
+    prefix_ = prefix;
+    if (!open_first_candidate(lib_, cands, &loaded_path_, open_error, true)) {
+      return false;
     }
-    out.emplace_back("lib" + prefix + ".so");
-    out.emplace_back("./lib" + prefix + ".so");
-    out.emplace_back("lib" + prefix + ".dylib");
-    out.emplace_back("./lib" + prefix + ".dylib");
-    out.emplace_back(prefix + ".dll");
-    return out;
+    resolve_profile_symbols(nullptr);
+    return true;
   }
 
   /**
@@ -89,42 +114,32 @@ public:
    * non-conforming build fails loudly at load time instead of at dispatch.
    */
   void load(const std::string &prefix, const std::string &explicit_path = "") {
+    clear();
     prefix_ = prefix;
-    bool opened = false;
+    const auto cands = candidates(prefix, explicit_path);
     std::string open_error;
-    for (const auto &cand : candidates(prefix, explicit_path)) {
+    std::string failures;
+    for (const auto &cand : cands) {
       try {
         lib_.open(cand);
-        opened = true;
+        loaded_path_ = cand;
+        open_error.clear();
         break;
       } catch (const std::exception &ex) {
         open_error = ex.what();
+        failures += (failures.empty() ? "" : "; ") + cand + ": " + open_error;
       }
     }
-    if (!opened)
-      throw std::runtime_error("lib" + prefix + " not loaded: " + open_error);
+    if (!lib_.valid() && !explicit_path.empty()) {
+      throw std::runtime_error("lib" + prefix + " not loaded from '" +
+                               explicit_path + "': " + open_error);
+    }
+    if (!lib_.valid()) {
+      throw std::runtime_error("lib" + prefix + " not loaded; " + failures);
+    }
 
     std::vector<std::string> missing;
-    abi_version = resolve<AbiVersionFn>("abi_version", missing);
-    version = resolve<VersionFn>("version", missing);
-    last_error = resolve<LastErrorFn>("last_error", missing);
-    available = resolve<AvailableFn>("available", missing);
-    finalize = resolve<FinalizeFn>("finalize", missing);
-    configure = resolve<ConfigureFn>("configure", missing);
-    session_create_from_config =
-        resolve<SessionCreateFromConfigFn>("session_create_from_config",
-                                           missing);
-    session_configure =
-        resolve<SessionConfigureFn>("session_configure", missing);
-    session_destroy = resolve<SessionDestroyFn>("session_destroy", missing);
-    session_calculate_result =
-        resolve<SessionCalculateResultFn>("session_calculate_result", missing);
-    calculate_result_from_config = resolve<CalculateResultFromConfigFn>(
-        "calculate_result_from_config", missing);
-    potential_result_size_for_force_input = resolve<PotentialResultSizeFn>(
-        "potential_result_size_for_force_input", missing);
-    capabilities_result =
-        resolve<CapabilitiesResultFn>("capabilities_result", missing);
+    resolve_profile_symbols(&missing);
 
     if (!missing.empty()) {
       std::string what = "lib" + prefix + " does not conform to the minimum "
@@ -136,7 +151,15 @@ public:
   }
 
   bool loaded() const { return lib_.valid() && capabilities_result; }
+  bool has_library() const { return lib_.valid(); }
+  bool has_session_result_profile() const {
+    return session_destroy && potential_result_size_for_force_input &&
+           session_calculate_result;
+  }
   const std::string &prefix() const { return prefix_; }
+  const std::string &loaded_path() const { return loaded_path_; }
+  DynLib &lib() { return lib_; }
+  const DynLib &lib() const { return lib_; }
 
   /** Flat `Capabilities` message bytes (size query + fill). */
   std::vector<unsigned char> capabilities() const {
@@ -168,17 +191,40 @@ public:
   CapabilitiesResultFn capabilities_result = nullptr;
 
 private:
+  void resolve_profile_symbols(std::vector<std::string> *missing) {
+    abi_version = resolve<AbiVersionFn>("abi_version", missing);
+    version = resolve<VersionFn>("version", missing);
+    last_error = resolve<LastErrorFn>("last_error", missing);
+    available = resolve<AvailableFn>("available", missing);
+    finalize = resolve<FinalizeFn>("finalize", missing);
+    configure = resolve<ConfigureFn>("configure", missing);
+    session_create_from_config = resolve<SessionCreateFromConfigFn>(
+        "session_create_from_config", missing);
+    session_configure =
+        resolve<SessionConfigureFn>("session_configure", missing);
+    session_destroy = resolve<SessionDestroyFn>("session_destroy", missing);
+    session_calculate_result = resolve<SessionCalculateResultFn>(
+        "session_calculate_result", missing);
+    calculate_result_from_config = resolve<CalculateResultFromConfigFn>(
+        "calculate_result_from_config", missing);
+    potential_result_size_for_force_input = resolve<PotentialResultSizeFn>(
+        "potential_result_size_for_force_input", missing);
+    capabilities_result =
+        resolve<CapabilitiesResultFn>("capabilities_result", missing);
+  }
+
   template <typename Fn>
-  Fn resolve(const std::string &name, std::vector<std::string> &missing) {
+  Fn resolve(const std::string &name, std::vector<std::string> *missing) {
     const std::string sym = prefix_ + "_" + name;
     Fn fn = lib_.sym_optional<Fn>(sym.c_str());
-    if (!fn)
-      missing.push_back(sym);
+    if (!fn && missing)
+      missing->push_back(sym);
     return fn;
   }
 
   DynLib lib_;
   std::string prefix_;
+  std::string loaded_path_;
 };
 
 } // namespace abi

@@ -19,9 +19,10 @@
 
 #include "rgpot/LennardJones/LJClusterKernel.hpp"
 #include "rgpot/LennardJones/LJClusterPot.hpp"
+#include "rgpot/LennardJones/LJPair.hpp"
+#include "rgpot/PairEval.hpp"
 #include "rgpot/nlist/NeighbourList.hpp"
-#include "rgpot/simd/api.hpp"
-#include "rgpot/simd/exact_fma.hpp"
+#include "rgpot/nlist/PairSum.hpp"
 
 namespace rgpot {
 
@@ -44,6 +45,7 @@ void LJClusterPot::forceImpl(const ForceInput &in, ForceOut *out) const {
 
 void LJClusterPot::forcePerAtom(const ForceInput &in, ForceOut *out,
                                 const PerAtomOut &atoms) const {
+  guardForceCall(in, out, kernelNeedsCell(*this), false);
   clearPerAtom(atoms, in.nAtoms);
   compute(in, out, &atoms);
 }
@@ -67,11 +69,7 @@ void LJClusterPot::compute(const ForceInput &in, ForceOut *out,
 
   const double cutoff = (cuttOffR > 0.0) ? cuttOffR : 1.0e6;
 
-  static constexpr double free_box[9] = {1e6, 0.0, 0.0, 0.0, 1e6,
-                                         0.0, 0.0, 0.0, 1e6};
-  const bool box_ok = in.box != nullptr && in.box[0] > 0.0 && in.box[4] > 0.0 &&
-                      in.box[8] > 0.0;
-  const double *box_use = box_ok ? in.box : free_box;
+  const double *box_use = freeBoxOrCell(in.box);
 
   double minx = R[0];
   double maxx = minx;
@@ -109,102 +107,19 @@ void LJClusterPot::compute(const ForceInput &in, ForceOut *out,
     return;
   }
 
-  simd::LjParams params{};
-  params.psi2 = psi * psi;
-  params.four_u0 = 4.0 * u0;
-  params.shift = cuttOffU;
-  params.use_switch = 0;
-  if (switched) {
-    params.use_switch = 1;
-    params.r_on = m_switch.r_on;
-    params.inv_width = m_switch.inv_width;
-  }
+  const simd::LjParams params =
+      makeLjParams(u0, psi, cuttOffU, m_config.switch_width, m_switch);
   const double skin = mode_ == nlist::Mode::Stream ? 0.0 : cutoff / 5.0;
   const std::array<bool, 3> open{{false, false, false}};
   nlist::updateCells(neighbours_, R, static_cast<std::size_t>(N), box_use, cutoff, skin,
                      nlist::Image::Round, mode_, open);
   retained_ = neighbours_.streaming() ? 0 : neighbours_.slots();
   const double cutoff2 = cutoff * cutoff;
-  auto accept = [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
-                    double r2, double *force, double &energy, const PerAtomOut *share) {
-    if (!(i < j) || !(r2 > 0.0) || r2 > cutoff2) {
-      return;
-    }
-    const double inv_r2 = 1.0 / r2;
-    const double sr2 = params.psi2 * inv_r2;
-    const double a = (sr2 * sr2) * sr2;
-    const double b = params.four_u0 * a;
-    double pair_e = 0.0;
-    double fscale = 0.0;
-    if (params.use_switch == 0) {
-      pair_e = b * (a - 1.0) - params.shift;
-      fscale = ((6.0 * b) * inv_r2) * ((2.0 * a) - 1.0);
-    } else {
-      const double r = std::sqrt(r2);
-      const double t_raw = (r - params.r_on) * params.inv_width;
-      const double t = t_raw < 0.0 ? 0.0 : (t_raw > 1.0 ? 1.0 : t_raw);
-      const double t2 = t * t;
-      const double t3 = t2 * t;
-      const double poly = simd::fma_quick(t, 15.0 - 6.0 * t, -10.0);
-      const double s = simd::fma_quick(t3, poly, 1.0);
-      const double dsdr = ((-30.0 * t2) * (1.0 - t) * (1.0 - t)) * params.inv_width;
-      const double v = b * (a - 1.0);
-      const double f_un = ((6.0 * b) * inv_r2) * ((2.0 * a) - 1.0);
-      pair_e = v * s;
-      fscale = f_un * s - (v * dsdr) / r;
-    }
-    energy += pair_e;
-    const double fx = fscale * dx;
-    const double fy = fscale * dy;
-    const double fz = fscale * dz;
-    force[3 * i] += fx;
-    force[3 * i + 1] += fy;
-    force[3 * i + 2] += fz;
-    force[3 * j] -= fx;
-    force[3 * j + 1] -= fy;
-    force[3 * j + 2] -= fz;
-    if (share != nullptr) {
-      tallyPair(*share, static_cast<std::size_t>(i), static_cast<std::size_t>(j), pair_e, fscale,
-                dx, dy, dz);
-    }
+  auto term = [&params](std::int32_t, std::int32_t, double r2, double &pair_e, double &fscale) {
+    evalLjPair(r2, params, pair_e, fscale);
   };
-  const int nt = nlist::threadsRequested();
-  if (nt <= 1) {
-    nlist::visitHalf(neighbours_, 0, N,
-                     [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz,
-                         double r2) { accept(i, j, dx, dy, dz, r2, F, *U, atoms); });
-  } else {
-    std::vector<double> owned(static_cast<std::size_t>(nt) * static_cast<std::size_t>(N) * 3,
-                              0.0);
-    std::vector<double> partial(static_cast<std::size_t>(nt), 0.0);
-    PerAtomTeam team(atoms, static_cast<std::size_t>(N), nt);
-    std::vector<PerAtomOut> slots(static_cast<std::size_t>(nt));
-    for (int t = 0; t < nt; ++t) {
-      slots[static_cast<std::size_t>(t)] = team.slot(t);
-    }
-    nlist::forEachSlice(nt, [&](int t) {
-      const auto range = nlist::partition(N, t, nt);
-      double *local =
-          owned.data() + static_cast<std::size_t>(t) * static_cast<std::size_t>(N) * 3;
-      double local_e = 0.0;
-      nlist::visitDirected(
-          neighbours_, range.begin, range.end,
-          [&](std::int32_t i, std::int32_t j, double dx, double dy, double dz, double r2) {
-            accept(i, j, dx, dy, dz, r2, local, local_e,
-                   atoms != nullptr ? &slots[static_cast<std::size_t>(t)] : nullptr);
-          });
-      partial[static_cast<std::size_t>(t)] = local_e;
-    });
-    team.reduce();
-    for (int t = 0; t < nt; ++t) {
-      *U += partial[static_cast<std::size_t>(t)];
-      const double *local =
-          owned.data() + static_cast<std::size_t>(t) * static_cast<std::size_t>(N) * 3;
-      for (long k = 0; k < 3 * N; ++k) {
-        F[k] += local[k];
-      }
-    }
-  }
+  nlist::sumPairs(neighbours_, static_cast<std::size_t>(N), teamThreshold(kTeamMinAtoms),
+                  kTeamFrom, cutoff2, nlist::Overlap::Skip, term, F, *U, nullptr, atoms);
 }
 
 } // namespace rgpot

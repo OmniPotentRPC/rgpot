@@ -41,11 +41,21 @@ The cell is periodic in each direction.
 =energyAndGradient= writes the energy and dE/dx for one configuration.
 =energyAndGradientBatch= writes both for several configurations that share one
 cell and one species list, so a caller enters the library once per batch.
+A configuration is spread across the threads =OMP_NUM_THREADS= requests when
+=StillingerWeberSi= would not open a team for that atom count.
+=teamSize= decides, from =StillingerWeberSi::kTeamMinAtoms= and
+=StillingerWeberSi::kTeamFrom=, and a call already inside a team or with one
+thread requested does not spread.
+Each configuration is evaluated whole.
+A configuration that would open a team, or a batch that contains one, stays on
+the calling thread.
+The bits match a one-thread batch and a fresh =energyAndGradient= of the same
+configuration.
 The Python method =energy_gradient= accepts positions of shape =(n_atoms, 3)= or
 =(n_config, n_atoms, 3)= and uses that entry.
 
-Every call takes its pairs from the instance's shared neighbour layer
-(=nlist::updateCells=).
+=forceImpl= and =energyAndGradient= take their pairs from the instance neighbour
+layer (=nlist::updateCells=).
 The skin is that of a =nlist::NeighborList= passed to =energyAndGradient= when
 it is positive.
 Otherwise it is one fifth of the cutoff, or 0 under
@@ -53,7 +63,10 @@ Otherwise it is one fifth of the cutoff, or 0 under
 The pairs are reused while every atom has moved by at most half the skin and the
 cell and the atom count are unchanged.
 With skin 0 they are reused only for identical coordinates.
-=energyAndGradientBatch= passes no =nlist::NeighborList=.
+=energyAndGradientBatch= builds a new layer for each configuration, on the
+thread that evaluates it, and passes no =nlist::NeighborList=.
+That layer starts empty, so it is not reused across configurations.
+Its skin is the same default.
 
 ** Stress
 
@@ -94,6 +107,21 @@ outputs have =has_stress= 0 and a zero tensor.
 In Python, =evaluate= on =StillingerWeberSi= or =SWPot= returns the stress as a
 3 × 3 array, and =caps()= reports it.
 =RgpotCalculator= then gives the ASE stress for either potential.
+
+** Domain decomposition
+
+=locality= returns the cutoff =kCut * kSigma= with a full neighbour list and a
+reach of 2, so the copies a host must hold go out to twice the cutoff.
+=densityStage= writes nothing.
+=forceStage= evaluates owned centres on that full list.
+A two-body term is counted from the atom whose partner sits strictly above it in
+z, then y, then x.
+A three-body term is counted at each owned centre.
+With newton on, the host adds the forces written on copies back to their owners
+and sums the owned energies.
+=Staged3BodyTest= checks that split against =forceImpl= to a relative tolerance
+of 1e-10, including a triclinic cell and a slab thinner than two cutoffs.
+The whole-cell call is unchanged.
 
 ** Diamond energy
 

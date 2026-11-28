@@ -35,21 +35,32 @@ reproduces the infinite system:
   them, padded the same way as the cluster box.
 
 Energy and forces of a cluster or a slab do not depend on the caller's
-cell along a non-periodic axis. Stress does: it is the virial divided by
-the caller's cell volume, which is what ``calculate_numerical_stress``
-differentiates. A caller with no volume keeps the padded box's stress.
+cell along a non-periodic axis. Stress is the virial divided by the
+caller's cell volume, which is what ``calculate_numerical_stress``
+differentiates. That result exists only when the cell has three nonzero
+lattice vectors (``Atoms.cell.rank`` is 3), periodic or not. A shorter
+cell omits ``stress`` and ``stresses`` and raises
+``PropertyNotImplementedError`` when either was requested, matching
+ASE's Lennard-Jones and EMT calculators.
 """
 
 from __future__ import annotations
 
 import itertools
+import math
 import re
-from typing import Any, Iterable, Sequence
+from typing import Any, Iterable, Sequence, SupportsFloat, SupportsIndex
 
 import numpy as np
 from ase.atoms import Atoms
-from ase.calculators.calculator import Calculator, all_changes
+from ase.calculators.calculator import (
+    Calculator,
+    PropertyNotImplementedError,
+    all_changes,
+)
 from ase.calculators.singlepoint import SinglePointCalculator
+
+from rgpot.ase._registry import register_calculator as _register_calculator
 
 _ASE_KEYS = {
     "restart",
@@ -59,17 +70,51 @@ _ASE_KEYS = {
     "directory",
 }
 
+# Calculator parameters. They are not arguments of the potential constructor.
+_CALCULATOR_PARAMETERS = {
+    "numerical_stress",
+    "stress_step",
+}
+
 # Names that are not derived from a class name. Every bound potential
 # class is also reachable by its own name, lower case, with or without
 # the "Pot" suffix and with "_", "-", "." and spaces ignored.
 _ALIASES = {
     "lennardjones": "LJPot",
+    "gromacs": "rgpot_gromacs_potential",
+    "openmm": "rgpot_openmm_potential",
 }
 
-# Neighbour cutoffs of the bound kernels, in Angstrom, for kernels whose
-# binding has no config()["cutoff"]. WaterH has no cutoff, so an open
-# cell for it uses the 100 Angstrom floor and a periodic cell is not
-# tiled.
+# These are result types returned by engine factory functions. nanobind
+# does not expose constructors for them, so listing their class names as
+# accepted kinds would be dishonest.
+_FACTORY_ONLY_TYPES = {"LammpsPot", "GromacsPot", "OpenMMPot"}
+
+_FACTORY_DEFAULTS = {
+    "rgpot_gromacs_potential": {
+        "u0": 1.0,
+        "cutoff": 8.0,
+        "psi": 1.0,
+        "engine_path": "",
+    },
+    "rgpot_openmm_potential": {
+        "u0": 1.0,
+        "cutoff": 8.0,
+        "psi": 1.0,
+        "engine_path": "",
+    },
+}
+
+# Cutoffs, in Angstrom, of the bound kernels whose binding publishes none
+# through ``cutoff``, ``native_cutoff`` or ``config()["cutoff"]``. A cell
+# narrower than twice the value is tiled for a minimum-image kernel. A 0.0
+# entry is a statement that no wider cell is needed: the kernel sums every
+# image itself (D2Pot, D4Pot), is not periodic (D3Pot, MullerBrownPot), has no
+# cutoff (WaterHPot), is defined by a single minimum image (D2CpmdPot), or
+# hands the geometry to an engine that owns the neighbour search (IPIPot,
+# LammpsPot). A
+# class that is in neither this table nor one of the three published forms
+# has no known cutoff, and :func:`_kernel_cutoff` raises for it.
 _KERNEL_CUTOFF_ANGSTROM = {
     "SWPot": 1.8 * 2.0951,
     "StillingerWeberSi": 1.8 * 2.0951,
@@ -80,8 +125,22 @@ _KERNEL_CUTOFF_ANGSTROM = {
     "EAMAlPot": 7.1,
     "FeHePot": 5.4,
     "CuH2Pot": 6.1,
+    # Asap wants a cell height of twice 1.1 * 1.045 * the Fermi cutoff.
+    # Mg has the widest cutoff of the covered elements, 5.9627, so 6.8542
+    # is the bound for every element, with either provider.
+    "EMTPot": 6.855,
     "WaterHPot": 0.0,
+    "D2Pot": 0.0,
+    "D2CpmdPot": 0.0,
+    "D3Pot": 0.0,
+    "MullerBrownPot": 0.0,
+    "D4Pot": 0.0,
+    "IPIPot": 0.0,
+    "LammpsPot": 0.0,
 }
+
+# GromacsPot and OpenMMPot report ``native_cutoff()`` in nanometres.
+_NANOMETRE_IN_ANGSTROM = 10.0
 
 _OPEN_BOX_FLOOR_ANGSTROM = 100.0
 
@@ -90,14 +149,16 @@ def _normalise(name: str) -> str:
     return re.sub(r"[\s_\-.]", "", name).lower()
 
 
-def _potential_classes() -> dict[str, type]:
-    """Kind string -> bound potential class, from the compiled module."""
+def _potential_factories() -> dict[str, Any]:
+    """Kind string -> bound potential constructor, from the compiled module."""
     import rgpot
 
-    found: dict[str, type] = {}
+    found: dict[str, Any] = {}
     for name in dir(rgpot):
         cls = getattr(rgpot, name, None)
         if not isinstance(cls, type) or issubclass(cls, BaseException):
+            continue
+        if name in _FACTORY_ONLY_TYPES:
             continue
         if not str(getattr(cls, "__module__", "")).startswith("rgpot"):
             continue
@@ -108,20 +169,23 @@ def _potential_classes() -> dict[str, type]:
         if key.endswith("pot") and len(key) > 3:
             found.setdefault(key[:-3], cls)
     for alias, target in _ALIASES.items():
-        cls = getattr(rgpot, target, None)
-        if isinstance(cls, type):
-            found.setdefault(alias, cls)
+        factory = getattr(rgpot, target, None)
+        if callable(factory):
+            found.setdefault(alias, factory)
     return found
 
 
 def available_kinds() -> list[str]:
     """Kind strings :class:`RgpotCalculator` accepts in this build."""
-    return sorted(_potential_classes())
+    return sorted(_potential_factories())
 
 
-def _init_parameters(cls: type) -> list[str] | None:
+def _init_parameters(factory: Any) -> list[str] | None:
     """Keyword names of the bound constructor, None when unknown."""
-    sigs = getattr(getattr(cls, "__init__", None), "__nb_signature__", None)
+    callable_obj = (
+        getattr(factory, "__init__", None) if isinstance(factory, type) else factory
+    )
+    sigs = getattr(callable_obj, "__nb_signature__", None)
     if not sigs:
         return None
     names: set[str] = set()
@@ -135,20 +199,20 @@ def _init_parameters(cls: type) -> list[str] | None:
     return sorted(names)
 
 
-def _build(cls: type, params: dict[str, Any]) -> Any:
-    accepted = _init_parameters(cls)
+def _build(factory: Any, params: dict[str, Any]) -> Any:
+    accepted = _init_parameters(factory)
     if accepted is not None:
         unknown = sorted(set(params) - set(accepted))
         if unknown:
             raise ValueError(
-                f"unknown {cls.__name__} parameters: {unknown}; "
+                f"unknown {factory.__name__} parameters: {unknown}; "
                 f"accepted: {accepted}"
             )
     try:
-        return cls(**params)
+        return factory(**params)
     except TypeError as err:
         raise ValueError(
-            f"{cls.__name__} rejected parameters {sorted(params)}: {err}"
+            f"{factory.__name__} rejected parameters {sorted(params)}: {err}"
         ) from err
 
 
@@ -166,14 +230,15 @@ def _resolve_potential(
                 "potential must be an rgpot potential or a kind string"
             )
         return potential, _spec_of(potential)
-    classes = _potential_classes()
-    cls = classes.get(_normalise(potential))
-    if cls is None:
+    factories = _potential_factories()
+    factory = factories.get(_normalise(potential))
+    if factory is None:
         raise ValueError(
             f"unknown potential kind {potential!r}; this build has "
-            f"{sorted(classes)}"
+            f"{sorted(factories)}"
         )
-    return _build(cls, dict(params)), (cls.__name__, dict(params))
+    full = {**_FACTORY_DEFAULTS.get(factory.__name__, {}), **params}
+    return _build(factory, full), (factory.__name__, full)
 
 
 def _spec_of(potential: Any) -> tuple[str, dict[str, Any]] | None:
@@ -181,6 +246,8 @@ def _spec_of(potential: Any) -> tuple[str, dict[str, Any]] | None:
     import rgpot
 
     cls = type(potential)
+    if cls.__name__ in _FACTORY_ONLY_TYPES:
+        return None
     if getattr(rgpot, cls.__name__, None) is not cls:
         return None
     config = getattr(potential, "config", None)
@@ -193,20 +260,61 @@ def _spec_of(potential: Any) -> tuple[str, dict[str, Any]] | None:
     return None
 
 
+def _checked_cutoff(name: str, value: Any) -> float:
+    cutoff = float(value)
+    if not math.isfinite(cutoff) or cutoff < 0.0:
+        raise ValueError(
+            f"{name} reports the cutoff {cutoff!r}; it must be finite and not "
+            "negative"
+        )
+    return cutoff
+
+
 def _kernel_cutoff(potential: Any) -> float:
-    """Cutoff the open box and the supercell have to clear, in Angstrom."""
+    """Cutoff the open box and the supercell have to clear, in Angstrom.
+
+    The potential publishes it as ``native_cutoff()`` (nanometres), a
+    ``cutoff`` property (``EAMTablePot``, ``ExprPot``, ``SumPot``) or
+    ``config()["cutoff"]``. A kernel that has none of these is looked up in
+    ``_KERNEL_CUTOFF_ANGSTROM``. A kernel in no source raises ``ValueError``:
+    a cutoff of 0 would skip the tiling a minimum-image kernel needs and
+    return the wrong energy in a short cell, without a message.
+    """
+    name = type(potential).__name__
+    if name in _KERNEL_CUTOFF_ANGSTROM:
+        return _checked_cutoff(name, _KERNEL_CUTOFF_ANGSTROM[name])
+    native = getattr(potential, "native_cutoff", None)
+    if callable(native):
+        raw_native = native()
+        if not isinstance(raw_native, (SupportsFloat, SupportsIndex)):
+            raise TypeError(
+                f"{name}.native_cutoff() returned {raw_native!r}; expected a number"
+            )
+        return _checked_cutoff(name, float(raw_native) * _NANOMETRE_IN_ANGSTROM)
+    cutoff = getattr(potential, "cutoff", None)
+    if cutoff is not None and not callable(cutoff):
+        return _checked_cutoff(name, cutoff)
     config = getattr(potential, "config", None)
     if callable(config):
         cfg = config()
-        if isinstance(cfg, dict) and "cutoff" in cfg:
-            return float(cfg["cutoff"])
-    return float(_KERNEL_CUTOFF_ANGSTROM.get(type(potential).__name__, 0.0))
+        if isinstance(cfg, dict) and cfg.get("cutoff") is not None:
+            return _checked_cutoff(name, cfg["cutoff"])
+    raise ValueError(
+        f"cannot determine the cutoff of {name}: it has no cutoff property, "
+        "native_cutoff() or config()['cutoff'], and no built-in entry. "
+        "Without it the calculator cannot tile a short periodic cell, so it "
+        "refuses the potential instead of assuming 0"
+    )
 
 
 def _caps(potential: Any) -> dict[str, Any]:
     caps = getattr(potential, "caps", None)
     result = caps() if callable(caps) else None
-    return dict(result) if isinstance(result, dict) else {}
+    if isinstance(result, dict):
+        return dict(result)
+    # IPIPot publishes the stress of its last socket exchange through a
+    # separate method. Other call-only bindings have no stress surface.
+    return {"stress": callable(getattr(potential, "stress", None))}
 
 
 def _pbc_flags(pbc: Any) -> np.ndarray:
@@ -458,7 +566,12 @@ def _call(potential: Any, positions: np.ndarray, numbers: np.ndarray, box: np.nd
     if evaluate is not None:
         return evaluate(positions, numbers, box)
     energy, forces, _variance = potential(positions, numbers, box)
-    return {"energy": energy, "forces": forces, "stress": None}
+    stress = getattr(potential, "stress", None)
+    return {
+        "energy": energy,
+        "forces": forces,
+        "stress": stress() if callable(stress) else None,
+    }
 
 
 class RgpotCalculator(Calculator):
@@ -477,14 +590,24 @@ class RgpotCalculator(Calculator):
         For a potential whose kernel writes no stress, add ``stress``
         from a central difference of the energy under six cell strains
         of ``stress_step``. Off by default: each stress then costs twelve
-        energy calls.
+        energy calls. Both are calculator parameters
+        (``default_parameters``, ``set`` and ``todict``). ``set`` does
+        not forward them to the potential constructor.
     """
 
     implemented_properties = ["energy", "free_energy", "forces"]
+    default_parameters = {
+        "numerical_stress": False,
+        "stress_step": 1e-6,
+    }
     # The pure protocol may run concurrently. calculate() writes
     # self.atoms and self.results, so this name is not "calculate is
     # reentrant".
     protocol_reentrant = True
+
+    def _get_name(self) -> str:
+        """Name ``ase.db`` stores. Matches :func:`register_calculator`."""
+        return "rgpot"
 
     def __init__(
         self,
@@ -500,9 +623,14 @@ class RgpotCalculator(Calculator):
         self._numerical_stress = bool(numerical_stress)
         self._stress_step = float(stress_step)
         Calculator.__init__(self, **ase_kw)
-        if self._spec is not None and self.parameters is not None:
-            self.parameters.update(self._spec[1])
-            self.parameters["potential"] = self._spec[0]
+        if self.parameters is not None:
+            if self._spec is not None:
+                self.parameters.update(self._spec[1])
+                self.parameters["potential"] = self._spec[0]
+            # Constructor values win over default_parameters. Kept after the
+            # potential spec so a config key cannot hide them.
+            self.parameters["numerical_stress"] = self._numerical_stress
+            self.parameters["stress_step"] = self._stress_step
         self._configure()
 
     def _configure(self) -> None:
@@ -528,8 +656,19 @@ class RgpotCalculator(Calculator):
         return self._potential
 
     def set(self, **kwargs: Any) -> dict[str, Any]:
-        """ASE ``set``. A changed potential parameter rebuilds the potential."""
-        pot_kw = {k: v for k, v in kwargs.items() if k not in _ASE_KEYS}
+        """ASE ``set``. A changed potential parameter rebuilds the potential.
+
+        ``numerical_stress`` and ``stress_step`` stay on the calculator.
+        """
+        if "numerical_stress" in kwargs:
+            kwargs["numerical_stress"] = bool(kwargs["numerical_stress"])
+        if "stress_step" in kwargs:
+            kwargs["stress_step"] = float(kwargs["stress_step"])
+        pot_kw = {
+            key: value
+            for key, value in kwargs.items()
+            if key not in _ASE_KEYS and key not in _CALCULATOR_PARAMETERS
+        }
         if pot_kw and self._spec is None:
             raise ValueError(
                 "potential parameters can be set only on a calculator built "
@@ -538,6 +677,14 @@ class RgpotCalculator(Calculator):
         if "potential" in pot_kw:
             raise ValueError("build a new calculator to change the potential kind")
         changed = Calculator.set(self, **kwargs)
+        if "numerical_stress" in changed or "stress_step" in changed:
+            parameters = self.parameters
+            if parameters is None:
+                raise TypeError("calculator parameters are unset")
+            self._numerical_stress = bool(parameters["numerical_stress"])
+            self._stress_step = float(parameters["stress_step"])
+            self._configure()
+            self.reset()
         if pot_kw and any(k in changed for k in pot_kw):
             assert self._spec is not None
             name, params = self._spec
@@ -557,6 +704,11 @@ class RgpotCalculator(Calculator):
                 f"cannot pickle a calculator over {self._name}: build it from "
                 "a kind string or a bound rgpot potential"
             )
+        if self._name == "IPIPot":
+            raise TypeError(
+                "cannot pickle a calculator over IPIPot: the potential owns "
+                "a live socket; construct a new calculator with the address"
+            )
         state = self.__dict__.copy()
         del state["_potential"]
         return state
@@ -568,14 +720,39 @@ class RgpotCalculator(Calculator):
         assert self._spec is not None
         name, params = self._spec
         self._potential = _build(getattr(rgpot, name), params)
+        self._configure()
 
     def calculate(
         self,
         atoms: Atoms | None = None,
-        properties: Sequence[str] = ("energy",),
+        properties: Sequence[str] | None = None,
         system_changes: Any = all_changes,
     ) -> None:
-        """Fill ``self.results``. ``free_energy`` equals ``energy``."""
+        """Fill ``self.results``. ``free_energy`` equals ``energy``.
+
+        A missing ``properties`` list means every implemented property,
+        as in ASE's Lennard-Jones calculator. ``stress`` and ``stresses``
+        are added only when the cell rank is 3. ``get_property`` still
+        passes only the name it was asked for, so an energy request does
+        not add per-atom or numerical stress work.
+
+        Results are replaced on every call. An empty ``system_changes``
+        list must not keep a key this call did not produce.
+
+        ``stress`` and ``stresses`` are omitted when the cell has fewer
+        than three nonzero lattice vectors. Requesting either then raises
+        ``PropertyNotImplementedError``.
+        """
+        if properties is None:
+            # Stress joins the default list only for a three-vector cell.
+            # An explicit request still reaches the rank check below.
+            system = atoms if atoms is not None else self.atoms
+            rank = int(system.cell.rank) if system is not None else 0
+            properties = [
+                name
+                for name in self.implemented_properties
+                if rank == 3 or name not in {"stress", "stresses"}
+            ]
         Calculator.calculate(self, atoms, properties, system_changes)
         assert self.atoms is not None
         wanted = set(properties)
@@ -587,9 +764,24 @@ class RgpotCalculator(Calculator):
             self.atoms.pbc,
             per_atom=per_atom,
         )
-        self.results.update(evaluated)
-        if "stress" not in evaluated and self._numerical_stress and "stress" in wanted:
-            self.results["stress"] = self._finite_difference_stress(self.atoms)
+        if int(self.atoms.cell.rank) != 3:
+            # ASE reports stress only for a three-vector cell. A padded
+            # kernel box is not that cell, so drop its virial.
+            evaluated.pop("stress", None)
+            evaluated.pop("stresses", None)
+            self.results = evaluated
+            if {"stress", "stresses"} & wanted:
+                raise PropertyNotImplementedError(
+                    "stress requires a cell with three nonzero lattice vectors"
+                )
+            return
+        if (
+            "stress" not in evaluated
+            and self._numerical_stress
+            and "stress" in wanted
+        ):
+            evaluated["stress"] = self._finite_difference_stress(self.atoms)
+        self.results = evaluated
 
     def __rg_evaluate__(
         self,
@@ -628,6 +820,10 @@ class RgpotCalculator(Calculator):
 
     def _finite_difference_stress(self, atoms: Atoms) -> np.ndarray:
         """Central difference of the energy under cell strain, ASE Voigt."""
+        if int(atoms.cell.rank) != 3:
+            raise PropertyNotImplementedError(
+                "stress requires a cell with three nonzero lattice vectors"
+            )
         cell = np.asarray(atoms.cell.array, dtype=np.float64)
         volume = _cell_volume(cell)
         if volume == 0.0:
@@ -674,8 +870,11 @@ class RgpotCalculator(Calculator):
         """Evaluate many structures in one detached batch.
 
         Results match N single :meth:`calculate` calls, bit for bit, for
-        energy and forces. Inputs are not mutated. ``attach=True`` writes
-        a :class:`~ase.calculators.singlepoint.SinglePointCalculator` onto
+        energy and forces. A cell with fewer than three nonzero lattice
+        vectors omits stress. Requesting stress or stresses for that cell
+        raises ``PropertyNotImplementedError``, as :meth:`calculate` does.
+        Inputs are not mutated. ``attach=True`` writes a
+        :class:`~ase.calculators.singlepoint.SinglePointCalculator` onto
         each :class:`~ase.Atoms`.
 
         ``threads`` is the BatchEvaluator worker count. 0 selects the
@@ -712,7 +911,14 @@ class RgpotCalculator(Calculator):
                 row["free_energy"] = done["energy"]
             if "forces" in wanted:
                 row["forces"] = done["forces"]
-            if "stress" in wanted and self._analytic_stress:
+            if int(atoms.cell.rank) != 3:
+                # Same gate as calculate. The padded kernel box is not the
+                # caller's cell, so its virial is not an ASE stress.
+                if "stress" in wanted or "stresses" in wanted:
+                    raise PropertyNotImplementedError(
+                        "stress requires a cell with three nonzero lattice vectors"
+                    )
+            elif "stress" in wanted and self._analytic_stress:
                 # BatchEvaluator returns energy and forces. Stress comes
                 # from the same kernel on the copied geometry.
                 stress_eval = _call(self._potential, geom.positions, geom.numbers, geom.box)
@@ -726,3 +932,6 @@ class RgpotCalculator(Calculator):
                 }
                 atoms.calc = SinglePointCalculator(atoms, **spc_kw)
         return rows
+
+
+_register_calculator("rgpot", RgpotCalculator)

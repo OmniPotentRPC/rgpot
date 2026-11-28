@@ -15,8 +15,8 @@ pub const TORCH_CPU_SPEC: &str = "torch>=2.10,<2.11";
 pub const TORCH_CPU_INDEX: &str = "https://download.pytorch.org/whl/cpu";
 pub const METATENSOR_TORCH_SPEC: &str = "metatensor-torch>=0.8.4,<0.9";
 pub const METATOMIC_TORCH_SPEC: &str = "metatomic-torch>=0.1.9,<0.2";
-pub const VESIN_SPEC: &str = "vesin>=0.5.2,<0.6";
-pub const VESIN_TORCH_SPEC: &str = "vesin-torch>=0.5.2,<0.6";
+pub const VESIN_SPEC: &str = "vesin>=0.6.0,<0.7";
+pub const VESIN_TORCH_SPEC: &str = "vesin-torch>=0.6.0,<0.7";
 
 pub type Result<T> = std::result::Result<T, String>;
 
@@ -103,6 +103,7 @@ pub fn meson_configure_args(
         "-Dwith_examples=False".into(),
         "-Dwith_xtensor=False".into(),
         "-Dwith_eigen=False".into(),
+        "-Dwith_long_range=True".into(),
         format!("-Dwith_rpc={}", if rpc { "true" } else { "false" }),
         format!("-Dwith_cache={}", if cache { "true" } else { "false" }),
         "-Dpure_lib=False".into(),
@@ -156,14 +157,8 @@ pub fn cmake_configure_core_args(rpc: bool, cache: bool) -> Vec<String> {
         "-DRGPOT_BUILD_EXAMPLES=False".into(),
         "-DRGPOT_WITH_XTENSOR=OFF".into(),
         "-DRGPOT_WITH_EIGEN=OFF".into(),
-        format!(
-            "-DRGPOT_WITH_RPC={}",
-            if rpc { "ON" } else { "OFF" }
-        ),
-        format!(
-            "-DRGPOT_WITH_CACHE={}",
-            if cache { "ON" } else { "OFF" }
-        ),
+        format!("-DRGPOT_WITH_RPC={}", if rpc { "ON" } else { "OFF" }),
+        format!("-DRGPOT_WITH_CACHE={}", if cache { "ON" } else { "OFF" }),
         "-DRGPOT_PURE_LIB=OFF".into(),
     ]
 }
@@ -207,10 +202,7 @@ fn run_cmd(bin: &str, args: &[&str], cwd: &Path) -> Result<()> {
     if status.success() {
         Ok(())
     } else {
-        Err(format!(
-            "{bin} {} failed with {status}",
-            args.join(" ")
-        ))
+        Err(format!("{bin} {} failed with {status}", args.join(" ")))
     }
 }
 
@@ -329,7 +321,10 @@ pub fn preflight(root: &Path, lockstep_check: bool) -> Result<()> {
         }
     }
     if !missing.is_empty() {
-        return Err(format!("missing required files:\n  {}", missing.join("\n  ")));
+        return Err(format!(
+            "missing required files:\n  {}",
+            missing.join("\n  ")
+        ));
     }
 
     if lockstep_check {
@@ -348,8 +343,7 @@ pub fn preflight(root: &Path, lockstep_check: bool) -> Result<()> {
 pub fn run_release_assert(root: &Path) -> Result<()> {
     lockstep::assert_lockstep(root, None, false)?;
     let cog_toml = root.join("cog.toml");
-    let text = std::fs::read_to_string(&cog_toml)
-        .map_err(|e| format!("read cog.toml: {e}"))?;
+    let text = std::fs::read_to_string(&cog_toml).map_err(|e| format!("read cog.toml: {e}"))?;
     // Minimal TOML presence check (full schema is cog's concern).
     if !text.contains('[') {
         return Err("cog.toml looks empty or invalid".into());
@@ -373,22 +367,52 @@ pub enum TowncrierInvoke {
     PythonModule,
 }
 
-/// Pure: prefer direct `towncrier` on PATH, else python -m if pip installed it.
-pub fn select_towncrier_invoke(has_towncrier_bin: bool, has_python: bool) -> Option<TowncrierInvoke> {
+/// Pure: prefer a direct `towncrier` binary, else a module runner
+/// (`python -m towncrier`, or `uvx`) when one exists.
+pub fn select_towncrier_invoke(
+    has_towncrier_bin: bool,
+    has_module_runner: bool,
+) -> Option<TowncrierInvoke> {
     if has_towncrier_bin {
         Some(TowncrierInvoke::Bin)
-    } else if has_python {
+    } else if has_module_runner {
         Some(TowncrierInvoke::PythonModule)
     } else {
         None
     }
 }
 
+fn towncrier_on_path() -> bool {
+    which_bin("towncrier").is_some()
+}
+
+/// `~/.local/bin` holds the script after `pip install --user` or `pipx
+/// install`, but it is often not on PATH. Prepend it when the script is
+/// there, and report whether `towncrier` now resolves.
+fn adopt_user_local_towncrier() -> bool {
+    let Ok(home) = env::var("HOME") else {
+        return false;
+    };
+    let local = PathBuf::from(home).join(".local/bin");
+    if !local.join("towncrier").is_file() {
+        return false;
+    }
+    let mut paths = vec![local];
+    if let Some(cur) = env::var_os("PATH") {
+        paths.extend(env::split_paths(&cur));
+    }
+    if let Ok(joined) = env::join_paths(paths) {
+        env::set_var("PATH", joined);
+    }
+    towncrier_on_path()
+}
+
 /// Install/locate towncrier for CI runners that only have potctl (no uvx/pipx preinstalled).
 /// Order: existing `towncrier` → `pipx install` → `python3 -m pip install --user` → `uvx` last.
+/// Every stage reports what it found to `select_towncrier_invoke`.
 fn ensure_towncrier_available() -> Result<TowncrierInvoke> {
-    if which_bin("towncrier").is_some() {
-        return Ok(TowncrierInvoke::Bin);
+    if let Some(invoke) = select_towncrier_invoke(towncrier_on_path(), false) {
+        return Ok(invoke);
     }
     if which_bin("pipx").is_some() {
         println!("potctl: installing towncrier via pipx");
@@ -396,20 +420,17 @@ fn ensure_towncrier_available() -> Result<TowncrierInvoke> {
             .args(["install", "towncrier"])
             .status()
             .map_err(|e| format!("pipx install towncrier: {e}"))?;
-        if st.success() && which_bin("towncrier").is_some() {
-            return Ok(TowncrierInvoke::Bin);
-        }
-        // pipx may install but PATH not refreshed in same process; try common pipx bin dir.
-        if let Ok(home) = env::var("HOME") {
-            let cand = PathBuf::from(home).join(".local/bin/towncrier");
-            if cand.is_file() {
-                return Ok(TowncrierInvoke::Bin);
-            }
+        let found = (st.success() && towncrier_on_path()) || adopt_user_local_towncrier();
+        if let Some(invoke) = select_towncrier_invoke(found, false) {
+            return Ok(invoke);
         }
     }
     let py = which_bin("python3").or_else(|| which_bin("python"));
     if let Some(ref py) = py {
-        println!("potctl: installing towncrier via {} -m pip --user", py.display());
+        println!(
+            "potctl: installing towncrier via {} -m pip --user",
+            py.display()
+        );
         let _ = Command::new(py)
             .args(["-m", "ensurepip", "--upgrade"])
             .status();
@@ -418,35 +439,15 @@ fn ensure_towncrier_available() -> Result<TowncrierInvoke> {
             .status()
             .map_err(|e| format!("pip install towncrier: {e}"))?;
         if st.success() {
-            if which_bin("towncrier").is_some() {
-                return Ok(TowncrierInvoke::Bin);
+            let found = towncrier_on_path() || adopt_user_local_towncrier();
+            if let Some(invoke) = select_towncrier_invoke(found, true) {
+                return Ok(invoke);
             }
-            // scripts may land in ~/.local/bin not on PATH
-            if let Ok(home) = env::var("HOME") {
-                let cand = PathBuf::from(&home).join(".local/bin/towncrier");
-                if cand.is_file() {
-                    // Prepend to PATH for subsequent Command::new("towncrier")
-                    let local = PathBuf::from(&home).join(".local/bin");
-                    let mut paths = vec![local];
-                    if let Ok(cur) = env::var("PATH") {
-                        for p in env::split_paths(&cur) {
-                            paths.push(p);
-                        }
-                    }
-                    if let Ok(joined) = env::join_paths(paths) {
-                        env::set_var("PATH", joined);
-                    }
-                    if which_bin("towncrier").is_some() {
-                        return Ok(TowncrierInvoke::Bin);
-                    }
-                }
-            }
-            return Ok(TowncrierInvoke::PythonModule);
         }
     }
-    if which_bin("uvx").is_some() {
-        // uvx runs without install; treated as module-like at call site
-        return Ok(TowncrierInvoke::PythonModule);
+    // uvx runs without an install, so it counts as a module runner.
+    if let Some(invoke) = select_towncrier_invoke(false, which_bin("uvx").is_some()) {
+        return Ok(invoke);
     }
     Err(
         "towncrier not available: install with `pipx install towncrier` or `pip install --user towncrier` (or provide uvx)"
@@ -459,8 +460,7 @@ fn run_towncrier_argv(root: &Path, invoke: TowncrierInvoke, args: &[&str]) -> Re
         TowncrierInvoke::Bin => {
             let mut cmd = Command::new("towncrier");
             cmd.args(args).current_dir(root);
-            cmd.status()
-                .map_err(|e| format!("spawn towncrier: {e}"))?
+            cmd.status().map_err(|e| format!("spawn towncrier: {e}"))?
         }
         TowncrierInvoke::PythonModule => {
             // Prefer python -m towncrier; if only uvx works, use that as last resort.
@@ -474,7 +474,10 @@ fn run_towncrier_argv(root: &Path, invoke: TowncrierInvoke, args: &[&str]) -> Re
                     if st.success() {
                         return Ok(());
                     }
-                    return Err(format!("python -m towncrier {} failed with {st}", args.join(" ")));
+                    return Err(format!(
+                        "python -m towncrier {} failed with {st}",
+                        args.join(" ")
+                    ));
                 }
             }
             if which_bin("uvx").is_some() {
@@ -577,11 +580,7 @@ fn run_cmd_status_ok(bin: &str, args: &[&str], cwd: &Path) -> Result<()> {
 /// and then invokes a flag the binary rejects.
 pub fn cog_help_has_flag(help: &str, flag: &str) -> bool {
     help.split(|c: char| {
-        c.is_whitespace()
-            || matches!(
-                c,
-                ',' | '[' | ']' | '(' | ')' | '|' | '=' | '{' | '}'
-            )
+        c.is_whitespace() || matches!(c, ',' | '[' | ']' | '(' | ')' | '|' | '=' | '{' | '}')
     })
     .any(|tok| tok == flag)
 }
@@ -650,18 +649,17 @@ pub fn is_conventional_commit_subject(subj: &str) -> bool {
     if is_ignored_merge_commit_subject(s) {
         return true;
     }
-    // type(scope): or type:
+    // type(scope): or type:, matched case-insensitively like cog, which
+    // lowercases the parsed type before looking it up.
     let types = [
         "feat", "fix", "perf", "bench", "refactor", "docs", "test", "build", "ci", "chore",
         "style", "revert", "enh", "bug", "maint", "doc", "tst", "bld", "gen", "simd", "pot",
-        "python", "nlist",
+        "python", "nlist", "dev",
     ];
-    for t in types {
-        if s.starts_with(&format!("{t}(")) || s.starts_with(&format!("{t}:")) {
-            return true;
-        }
-    }
-    false
+    let lower = s.to_ascii_lowercase();
+    types
+        .iter()
+        .any(|t| lower.starts_with(&format!("{t}(")) || lower.starts_with(&format!("{t}:")))
 }
 
 /// Resolve active Python interpreter (PATH `python` / `python3`).
@@ -755,11 +753,7 @@ fn reinstall_torch_cpu(py: &Path) -> Result<()> {
     println!("Reinstalling CPU torch wheel (libtorch missing or CUDA build detected)");
     if which_bin("uv").is_some() {
         let st = Command::new("uv")
-            .args([
-                "pip",
-                "install",
-                "--python",
-            ])
+            .args(["pip", "install", "--python"])
             .arg(py)
             .args([
                 "--reinstall",
@@ -806,7 +800,8 @@ fn read_torch_version_file(purelib: &Path) -> Option<String> {
         if let Some(rest) = t.strip_prefix("__version__") {
             let rest = rest.trim().trim_start_matches('=').trim();
             let q = rest.trim_matches(|c| c == '"' || c == '\'');
-            if !q.is_empty() && q != rest.trim() || rest.starts_with('"') || rest.starts_with('\'') {
+            if !q.is_empty() && q != rest.trim() || rest.starts_with('"') || rest.starts_with('\'')
+            {
                 let s = rest.trim_matches(|c| c == '"' || c == '\'');
                 if !s.is_empty() {
                     return Some(s.to_string());
@@ -851,14 +846,15 @@ fn append_github_env(lines: &[(&str, String)]) -> Result<()> {
 /// Writes TORCH_LIB / TORCH_CMAKE / PURELIB / LD_LIBRARY_PATH / CMAKE_PREFIX_PATH to GITHUB_ENV when set.
 pub fn run_ensure_torch_metatomic(_root: &Path) -> Result<()> {
     let py = python_bin()?;
-    let purelib_s = py_eval(&py, "import sysconfig; print(sysconfig.get_paths()['purelib'])")?;
+    let purelib_s = py_eval(
+        &py,
+        "import sysconfig; print(sysconfig.get_paths()['purelib'])",
+    )?;
     let mut purelib = PathBuf::from(&purelib_s);
 
     let torch_ver = read_torch_version_file(&purelib).unwrap_or_default();
     let libtorch = purelib.join("torch/lib/libtorch_global_deps.so");
-    let need_cpu = !libtorch.is_file()
-        || torch_ver.contains("+cu")
-        || torch_ver.contains("+cuda");
+    let need_cpu = !libtorch.is_file() || torch_ver.contains("+cu") || torch_ver.contains("+cuda");
     if need_cpu {
         println!(
             "Forcing CPU torch (current version: '{}')",
@@ -921,7 +917,10 @@ pub fn run_ensure_torch_metatomic(_root: &Path) -> Result<()> {
         py_eval(&py, "import sys; print(sys.version.split()[0])").unwrap_or_default()
     );
     println!("torch cmake {}", torch_share.display());
-    println!("vesin.h {}", purelib.join("vesin/include/vesin.h").display());
+    println!(
+        "vesin.h {}",
+        purelib.join("vesin/include/vesin.h").display()
+    );
 
     let torch_lib = purelib.join("torch/lib");
     let ld = match env::var("LD_LIBRARY_PATH") {
@@ -1058,7 +1057,14 @@ pub fn run_plugin_test(root: &Path, build_dir: &str, apply_darwin: bool) -> Resu
     run_cmd("meson", &named_refs, root)?;
     run_cmd(
         "meson",
-        &["test", "-C", build_dir, "--print-errorlogs", "--suite", "plugin"],
+        &[
+            "test",
+            "-C",
+            build_dir,
+            "--print-errorlogs",
+            "--suite",
+            "plugin",
+        ],
         root,
     )?;
     maybe_ccache_stats();
@@ -1143,11 +1149,7 @@ pub fn run_xckernel_test(root: &Path, build_dir: &str) -> Result<()> {
         ],
         root,
     )?;
-    let listed = command_stdout(
-        "meson",
-        &["introspect", "--tests", build_dir],
-        root,
-    )?;
+    let listed = command_stdout("meson", &["introspect", "--tests", build_dir], root)?;
     if !listed.contains("XcKernelGoldens") {
         return Err(
             "meson tests are missing XcKernelGoldens; -Dwith_xckernel did not register the golden suite"
@@ -1195,8 +1197,7 @@ pub fn bridge_client_cmake_configure_args(build_dir: &str) -> Vec<String> {
 
 /// Pure: default potserv path under meson server build dir.
 pub fn bridge_potserv_path(server_build_dir: &str) -> PathBuf {
-    PathBuf::from(server_build_dir)
-        .join("CppCore/potserv")
+    PathBuf::from(server_build_dir).join("CppCore/potserv")
 }
 
 /// `potctl ci bridge-server-build` — meson RPC server (no tests).
@@ -1268,30 +1269,137 @@ pub fn run_bridge_stress_full(
     run_bridge_stress(root, server_build_dir, client_build_dir, port, potential, 2)
 }
 
-/// `potctl ci rpc-integ` — run tests/rpc_integ.py against potserv in bbdir.
-pub fn run_rpc_integ(root: &Path, server_bin: &str) -> Result<()> {
-    let script = root.join("tests/rpc_integ.py");
-    if !script.is_file() {
-        return Err(format!("missing {}", script.display()));
+struct RpcIntegPlan {
+    env: Vec<(String, String)>,
+    rpc_args: Vec<String>,
+    e2e_args: Vec<String>,
+}
+
+fn resolve_under_root(root: &Path, path: &str) -> PathBuf {
+    let candidate = PathBuf::from(path);
+    if candidate.is_absolute() {
+        candidate
+    } else {
+        root.join(candidate)
     }
-    let st = Command::new("python")
-        .arg(&script)
-        .args(["--server-bin", server_bin])
-        .current_dir(root)
+}
+
+/// File name Meson gives a `shared_library` on this host.
+fn engine_library_name(stem: &str) -> String {
+    match std::env::consts::OS {
+        "windows" => format!("{stem}.dll"),
+        "macos" => format!("lib{stem}.dylib"),
+        _ => format!("lib{stem}.so"),
+    }
+}
+
+fn python_program() -> Result<String> {
+    for name in ["python", "python3"] {
+        match Command::new(name)
+            .arg("--version")
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .status()
+        {
+            Ok(status) if status.success() => return Ok(name.to_string()),
+            _ => {}
+        }
+    }
+    Err("python was not found on PATH".into())
+}
+
+/// Paths and arguments for `potctl ci rpc-integ`.
+///
+/// `RGPOT_POTSERV` and the fake NWChem and CPMD engines are exported, and
+/// `RGPOT_RPC_E2E_REQUIRED` is set so a missing binary fails instead of skipping.
+fn plan_rpc_integ(root: &Path, server_bin: &str) -> Result<RpcIntegPlan> {
+    let potserv = resolve_under_root(root, server_bin);
+    let directory = potserv
+        .parent()
+        .ok_or_else(|| format!("potserv path {} has no directory", potserv.display()))?;
+    let nwchem = directory.join(engine_library_name("nwchemc_fake_engine"));
+    let cpmd = directory.join(engine_library_name("cpmdc_fake_engine"));
+    let potserv_s = potserv.to_string_lossy().into_owned();
+    let nwchem_s = nwchem.to_string_lossy().into_owned();
+    let cpmd_s = cpmd.to_string_lossy().into_owned();
+    let mut env = Vec::new();
+    env.push(("RGPOT_POTSERV".to_string(), potserv_s.clone()));
+    for key in [
+        "NWCHEMC_LIBRARY",
+        "RGPOT_NWCHEMC_ENGINE",
+        "RGPOT_NWCHEM_ENGINE",
+    ] {
+        env.push((key.to_string(), nwchem_s.clone()));
+    }
+    for key in ["CPMDC_LIBRARY", "RGPOT_CPMDC_ENGINE", "RGPOT_CPMD_ENGINE"] {
+        env.push((key.to_string(), cpmd_s.clone()));
+    }
+    env.push(("RGPOT_RPC_E2E_REQUIRED".to_string(), "1".to_string()));
+    let rpc_args = vec![
+        root.join("tests/rpc_integ.py")
+            .to_string_lossy()
+            .into_owned(),
+        "--server-bin".to_string(),
+        potserv_s,
+    ];
+    let e2e_args = vec![
+        "-m".to_string(),
+        "pytest".to_string(),
+        "-q".to_string(),
+        "--tb=short".to_string(),
+        "-rs".to_string(),
+        root.join("tests/test_rpc_e2e_c_abi.py")
+            .to_string_lossy()
+            .into_owned(),
+    ];
+    Ok(RpcIntegPlan {
+        env,
+        rpc_args,
+        e2e_args,
+    })
+}
+
+fn run_python(root: &Path, args: &[String], env_pairs: &[(String, String)]) -> Result<()> {
+    let program = python_program()?;
+    let mut cmd = Command::new(&program);
+    cmd.args(args).current_dir(root);
+    for (key, value) in env_pairs {
+        cmd.env(key, value);
+    }
+    let status = cmd
         .status()
-        .or_else(|_| {
-            Command::new("python3")
-                .arg(&script)
-                .args(["--server-bin", server_bin])
-                .current_dir(root)
-                .status()
-        })
-        .map_err(|e| format!("rpc_integ: {e}"))?;
-    if st.success() {
+        .map_err(|err| format!("spawn {program}: {err}"))?;
+    if status.success() {
         Ok(())
     } else {
-        Err(format!("rpc_integ failed with {st}"))
+        Err(format!("{program} {} failed with {status}", args.join(" ")))
     }
+}
+
+/// `potctl ci rpc-integ` — `rpc_integ.py`, then the end to end tests.
+///
+/// Exports `RGPOT_POTSERV` and the fake engine libraries before either run.
+pub fn run_rpc_integ(root: &Path, server_bin: &str) -> Result<()> {
+    let plan = plan_rpc_integ(root, server_bin)?;
+    let rpc_script = root.join("tests/rpc_integ.py");
+    if !rpc_script.is_file() {
+        return Err(format!("missing {}", rpc_script.display()));
+    }
+    for (key, value) in &plan.env {
+        if key == "RGPOT_RPC_E2E_REQUIRED" {
+            continue;
+        }
+        if !Path::new(value).is_file() {
+            return Err(format!(
+                "{key}={value} is not a file. Build potserv and the fake engines with -Dwith_rpc=true -Dwith_tests=true"
+            ));
+        }
+    }
+    for (key, value) in &plan.env {
+        eprintln!("export {key}={value}");
+    }
+    run_python(root, &plan.rpc_args, &plan.env)?;
+    run_python(root, &plan.e2e_args, &plan.env)
 }
 
 fn enforce_pr_commit_subjects(root: &Path, base: &str) -> Result<()> {
@@ -1439,10 +1547,7 @@ pub fn plan_darwin_env(
         ));
         exports.push((
             "PKG_CONFIG_PATH".into(),
-            prepend_path_var(
-                env::var_os("PKG_CONFIG_PATH"),
-                &pc.to_string_lossy(),
-            ),
+            prepend_path_var(env::var_os("PKG_CONFIG_PATH"), &pc.to_string_lossy()),
         ));
         exports.push((
             "LIBRARY_PATH".into(),
@@ -1562,11 +1667,13 @@ pub fn print_darwin_env(
     let prefix = conda_prefix
         .map(str::to_string)
         .or_else(|| env::var("CONDA_PREFIX").ok())
-        .or_else(|| env::var("PIXI_PROJECT_ROOT").ok().and_then(|_| env::var("CONDA_PREFIX").ok()));
+        .or_else(|| {
+            env::var("PIXI_PROJECT_ROOT")
+                .ok()
+                .and_then(|_| env::var("CONDA_PREFIX").ok())
+        });
 
-    let sdk = sdkroot
-        .map(str::to_string)
-        .or_else(resolve_sdkroot_hint);
+    let sdk = sdkroot.map(str::to_string).or_else(resolve_sdkroot_hint);
 
     let plan = if force {
         plan_darwin_env("macOS", prefix.as_deref(), sdk.as_deref())
@@ -1593,6 +1700,27 @@ mod tests {
     use super::*;
     use std::path::Path;
 
+    fn specs_match_vendored_minor(
+        vendored: &str,
+        vesin_spec: &str,
+        vesin_torch_spec: &str,
+    ) -> bool {
+        let mut parts = vendored.split('.');
+        let (Some(maj), Some(min)) = (parts.next(), parts.next()) else {
+            return false;
+        };
+        let min_num = match min.parse::<u64>() {
+            Ok(v) => v,
+            Err(_) => return false,
+        };
+        let lower = format!(">={maj}.{min}");
+        let upper = format!("<{maj}.{}", min_num + 1);
+        vesin_spec.contains(&lower)
+            && vesin_spec.contains(&upper)
+            && vesin_torch_spec.contains(&lower)
+            && vesin_torch_spec.contains(&upper)
+    }
+
     #[test]
     fn required_paths_are_under_root() {
         let root = Path::new("/tmp/rgpot-fake");
@@ -1609,13 +1737,25 @@ mod tests {
     #[test]
     fn darwin_plan_sets_clang_and_unsets_conda_cross() {
         let p = plan_darwin_env("macOS", Some("/opt/conda"), Some("/SDKs/MacOSX.sdk")).unwrap();
-        assert!(p.exports.iter().any(|(k, v)| k == "CC" && v == "/usr/bin/clang"));
-        assert!(p.exports.iter().any(|(k, v)| k == "SDKROOT" && v.contains("MacOSX")));
+        assert!(p
+            .exports
+            .iter()
+            .any(|(k, v)| k == "CC" && v == "/usr/bin/clang"));
+        assert!(p
+            .exports
+            .iter()
+            .any(|(k, v)| k == "SDKROOT" && v.contains("MacOSX")));
         assert!(p.unsets.contains(&"LDFLAGS".to_string()));
         assert!(p.unsets.contains(&"CONDA_BUILD_SYSROOT".to_string()));
         assert_eq!(p.meson_extra, "-Ddefault_library=static");
-        assert!(p.exports.iter().any(|(k, v)| k == "LIBRARY_PATH" && v.starts_with("/opt/conda/lib")));
-        assert!(p.exports.iter().any(|(k, v)| k == "CPATH" && v.starts_with("/opt/conda/include")));
+        assert!(p
+            .exports
+            .iter()
+            .any(|(k, v)| k == "LIBRARY_PATH" && v.starts_with("/opt/conda/lib")));
+        assert!(p
+            .exports
+            .iter()
+            .any(|(k, v)| k == "CPATH" && v.starts_with("/opt/conda/include")));
     }
 
     #[test]
@@ -1623,7 +1763,10 @@ mod tests {
         env::set_var("POTCTL_TEST_GFORTRAN", "1");
         let p = plan_darwin_env("macOS", Some("/opt/conda"), None).unwrap();
         env::remove_var("POTCTL_TEST_GFORTRAN");
-        assert!(p.exports.iter().any(|(k, v)| k == "FC" && v.ends_with("gfortran")));
+        assert!(p
+            .exports
+            .iter()
+            .any(|(k, v)| k == "FC" && v.ends_with("gfortran")));
     }
 
     #[test]
@@ -1667,6 +1810,7 @@ mod tests {
         assert!(a.iter().any(|x| x == "-Dwith_rpc=true"));
         assert!(a.iter().any(|x| x == "-Dwith_cache=false"));
         assert!(a.iter().any(|x| x == "-Dwith_tests=True"));
+        assert!(a.iter().any(|x| x == "-Dwith_long_range=True"));
         assert!(a.iter().any(|x| x == "-Dwith_mpi=enabled"));
         assert!(a.iter().any(|x| x == "-Ddefault_library=static"));
         let off = meson_configure_args(true, false, false, "");
@@ -1709,11 +1853,20 @@ mod tests {
 
     #[test]
     fn cmake_macos_extra_has_clang_and_prefix() {
-        let a = cmake_macos_extra_args(true, Some("/SDKs/X.sdk"), Some("/opt/conda"), Some("/opt/conda/bin/gfortran"));
+        let a = cmake_macos_extra_args(
+            true,
+            Some("/SDKs/X.sdk"),
+            Some("/opt/conda"),
+            Some("/opt/conda/bin/gfortran"),
+        );
         assert!(a.iter().any(|x| x == "-DCMAKE_C_COMPILER=/usr/bin/clang"));
-        assert!(a.iter().any(|x| x.contains("CMAKE_OSX_SYSROOT=/SDKs/X.sdk")));
+        assert!(a
+            .iter()
+            .any(|x| x.contains("CMAKE_OSX_SYSROOT=/SDKs/X.sdk")));
         assert!(a.iter().any(|x| x.contains("CMAKE_PREFIX_PATH=/opt/conda")));
-        assert!(a.iter().any(|x| x.contains("CMAKE_Fortran_COMPILER=/opt/conda/bin/gfortran")));
+        assert!(a
+            .iter()
+            .any(|x| x.contains("CMAKE_Fortran_COMPILER=/opt/conda/bin/gfortran")));
     }
 
     #[test]
@@ -1722,8 +1875,12 @@ mod tests {
         assert!(is_conventional_commit_subject("fix: waitid stub"));
         assert!(is_conventional_commit_subject("chore: bump"));
         assert!(is_conventional_commit_subject("bench: time one force call"));
-        assert!(is_conventional_commit_subject("pot(sw): add the pair kernel"));
-        assert!(is_conventional_commit_subject("python(sw): bind the energy"));
+        assert!(is_conventional_commit_subject(
+            "pot(sw): add the pair kernel"
+        ));
+        assert!(is_conventional_commit_subject(
+            "python(sw): bind the energy"
+        ));
         assert!(is_conventional_commit_subject(
             "nlist: bin atoms on a cutoff-sized cell grid"
         ));
@@ -1739,6 +1896,19 @@ mod tests {
         ));
         assert!(!is_conventional_commit_subject("wip stuff"));
         assert!(!is_conventional_commit_subject(""));
+    }
+
+    #[test]
+    fn conventional_commit_types_match_cog() {
+        assert!(is_conventional_commit_subject(
+            "dev: note Meson 1.10 floor in newsfragments"
+        ));
+        assert!(is_conventional_commit_subject("dev(ci): trim the queue"));
+        assert!(is_conventional_commit_subject("BLD: apply meson format"));
+        assert!(is_conventional_commit_subject("Feat(ci): thin steps"));
+        assert!(!is_conventional_commit_subject("wibble: not a type"));
+        assert!(!is_conventional_commit_subject("WIBBLE(ci): not a type"));
+        assert!(!is_conventional_commit_subject("development: not a type"));
     }
 
     #[test]
@@ -1767,11 +1937,7 @@ Options:
         assert!(cog_help_has_flag(legacy, "--from"));
         assert_eq!(
             cog_check_argv(legacy, "abc"),
-            vec![
-                "check".to_string(),
-                "--from".to_string(),
-                "abc".to_string(),
-            ]
+            vec!["check".to_string(), "--from".to_string(), "abc".to_string(),]
         );
         assert!(cog_failure_is_only_merge_types(
             "Error: \nFound 4 non compliant commits in abc..HEAD:\n\tError:Commit type `merge` not allowed\n"
@@ -1789,16 +1955,31 @@ Options:
 
     #[test]
     fn torch_mm_and_layout_paths() {
-        assert_eq!(
-            torch_mm_from_version("2.10.1+cpu").as_deref(),
-            Some("2.10")
-        );
+        assert_eq!(torch_mm_from_version("2.10.1+cpu").as_deref(), Some("2.10"));
         assert_eq!(torch_mm_from_version("2.9.0").as_deref(), Some("2.9"));
         let paths = metatomic_layout_paths(Path::new("/p"), "2.10");
         assert!(paths.iter().any(|p| p.ends_with("vesin/include/vesin.h")));
         assert!(paths
             .iter()
             .any(|p| p.ends_with("metatomic/torch/torch-2.10/include")));
+    }
+
+    #[test]
+    fn vesin_specs_match_vendored_minor() {
+        assert!(specs_match_vendored_minor(
+            "0.6.0",
+            "vesin>=0.6.0,<0.7",
+            "vesin-torch>=0.6.0,<0.7"
+        ));
+    }
+
+    #[test]
+    fn vesin_spec_mismatch_is_detected() {
+        assert!(!specs_match_vendored_minor(
+            "0.6.0",
+            "vesin>=0.5.2,<0.6",
+            "vesin-torch>=0.5.2,<0.6"
+        ));
     }
 
     #[test]
@@ -1816,6 +1997,71 @@ Options:
             select_towncrier_invoke(true, true),
             Some(TowncrierInvoke::Bin)
         );
+    }
+
+    /// Serializes tests that replace PATH and HOME, and restores both.
+    struct FakeToolPath {
+        _lock: std::sync::MutexGuard<'static, ()>,
+        path: Option<std::ffi::OsString>,
+        home: Option<std::ffi::OsString>,
+        dir: PathBuf,
+    }
+
+    impl FakeToolPath {
+        fn with_tools(tag: &str, tools: &[&str]) -> Self {
+            static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+            let lock = LOCK.lock().unwrap_or_else(|e| e.into_inner());
+            let dir =
+                env::temp_dir().join(format!("potctl-towncrier-{tag}-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&dir);
+            std::fs::create_dir_all(dir.join("bin")).unwrap();
+            for tool in tools {
+                std::fs::write(dir.join("bin").join(tool), "").unwrap();
+            }
+            let guard = FakeToolPath {
+                _lock: lock,
+                path: env::var_os("PATH"),
+                home: env::var_os("HOME"),
+                dir,
+            };
+            env::set_var("PATH", guard.dir.join("bin"));
+            env::set_var("HOME", guard.dir.join("home"));
+            guard
+        }
+    }
+
+    impl Drop for FakeToolPath {
+        fn drop(&mut self) {
+            for (key, val) in [("PATH", &self.path), ("HOME", &self.home)] {
+                match val {
+                    Some(v) => env::set_var(key, v),
+                    None => env::remove_var(key),
+                }
+            }
+            let _ = std::fs::remove_dir_all(&self.dir);
+        }
+    }
+
+    #[test]
+    fn ensure_towncrier_uses_the_binary_on_path() {
+        let _env = FakeToolPath::with_tools("bin", &["towncrier", "uvx"]);
+        assert_eq!(ensure_towncrier_available().unwrap(), TowncrierInvoke::Bin);
+    }
+
+    #[test]
+    fn ensure_towncrier_treats_uvx_as_a_module_runner() {
+        let _env = FakeToolPath::with_tools("uvx", &["uvx"]);
+        assert_eq!(
+            ensure_towncrier_available().unwrap(),
+            TowncrierInvoke::PythonModule
+        );
+    }
+
+    #[test]
+    fn ensure_towncrier_errors_when_nothing_can_run_it() {
+        let _env = FakeToolPath::with_tools("none", &[]);
+        let err = ensure_towncrier_available().unwrap_err();
+        assert!(err.contains("towncrier not available"), "{err}");
     }
 
     #[test]
@@ -1870,15 +2116,45 @@ Options:
 
     #[test]
     fn run_build_test_rejects_bad_sys() {
-        let err = run_build_test(
-            Path::new("/tmp/nope"),
-            "make",
-            "true",
-            "false",
-            None,
-            true,
-        )
-        .unwrap_err();
+        let err = run_build_test(Path::new("/tmp/nope"), "make", "true", "false", None, true)
+            .unwrap_err();
         assert!(err.contains("unknown build sys") || err.contains("make"));
+    }
+
+    #[test]
+    fn rpc_integ_plan_exports_potserv_and_runs_the_e2e_tests() {
+        let plan = plan_rpc_integ(Path::new("/repo"), "bbdir/CppCore/potserv").unwrap();
+        let value = |key: &str| -> String {
+            for (name, path) in &plan.env {
+                if name == key {
+                    return path.clone();
+                }
+            }
+            String::new()
+        };
+        assert!(value("RGPOT_POTSERV").ends_with("bbdir/CppCore/potserv"));
+        let library = |stem: &str| {
+            format!(
+                "{}{stem}{}",
+                std::env::consts::DLL_PREFIX,
+                std::env::consts::DLL_SUFFIX
+            )
+        };
+        let nwchem = library("nwchemc_fake_engine");
+        let cpmd = library("cpmdc_fake_engine");
+        assert!(value("NWCHEMC_LIBRARY").ends_with(&nwchem));
+        assert!(value("RGPOT_NWCHEM_ENGINE").ends_with(&nwchem));
+        assert!(value("CPMDC_LIBRARY").ends_with(&cpmd));
+        assert!(value("RGPOT_CPMD_ENGINE").ends_with(&cpmd));
+        assert_eq!(value("RGPOT_RPC_E2E_REQUIRED"), "1");
+        let joined = plan
+            .e2e_args
+            .iter()
+            .chain(plan.rpc_args.iter())
+            .cloned()
+            .collect::<Vec<_>>()
+            .join(" ");
+        assert!(joined.contains("tests/rpc_integ.py"), "{joined}");
+        assert!(joined.contains("tests/test_rpc_e2e_c_abi.py"), "{joined}");
     }
 }

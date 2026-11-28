@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Check the documentation against the source tree.
 
-Three checks, each a subcommand:
+Six checks, each a subcommand:
 
 ``blocks``
     Every code block in ``readme_src.org``, ``CONTRIBUTING.md``,
@@ -17,12 +17,32 @@ Three checks, each a subcommand:
     with non-empty Inputs, Units, Outputs and Errors fields, and every
     signature written in an entry matches the source.  The entry of a
     ``*Config`` struct names each of its fields, and a reference page names
-    each field the rgpot-local schema diffs add.
+    each schema member rgpot added (the ledger's local entries).
 
 ``facts``
     Statements that can be read off the source: meson and CMake options and
     their defaults, ``pixi`` tasks and environments, repository paths, and
     ``RGPOT_*`` identifiers, and the ``&RGPOT`` keys of the GROMACS drop-in.
+
+``coverage``
+    Every org page under ``docs/orgmode`` is reachable from
+    ``docs/orgmode/index.org``, every design note named there exists, and
+    the pinned citations and reference values are still on their pages.
+
+``inventory``
+    Every public item has documentation: each potential has a section under
+    ``docs/orgmode/howto/potentials-*.org``, each public C, C++ and Python
+    name a reference entry, each Cap'n Proto field a row, each Rust item a
+    doc comment, each program and ``potctl`` command a heading.  See
+    ``docs/inventory.py``, which also prints the coverage table.
+
+``generated``
+    The generated files are current: the Cap'n Proto reference page
+    (``docs/gen_capnp_reference.py``), ``llms.txt`` and ``llms-full.txt``
+    (``scripts/gen_llms.py``), and the DOI manifest ``docs/dois.json``
+    (``scripts/verify_dois.py``). ``llms-full.txt`` also fails when a
+    backtick sits inside inline math, a line has an unbalanced backtick,
+    or an inline code span from the sources was changed.
 
 The module uses the standard library only, so meson can run it without
 pytest.  ``tests/docs`` wraps the same functions for pytest.
@@ -404,17 +424,36 @@ C_HEADERS = (
     "rgpot-core/include/rgpot.h",
     "CppCore/rgpot/nlist/rgpot_nlist.h",
     "CppCore/rgpot/nlist/fastnlist.h",
+    "CppCore/rgpot/Gupta/gupta.h",
+    "CppCore/rgpot/Morse/cambridge_morse.h",
+    "CppCore/rgpot/ReducedPair/ReducedPair.hpp",
+    "CppCore/rgpot/SuttonChen/SuttonChenPot.hpp",
+    "CppCore/rgpot/SuttonChen/SuttonChenScales.hpp",
     "include/rgpot/plugin.h",
+    "include/rgpot/potlibc_engine.h",
+    "include/rgpot/coupled_well_engine.h",
     "CppCore/rgpot/engine_c_abi.h",
     "CppCore/rgpot/ExternalPot/external_potentials.h",
     "CppCore/rgpot/calculator_mpi_abi.h",
+    "CppCore/rgpot/Models/ModelCapi.h",
     "CppCore/rgpot/MetatomicPot/metatomic_c_abi.h",
     "CppCore/rgpot/XTBPot/xtb_c_abi.h",
     "engines/gromacs/libcp2k.h",
+    "CppCore/rgpot/NWChemPot/nwchem_c_abi.h",
+    "CppCore/rgpot/CPMDPot/cpmd_c_abi.h",
+    "CppCore/rgpot/MOPACPot/mopac_c_abi.h",
+    "CppCore/rgpot/CP2KPot/cp2kc_abi.h",
 )
 # Function prefix of a header when it is not rgpot_: librgpot_gromacs serves
-# the CP2K library's API under CP2K's names.
-C_PREFIXES = {"engines/gromacs/libcp2k.h": "cp2k_"}
+# the CP2K library's API under CP2K's names, and each quantum engine library
+# exports its own prefix.
+C_PREFIXES = {
+    "engines/gromacs/libcp2k.h": "cp2k_",
+    "CppCore/rgpot/NWChemPot/nwchem_c_abi.h": "nwchemc_",
+    "CppCore/rgpot/CPMDPot/cpmd_c_abi.h": "cpmdc_",
+    "CppCore/rgpot/MOPACPot/mopac_c_abi.h": "mopacc_",
+    "CppCore/rgpot/CP2KPot/cp2kc_abi.h": "cp2kc_",
+}
 # DLPack and eindir declare these; rgpot only forwards them.
 C_FOREIGN = {"DLManagedTensorVersioned", "DLDevice", "eindir_abi_stamp_t", "eindir_objective_t"}
 
@@ -453,7 +492,7 @@ def _c_statements(text: str) -> list[str]:
 
 def normalize_c(decl: str) -> str:
     decl = strip_c_comments(decl)
-    decl = re.sub(r"\bRGPOT_\w+_API\b", " ", decl)
+    decl = re.sub(r"\bRGPOT_(?:\w+_)?API\b", " ", decl)
     decl = re.sub(r"\b(struct|enum)\s+(?=\w+\s*[\*\w])", "", decl)
     decl = " ".join(decl.replace(";", " ").split())
     decl = re.sub(r"\s*([\*\(\),\[\]&])\s*", r"\1", decl)
@@ -512,6 +551,7 @@ CPP_SKIP_DIRS = ("CppCore/rgpot/rpc/",)
 # document them once.
 CPP_BASE_MEMBERS = {
     "forceImpl", "forceBatchImpl", "forceBatch", "caps", "hessianVectorImpl", "setCache",
+    "hessianImpl", "hessianAdImpl", "hessianVectorAdImpl",
 }
 
 
@@ -669,6 +709,8 @@ def cpp_public_names(root: Path = ROOT) -> dict[str, CppName]:
     out.update(cpp_potential_classes(root))
     out.update(cpp_support_names(root))
     out.update(cpp_member_classes(root))
+    for key, value in cpp_installed_types(root).items():
+        out.setdefault(key, value)
     return out
 
 
@@ -682,7 +724,9 @@ CPP_TYPE_HEADERS = (
 )
 CPP_FUNCTION_HEADERS = (
     "CppCore/rgpot/ExternalPot/ExternalPot.hpp",
+    "CppCore/rgpot/PotentialFactory.hpp",
     "CppCore/rgpot/CalculatorGroup.hpp",
+    "CppCore/rgpot/UmaPot/UmaConfig.hpp",
 )
 # Classes outside the potential hierarchy whose public members are part of
 # the surface: the frontends that open the Metatomic and XTB engine tables,
@@ -706,6 +750,83 @@ def _blank_bodies(text: str) -> str:
         for i in range(start, end + 1):
             out[i] = " "
     return "".join(out)
+
+
+# Headers whose types are not public: vendored sources, SIMD kernels,
+# metaprogramming traits and the UMA package unpacking helpers, which the
+# installed tree carries only because the libraries are header-only.
+# Programs the build produces; their reference entries describe a command line.
+PROGRAMS = ("potserv", "potserv_mpi", "rgpot-eval", "rgpot-lj", "rgpot-ipi-driver")
+
+CPP_INTERNAL_HEADERS = (
+    "CppCore/rgpot/EMT/Asap/",
+    "CppCore/rgpot/LongRange/pocketfft.hpp",
+    "CppCore/rgpot/MetatomicPot/vesin_compat.hpp",
+    "CppCore/rgpot/nlist/HalfShellDetail.hpp",
+    "CppCore/rgpot/UmaPot/aoti_unpack.hpp",
+    "CppCore/rgpot/UmaPot/aoti_execstack.hpp",
+)
+
+
+def _type_spans(text: str) -> list[tuple[int, int]]:
+    """Body spans of every class, struct, union and function in a header."""
+    spans = []
+    for m in re.finditer(
+        r"\b(class|struct|union)\s+(?:[A-Z][A-Z0-9_]+\s+)*\w+\s*(?:final\s*)?(?::[^{;]*)?\{", text
+    ):
+        spans.append((m.end() - 1, _match_brace(text, m.end() - 1)))
+    return spans
+
+
+def cpp_installed_types(root: Path = ROOT) -> dict[str, CppName]:
+    """Namespace-scope classes, structs and enums of the installed headers.
+
+    ``meson.build`` installs every header under ``CppCore/rgpot``; each type
+    declared at namespace scope there is part of the C++ surface.  Nested
+    types are described with the type that holds them.
+    """
+    out: dict[str, CppName] = {}
+    for path in sorted((root / "CppCore/rgpot").rglob("*.hpp")):
+        header = path.relative_to(root).as_posix()
+        if header.startswith(CPP_SKIP_DIRS + CPP_INTERNAL_HEADERS) or "/simd/" in header:
+            continue
+        if "/detail/" in header:
+            continue
+        text = strip_c_comments(_expand_class_macros(path.read_text(encoding="utf-8", errors="replace")))
+        spans = _namespaces_at(text)
+        bodies = _type_spans(text)
+        anonymous = [
+            (a.start(), _match_brace(text, a.end() - 1))
+            for a in re.finditer(r"\bnamespace\s*\{", text)
+        ]
+        for m in re.finditer(
+            r"\b(class|struct|enum\s+class|enum\s+struct|enum)\s+(\w+)\s*(?:final\s*)?(?::[^{;]*)?\{", text
+        ):
+            if any(s < m.start() < e for s, e in bodies):
+                continue
+            if any(s < m.start() < e for s, e in anonymous):
+                continue
+            qual = _qualifier(spans, m.start())
+            parts = set(qual.split("::"))
+            if not qual.startswith("rgpot") or parts & CPP_PRIVATE_NS or "anonymous" in parts:
+                continue
+            if re.search(r"template\s*<[^>]*>\s*$", text[max(0, m.start() - 200) : m.start()]):
+                continue
+            full = f"{qual}::{m.group(2)}"
+            ctors: list[str] = []
+            if m.group(1).startswith(("class", "struct")):
+                end = _match_brace(text, m.end() - 1)
+                for name, head, access in _class_members(
+                    m.group(2), text[m.end() : end], m.group(1).startswith("struct")
+                ):
+                    if (
+                        access == "public"
+                        and name == m.group(2)
+                        and not re.search(rf"\(\s*(const\s+)?{m.group(2)}\s*&", head)
+                    ):
+                        ctors.append(head)
+            out.setdefault(full, CppName(full, "class", ctors, header))
+    return out
 
 
 def cpp_support_names(root: Path = ROOT) -> dict[str, CppName]:
@@ -908,6 +1029,8 @@ class PyName:
     name: str  # rgpot.X or rgpot.X.member
     kind: str  # class | function | variable | method | property
     params: list[PyParam] | None
+    # Every @overload, or the single plain definition. params stays the first.
+    overloads: list[list[PyParam]] | None = None
 
 
 _NO_DEFAULT = object()
@@ -937,10 +1060,20 @@ def _param(name, default, kind) -> PyParam:
     return PyParam(name, value, True, kind)
 
 
+def _is_overload(node: ast.FunctionDef) -> bool:
+    for deco in node.decorator_list:
+        target = deco.func if isinstance(deco, ast.Call) else deco
+        if isinstance(target, ast.Name) and target.id == "overload":
+            return True
+        if isinstance(target, ast.Attribute) and target.attr == "overload":
+            return True
+    return False
+
+
 def _stub_classes(root: Path):
     tree = ast.parse((root / PY_STUB).read_text(encoding="utf-8"))
     classes = {}
-    functions = {}
+    raw_functions: dict[str, list[tuple[bool, list[PyParam]]]] = {}
     variables = set()
     for node in tree.body:
         if isinstance(node, ast.ClassDef):
@@ -952,11 +1085,19 @@ def _stub_classes(root: Path):
                     members[item.name] = (kind, _params(item, "staticmethod" not in decos))
             classes[node.name] = members
         elif isinstance(node, ast.FunctionDef):
-            functions[node.name] = _params(node, False)
+            raw_functions.setdefault(node.name, []).append(
+                (_is_overload(node), _params(node, False))
+            )
         elif isinstance(node, (ast.AnnAssign, ast.Assign)):
             target = node.target if isinstance(node, ast.AnnAssign) else node.targets[0]
             if isinstance(target, ast.Name):
                 variables.add(target.id)
+    functions: dict[str, list[list[PyParam]]] = {}
+    for name, items in raw_functions.items():
+        overloads = [params for is_overload, params in items if is_overload]
+        plain = [params for is_overload, params in items if not is_overload]
+        # A stub that annotates @overload has no runtime body to compare.
+        functions[name] = overloads if overloads else plain
     return classes, functions, variables
 
 
@@ -1011,7 +1152,71 @@ def py_public_names(root: Path = ROOT) -> dict[str, PyName]:
                     f"{full}.{member}", kind, params if kind == "method" else None
                 )
         elif core in functions:
-            out[full] = PyName(full, "function", functions[core])
+            overloads = functions[core]
+            out[full] = PyName(full, "function", overloads[0] if overloads else None, overloads)
+        else:
+            out[full] = PyName(full, "variable", None)
+    out.update(py_ase_names(root))
+    return out
+
+
+PY_ASE_DIR = "python/rgpot/ase"
+
+
+def py_ase_names(root: Path = ROOT) -> dict[str, PyName]:
+    """The names ``rgpot.ase.__all__`` exports, from the module sources."""
+    package = root / PY_ASE_DIR
+    init = package / "__init__.py"
+    if not init.is_file():
+        return {}
+    exported: list[str] = []
+    for node in ast.parse(init.read_text(encoding="utf-8")).body:
+        if isinstance(node, ast.Assign) and any(
+            isinstance(t, ast.Name) and t.id == "__all__" for t in node.targets
+        ):
+            exported = list(ast.literal_eval(node.value))
+    defs: dict[str, ast.AST] = {}
+    for module in sorted(package.glob("*.py")):
+        if module.name == "__init__.py":
+            continue
+        for node in ast.parse(module.read_text(encoding="utf-8")).body:
+            if isinstance(node, (ast.ClassDef, ast.FunctionDef)):
+                defs.setdefault(node.name, node)
+    out: dict[str, PyName] = {}
+    for name in exported:
+        node = defs.get(name)
+        full = f"rgpot.ase.{name}"
+        if isinstance(node, ast.FunctionDef):
+            out[full] = PyName(full, "function", _params(node, False))
+        elif isinstance(node, ast.ClassDef):
+            init_fn = next(
+                (i for i in node.body if isinstance(i, ast.FunctionDef) and i.name == "__init__"),
+                None,
+            )
+            if init_fn is None:
+                base = next(
+                    (defs.get(ast.unparse(b)) for b in node.bases if ast.unparse(b) in defs),
+                    None,
+                )
+                init_fn = next(
+                    (
+                        i
+                        for i in getattr(base, "body", [])
+                        if isinstance(i, ast.FunctionDef) and i.name == "__init__"
+                    ),
+                    None,
+                )
+            out[full] = PyName(full, "class", _params(init_fn, True) if init_fn else None)
+            for item in node.body:
+                if not isinstance(item, ast.FunctionDef) or item.name.startswith("_"):
+                    continue
+                decos = {ast.unparse(d) for d in item.decorator_list}
+                kind = "property" if "property" in decos else "method"
+                out[f"{full}.{item.name}"] = PyName(
+                    f"{full}.{item.name}",
+                    kind,
+                    _params(item, "staticmethod" not in decos) if kind == "method" else None,
+                )
         else:
             out[full] = PyName(full, "variable", None)
     return out
@@ -1192,6 +1397,9 @@ def reference_errors(root: Path = ROOT, pages: list[Path] | None = None) -> list
         if entry.name.startswith("."):
             continue
         name = entry.name
+        if name in PROGRAMS:
+            covered.add(name)
+            continue
         if name not in c_names and name not in cpp_names and name not in py_names:
             errors.append(f"{entry.where()}: {name} is not a public name in the source")
             continue
@@ -1222,49 +1430,34 @@ def config_field_errors(root: Path, entries: list[Entry]) -> list[str]:
     return errors
 
 
-LOCAL_SCHEMA_SERIES = "CppCore/rgpot/rpc/local/series"
-_CAPNP_SCOPE = re.compile(r"^[ +]\s*(?:struct|interface)\s+(\w+)")
-_CAPNP_MEMBER = re.compile(r"^\+\s*(\w+)\s+@\d+\s*[:(]")
+SCHEMA_LEDGER = "CppCore/rgpot/rpc/Potentials.ordinals"
+_LEDGER_MEMBER = re.compile(r"^(\w+) @\d+ (?:field|arm|method) (\w+) \S+ local$")
 
 
-def local_schema_fields(root: Path = ROOT) -> list[tuple[str, str]]:
-    """(Struct.member, diff) for each field or method an rgpot-local diff adds."""
-    series = root / LOCAL_SCHEMA_SERIES
-    if not series.is_file():
+def local_schema_fields(root: Path = ROOT) -> list[str]:
+    """Struct.member for each field, arm or method rgpot added to the schema.
+
+    The ordinal ledger records them with origin local; rgconf's
+    potential.capnp has since adopted them at the same ordinals.
+    """
+    ledger = root / SCHEMA_LEDGER
+    if not ledger.is_file():
         return []
-    out = []
-    for name in series.read_text(encoding="utf-8").splitlines():
-        name = name.strip()
-        if not name or name.startswith("#"):
-            continue
-        scope = None
-        for line in (series.parent / name).read_text(encoding="utf-8").splitlines():
-            if line.startswith(("+++", "---")):
-                continue
-            hunk = re.match(r"^@@[^@]*@@\s*(?:struct|interface)\s+(\w+)", line)
-            if line.startswith("@@"):
-                scope = hunk.group(1) if hunk else None
-                continue
-            sm = _CAPNP_SCOPE.match(line)
-            if sm:
-                scope = sm.group(1)
-                continue
-            if re.match(r"^[ +]\}", line):
-                scope = None
-                continue
-            mm = _CAPNP_MEMBER.match(line)
-            if mm and scope:
-                out.append((f"{scope}.{mm.group(1)}", name))
+    out: list[str] = []
+    for line in ledger.read_text(encoding="utf-8").splitlines():
+        m = _LEDGER_MEMBER.match(line.strip())
+        if m and f"{m.group(1)}.{m.group(2)}" not in out:
+            out.append(f"{m.group(1)}.{m.group(2)}")
     return out
 
 
 def local_schema_errors(root: Path = ROOT, pages: list[Path] | None = None) -> list[str]:
-    """A reference page names each field the rgpot-local schema diffs add."""
+    """A reference page names each schema member rgpot added."""
     pages = pages if pages is not None else sorted((root / REFERENCE_DIR).rglob("*.org"))
     text = "\n".join(p.read_text(encoding="utf-8") for p in pages)
     return [
-        f"{LOCAL_SCHEMA_SERIES}: {diff} adds {member}, which no reference page names"
-        for member, diff in local_schema_fields(root)
+        f"{SCHEMA_LEDGER}: rgpot added {member}, which no reference page names"
+        for member in local_schema_fields(root)
         if not re.search(rf"(?<![\w.]){re.escape(member)}(?!\w)", text)
     ]
 
@@ -1294,12 +1487,16 @@ def _check_signatures(entry, name, c_names, cpp_names, py_names) -> list[str]:
             errors.append(f"{entry.where()}: {name}: undocumented overload {sig!r}")
     elif name in py_names:
         pn = py_names[name]
-        if pn.params is None:
+        sources = pn.overloads if pn.overloads else (
+            [pn.params] if pn.params is not None else None
+        )
+        if sources is None:
             return errors
         if not sigs:
             errors.append(f"{entry.where()}: {name}: missing signature")
             return errors
         short = name.rsplit(".", 1)[-1]
+        used: set[int] = set()
         for sig in sigs:
             called, params = _py_signature(sig)
             if params is None:
@@ -1307,9 +1504,31 @@ def _check_signatures(entry, name, c_names, cpp_names, py_names) -> list[str]:
                 continue
             if called.rsplit(".", 1)[-1] != short:
                 errors.append(f"{entry.where()}: {name}: signature names {called}")
-            problem = _py_params_differ(params, pn.params)
-            if problem:
-                errors.append(f"{entry.where()}: {name}: {problem}")
+            match = next(
+                (
+                    i
+                    for i, src in enumerate(sources)
+                    if i not in used and _py_params_differ(params, src) is None
+                ),
+                None,
+            )
+            if match is None:
+                if len(sources) == 1:
+                    problem = _py_params_differ(params, sources[0])
+                    errors.append(f"{entry.where()}: {name}: {problem}")
+                else:
+                    have = "; ".join(_fmt_params(src) for src in sources)
+                    errors.append(
+                        f"{entry.where()}: {name}: documented {_fmt_params(params)} "
+                        f"matches none of the source overloads {have}"
+                    )
+            else:
+                used.add(match)
+        for i, src in enumerate(sources):
+            if i not in used:
+                errors.append(
+                    f"{entry.where()}: {name}: undocumented overload {_fmt_params(src)}"
+                )
     return errors
 
 
@@ -1484,6 +1703,70 @@ def facts_errors(root: Path = ROOT, pages: list[Path] | None = None) -> list[str
                 errors.extend(_pixi_errors(loc, m.group(1), m.group(2), envs, tasks))
     errors.extend(build_option_table_errors(root, options, cmake))
     errors.extend(gromacs_key_errors(root))
+    errors.extend(engine_table_export_errors(root))
+    return errors
+
+
+ENGINE_ABI_HEADER = "CppCore/rgpot/engine_c_abi.h"
+ENGINE_TABLE_SOURCES = (
+    "CppCore/rgpot/engine/EngineTable.cc",
+    "CppCore/rgpot/engine/EngineAbiStamp.cc",
+)
+ENGINE_ABI_PAGE = "docs/orgmode/reference/engine_abi.org"
+
+
+def engine_table_export_errors(root: Path = ROOT, page: Path | None = None) -> list[str]:
+    """The library export list matches the engine implementation and C ABI header."""
+    hdr = root / ENGINE_ABI_HEADER
+    sources = [root / source for source in ENGINE_TABLE_SOURCES]
+    if not hdr.is_file() or any(not source.is_file() for source in sources):
+        return []
+    page = page if page is not None else root / ENGINE_ABI_PAGE
+    where = rel(page, root)
+    if not page.is_file():
+        return [f"{where} is missing"]
+    hdr_text = hdr.read_text(encoding="utf-8")
+    marker = "Optional symbols:"
+    if marker not in hdr_text:
+        return [f"{ENGINE_ABI_HEADER}: {marker!r} marker was not found"]
+    optional = set()
+    for stmt in _c_statements(hdr_text.split(marker, 1)[1]):
+        if stmt.startswith("typedef"):
+            continue
+        m = re.search(r"\b(rgpot_engine_\w+)\s*\(", stmt)
+        if m:
+            optional.add(m.group(1))
+    table_code = "\n".join(
+        strip_c_comments(source.read_text(encoding="utf-8")) for source in sources
+    )
+    exported = {name for name in optional if re.search(rf"\b{name}\s*\(", table_code)}
+    omitted = optional - exported
+    doc_text = page.read_text(encoding="utf-8")
+    m = re.search(
+        r"Every library above(?:\s+except\s+=\w+=(?:\s+and\s+=\w+=)?)?\s+exports\s+(.*?)\s+None of them exports\s+(.*?)(?:\n\s*\n|\Z)",
+        doc_text,
+        re.S,
+    )
+    if not m:
+        return [f"{where}: the library export list was not found"]
+    doc_exported = set(re.findall(r"=(rgpot_engine_\w+)=", m.group(1)))
+    doc_omitted = set(re.findall(r"=(rgpot_engine_\w+)=", m.group(2)))
+    errors = [
+        f"{where}: engine source export {s} is not in the library export list"
+        for s in sorted(exported - doc_exported)
+    ]
+    errors += [
+        f"{where}: {s} is not an optional symbol exported by the engine sources"
+        for s in sorted(doc_exported - exported)
+    ]
+    errors += [
+        f"{where}: unexported optional symbol {s} is not listed"
+        for s in sorted(omitted - doc_omitted)
+    ]
+    errors += [
+        f"{where}: {s} is not an unexported optional symbol of {ENGINE_ABI_HEADER}"
+        for s in sorted(doc_omitted - omitted)
+    ]
     return errors
 
 
@@ -1843,6 +2126,7 @@ class BuildInfo:
     python_ok: bool
     features: dict[str, bool]
     targets: list[dict] = field(default_factory=list)
+    compilers: dict[str, str] = field(default_factory=dict)
 
 
 def _flags_from_compile_commands(build_dir: Path, suffix: str) -> list[str]:
@@ -1900,7 +2184,32 @@ def build_info(build_dir: Path | None, root: Path = ROOT) -> BuildInfo | None:
         targets = json.loads((build_dir / "meson-info" / "intro-targets.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         targets = []
-    return BuildInfo(build_dir, cpp, c, libs, python_ok, features, targets)
+    compilers = _build_compilers(build_dir)
+    return BuildInfo(build_dir, cpp, c, libs, python_ok, features, targets, compilers)
+
+
+def _build_compilers(build_dir: Path) -> dict[str, str]:
+    path = build_dir / "meson-info" / "intro-compilers.json"
+    try:
+        host = json.loads(path.read_text(encoding="utf-8")).get("host", {})
+    except (OSError, ValueError, AttributeError):
+        return {}
+    out: dict[str, str] = {}
+    extra_dirs = [str(Path(sys.executable).resolve().parent)]
+    for lang, meta in host.items():
+        exelist = meta.get("exelist") if isinstance(meta, dict) else None
+        if not exelist:
+            continue
+        dirs = list(extra_dirs)
+        for token in exelist:
+            if os.path.isabs(token):
+                dirs.insert(0, str(Path(token).parent))
+        search_path = os.pathsep.join([os.environ.get("PATH", ""), *dirs])
+        cand = exelist[-1]
+        resolved = cand if (os.path.isabs(cand) and os.access(cand, os.X_OK)) else shutil.which(cand, path=search_path)
+        if resolved:
+            out[lang] = resolved
+    return out
 
 
 def _stage_python(build_dir: Path, root: Path) -> Path | None:
@@ -1960,16 +2269,40 @@ def _flag_features(flags: list[str]) -> dict[str, bool]:
 
 
 def _option_features(build_dir: Path) -> dict[str, bool]:
-    """``has_rpc`` when the build has RPC on, as ``rpc_enabled`` in meson.build.
+    """Feature requirements represented by Meson options rather than defines.
 
-    Only a ``with_rust_core`` build also defines ``RGPOT_HAS_RPC``.
+    Only a ``with_rust_core`` build also defines ``RGPOT_HAS_RPC``, and the
+    long-range library has no corresponding ``RGPOT_HAS_LONG_RANGE`` define.
     """
+    options = _build_options(build_dir)
+    if not options:
+        return {}
+    return {
+        "has_rpc": options.get("with_rpc") is True
+        or options.get("with_rpc_client_only") is True,
+        "has_long_range": options.get("with_long_range") is True,
+    }
+
+
+def _build_options(build_dir: Path) -> dict:
     path = build_dir / "meson-info" / "intro-buildoptions.json"
     try:
-        options = {o["name"]: o["value"] for o in json.loads(path.read_text(encoding="utf-8"))}
+        return {o["name"]: o["value"] for o in json.loads(path.read_text(encoding="utf-8"))}
     except (OSError, ValueError, KeyError, TypeError):
         return {}
-    return {"has_rpc": options.get("with_rpc") is True or options.get("with_rpc_client_only") is True}
+
+
+def _lacks_client_only_libs(info: BuildInfo, names: list[str]) -> list[str]:
+    """Libraries ``names`` asks for that a client-only meson build does not make.
+
+    ``-Dwith_rpc_client_only=true`` builds the RPC bridge and no librgpot, so
+    a block that links it has nothing to link. Any other build that lacks a
+    library the block names is a real failure and is left to the linker.
+    """
+    if not info.targets or not _build_options(info.build_dir).get("with_rpc_client_only"):
+        return []
+    built = {t["name"] for t in info.targets if t["type"].endswith("library")}
+    return [name for name in names if name.startswith("rgpot") and name not in built]
 
 
 def run_block(block: Block, info: BuildInfo, root: Path = ROOT) -> tuple[str, str]:
@@ -1998,21 +2331,57 @@ def run_block(block: Block, info: BuildInfo, root: Path = ROOT) -> tuple[str, st
             return "skip", f"build lacks {', '.join(missing)}"
         return _compile_c(block, info, root)
     if block.lang == "fortran":
-        fc = shutil.which(os.environ.get("FC", "gfortran"))
+        fc_env = os.environ.get("FC")
+        fc = (shutil.which(fc_env) if fc_env else info.compilers.get("fortran")) or shutil.which("gfortran")
         if not fc:
             return "skip", "no Fortran compiler"
         with tempfile.TemporaryDirectory() as tmp:
             src = Path(tmp) / "block.f90"
             src.write_text(block.body)
-            return _run([fc, "-fsyntax-only", "-ffree-line-length-none", str(src)], "", None, Path(tmp))
+            return _run([fc, "-fsyntax-only", "-ffree-line-length-none", str(src)], "", _tool_env(fc), Path(tmp))
     return "skip", f"no runner for {block.lang}"
+
+
+def _tool_env(*tools: str) -> dict[str, str] | None:
+    dirs: list[str] = []
+    for tool in tools:
+        if tool and os.path.isabs(tool):
+            parent = str(Path(tool).parent)
+            if parent not in dirs:
+                dirs.append(parent)
+    if not dirs:
+        return None
+    env = dict(os.environ)
+    cur = env.get("PATH", "")
+    parts = [p for p in cur.split(os.pathsep) if p]
+    for d in dirs:
+        if d not in parts:
+            parts.append(d)
+    env["PATH"] = os.pathsep.join(parts)
+    return env
+
+
+def _runtime_env(info: BuildInfo) -> dict[str, str]:
+    env = dict(os.environ)
+    key = "DYLD_LIBRARY_PATH" if sys.platform == "darwin" else "LD_LIBRARY_PATH"
+    current = [p for p in env.get(key, "").split(os.pathsep) if p]
+    for lib_dir in info.lib_dirs:
+        if lib_dir not in current:
+            current.insert(0, lib_dir)
+    env[key] = os.pathsep.join(current)
+    return env
 
 
 def _compile_c(block: Block, info: BuildInfo, root: Path) -> tuple[str, str]:
     cpp = block.lang == "cpp"
-    compiler = shutil.which(os.environ.get("CXX" if cpp else "CC", "c++" if cpp else "cc"))
+    env_key = "CXX" if cpp else "CC"
+    lang_key = "cpp" if cpp else "c"
+    default_key = "c++" if cpp else "cc"
+    env_val = os.environ.get(env_key)
+    compiler = (shutil.which(env_val) if env_val else info.compilers.get(lang_key)) or shutil.which(default_key)
     if not compiler:
         return "skip", "no compiler"
+    compile_env = _tool_env(compiler)
     flags = info.cpp_flags if cpp else (info.c_flags or [f for f in info.cpp_flags if not f.startswith("-std")])
     flags = flags + [f"-I{root / d}" for d in ("CppCore", "include", "rgpot-core/include")]
     if cpp and not any(f.startswith("-std") for f in flags):
@@ -2022,23 +2391,29 @@ def _compile_c(block: Block, info: BuildInfo, root: Path) -> tuple[str, str]:
         src = Path(tmp) / ("block.cc" if cpp else "block.c")
         src.write_text(block.body + "\n")
         if block.kind == "compile":
-            return _run([compiler, "-fsyntax-only", *flags, *extra, str(src)], "", None, root)
+            return _run([compiler, "-fsyntax-only", *flags, *extra, str(src)], "", compile_env, root)
         obj, exe = Path(tmp) / "block.o", Path(tmp) / "block"
-        status, detail = _run([compiler, "-c", *flags, *extra, str(src), "-o", str(obj)], "", None, root)
+        status, detail = _run([compiler, "-c", *flags, *extra, str(src), "-o", str(obj)], "", compile_env, root)
         if status != "ok":
             return status, detail
         names = [name for name in block.options.get("link", "").split(",") if name]
+        lacking = _lacks_client_only_libs(info, names)
+        if lacking:
+            return "skip", f"client-only build has no lib{', lib'.join(lacking)}"
         linker, args = _meson_link(info, names, block.lang) or (
             [compiler], [f"-L{d}" for d in info.lib_dirs] + [f"-l{name}" for name in names]
         )
-        if not shutil.which(linker[0]):
+        search_path = (compile_env or os.environ).get("PATH", "")
+        resolved_linker = linker[0] if (os.path.isabs(linker[0]) and os.access(linker[0], os.X_OK)) else shutil.which(linker[0], path=search_path)
+        if not resolved_linker:
             return "skip", f"no linker {linker[0]}"
+        linker = [resolved_linker, *linker[1:]]
         rpath = [f"-Wl,-rpath,{d}" for d in info.lib_dirs]
         # Meson names its own outputs relative to the build directory.
-        status, detail = _run([*linker, str(obj), "-o", str(exe), *args, *rpath], "", None, info.build_dir)
+        status, detail = _run([*linker, str(obj), "-o", str(exe), *args, *rpath], "", _tool_env(compiler, resolved_linker), info.build_dir)
         if status != "ok":
             return status, detail
-        return _run([str(exe)], "", None, root)
+        return _run([str(exe)], "", _runtime_env(info), root)
 
 
 def _meson_link(info: BuildInfo, names: list[str], lang: str) -> tuple[list[str], list[str]] | None:
@@ -2098,11 +2473,190 @@ def execute_blocks(build_dir: Path | None, root: Path = ROOT, blocks=None):
 # ---------------------------------------------------------------- command
 
 
+# (page, text that must remain). Each token is a DOI or a reference value
+# checked while writing the page.
+COVERAGE_MARKERS = (
+    ("docs/orgmode/reference/gupta.org", "10.1103/PhysRevB.23.6265"),
+    ("docs/orgmode/reference/gupta.org", "10.1103/PhysRevB.48.22"),
+    ("docs/orgmode/reference/gupta.org", "-3.1678"),
+    ("docs/orgmode/reference/gupta.org", "10.1021/jp970984n"),
+    ("docs/orgmode/reference/gupta.org", "573.011875"),
+    ("docs/orgmode/reference/cpp_potentials.org", "10.1098/rspa.1924.0082"),
+    ("docs/orgmode/reference/cpp_potentials.org", "-0.999999648834"),
+    ("docs/orgmode/reference/cpp_potentials.org", "10.1103/PhysRev.34.57"),
+    ("docs/orgmode/reference/cpp_potentials.org", "10.1063/1.2841941"),
+    ("docs/orgmode/reference/cpp_potentials.org", "-0.710164462003"),
+    ("docs/orgmode/reference/cpp_potentials.org", "10.1103/PhysRevB.29.6443"),
+    ("docs/orgmode/reference/cpp_potentials.org", "3.63262"),
+    ("docs/orgmode/reference/cpp_potentials.org", "10.1016/0039-6028(96)00816-3"),
+    ("docs/orgmode/reference/cpp_potentials.org", "5.129167"),
+    ("docs/orgmode/reference/cpp_potentials.org", "10.1063/1.445869"),
+    ("docs/orgmode/reference/cpp_potentials.org", "10.1021/j100308a038"),
+    ("docs/orgmode/reference/cpp_potentials.org", "10.1016/j.chemphys.2004.04.024"),
+    ("docs/orgmode/reference/cpp_potentials.org", "10.1063/1.467012"),
+    ("docs/orgmode/reference/cpp_potentials.org", "0.141344038570"),
+    ("docs/orgmode/reference/cpp_potentials.org", "10.1063/1.3382344"),
+    ("docs/orgmode/reference/cpp_potentials.org", "10.1063/1.5090222"),
+    ("docs/orgmode/reference/sw_si.org", "10.1103/PhysRevB.31.5262"),
+    ("docs/orgmode/reference/tersoff_sic.org", "10.1103/PhysRevB.39.5566"),
+    ("docs/orgmode/reference/cpp_backends.org", "10.1103/PhysRevLett.55.2471"),
+    ("docs/orgmode/reference/cpp_backends.org", "10.1021/acs.jctc.8b01176"),
+    ("docs/orgmode/reference/cpp_backends.org", "10.1063/5.0304911"),
+    ("docs/orgmode/reference/cpp_backends.org", "98374.87753058573"),
+    ("docs/orgmode/reference/cpp_backends.org", "10.1016/j.cpc.2004.12.014"),
+    ("docs/orgmode/reference/cpp_backends.org", "50.613487749571874"),
+    ("docs/orgmode/reference/cpp_backends.org", "10.1021/ja00299a024"),
+    ("docs/orgmode/reference/cpp_backends.org", "10.1007/s00894-007-0233-4"),
+    ("docs/orgmode/reference/cpp_backends.org", "6.802846561497"),
+    ("docs/orgmode/reference/cpp_backends.org", "10.1016/j.cpc.2010.04.018"),
+    ("docs/orgmode/reference/cpp_backends.org", "10.1063/5.0004997"),
+    ("docs/orgmode/reference/cpp_backends.org", "-2070.0"),
+    ("docs/orgmode/reference/cpp_backends.org", "10.48550/arXiv.2506.14665"),
+    ("docs/orgmode/reference/cpp_backends.org", "2.8 kcal/mol"),
+    ("docs/orgmode/reference/cpp_backends.org", "10.1002/wcms.1493"),
+    ("docs/orgmode/reference/cpp_backends.org", "10.1021/acs.jctc.7b00118"),
+    ("docs/orgmode/reference/cpp_backends.org", "10.1039/c7sc00601b"),
+    ("docs/orgmode/reference/cpp_backends.org", "-137.9"),
+    ("docs/orgmode/reference/cpp_backends.org", "10.26434/chemrxiv.8326202.v1"),
+    ("docs/orgmode/reference/cpp_backends.org", "10.1002/anie.202004239"),
+    ("docs/orgmode/reference/cpp_backends.org", "10.52202/085713-4310"),
+    ("docs/orgmode/reference/cpp_backends.org", "-2542.4200323230975"),
+    ("docs/orgmode/reference/cpp_backends.org", "10.1016/j.cpc.2013.10.027"),
+    ("docs/orgmode/reference/cpp_backends.org", "10.1016/j.cpc.2018.09.020"),
+    ("docs/orgmode/reference/cpp_backends.org", "10.1016/j.cpc.2021.108171"),
+    ("docs/orgmode/reference/cpp_backends.org", "10.1016/j.softx.2015.06.001"),
+    ("docs/orgmode/reference/cpp_backends.org", "10.1371/journal.pcbi.1005659"),
+    ("docs/orgmode/reference/cpp_potentials.org", "-2.7114096242662238"),
+    ("docs/orgmode/reference/cpp_potentials.org", "-5.217864006173226"),
+    ("docs/orgmode/reference/cpp_potentials.org", "10.1103/PhysRevB.56.8542"),
+    ("docs/orgmode/reference/cpp_potentials.org", "-18.838135"),
+    ("docs/orgmode/reference/cpp_potentials.org", "10.1088/0953-8984/16/27/003"),
+    ("docs/orgmode/reference/cpp_potentials.org", "10.1080/00268978700101941"),
+    ("docs/orgmode/reference/cpp_potentials.org", "-43.959774"),
+    ("docs/orgmode/reference/cpp_potentials.org", "10.1088/0965-0393/8/6/305"),
+    ("docs/orgmode/reference/cpp_potentials.org", "-17.284558"),
+    ("docs/orgmode/reference/cpp_potentials.org", "10.1103/PhysRevB.31.5262"),
+    ("docs/orgmode/reference/cpp_potentials.org", "-16.204955"),
+    ("docs/orgmode/reference/cpp_potentials.org", "10.1103/PhysRevB.39.5566"),
+    ("docs/orgmode/reference/cpp_potentials.org", "-17.440266"),
+    ("docs/orgmode/reference/cpp_potentials.org", "10.1063/1.2162901"),
+    ("docs/xckernel.md", "2608.26440"),
+    ("docs/xckernel.md", "10.1063/5.0358101"),
+    ("docs/orgmode/explanation/global-optimization.org", "10.3389/fchem.2026.1807063"),
+    ("docs/orgmode/explanation/global-optimization.org", "10.1063/5.0283639"),
+)
+
+DESIGN_NOTES = (
+    "eam_cell.md",
+    "neighbour_layer.md",
+    "xckernel.md",
+    "xtb_backends.md",
+    "neighbour_api_design.md",
+    "eon_nlist.md",
+    "eon_pkgconfig.md",
+)
+
+
+def _toctree_targets(text: str) -> list[str]:
+    """Sphinx toctree entries in an org page, in source order."""
+    targets = []
+    active = False
+    for line in text.splitlines():
+        if ".. toctree::" in line:
+            active = True
+            continue
+        if not active:
+            continue
+        if not line.strip():
+            continue
+        if line[:1].strip():
+            active = False
+            if ".. toctree::" in line:
+                active = True
+            continue
+        token = line.strip()
+        if token.startswith(":"):
+            continue
+        targets.append(token.split("#", 1)[0])
+    return targets
+
+
+def org_index_errors(root: Path = ROOT) -> list[str]:
+    """Org pages not reachable by toctree from the manual index."""
+    orgmode = root / "docs/orgmode"
+    pages = {path.resolve() for path in orgmode.rglob("*.org")}
+    start = (orgmode / "index.org").resolve()
+    seen: set[Path] = set()
+    stack = [start]
+    while stack:
+        page = stack.pop()
+        if page in seen or not page.is_file():
+            continue
+        seen.add(page)
+        for token in _toctree_targets(page.read_text(encoding="utf-8")):
+            target = (page.parent / token).resolve()
+            org = target if target.suffix == ".org" else Path(str(target) + ".org")
+            if org.is_file():
+                stack.append(org)
+    return [
+        f"{path.relative_to(root).as_posix()}: not reachable from docs/orgmode/index.org"
+        for path in sorted(pages - seen)
+    ]
+
+
+def coverage_errors(root: Path = ROOT) -> list[str]:
+    """Index reachability and the pinned citations and reference values."""
+    errors = org_index_errors(root)
+    index = (root / "docs/orgmode/index.org").read_text(encoding="utf-8")
+    for name in DESIGN_NOTES:
+        stem = name[: -len(".md")]
+        if f"notes/{stem}" not in index:
+            errors.append(f"docs/orgmode/index.org: design note {name} is not in the index")
+        if not (root / "docs" / name).is_file():
+            errors.append(f"docs/{name}: design note listed in the index is missing")
+    for page, marker in COVERAGE_MARKERS:
+        path = root / page
+        if not path.is_file() or marker not in path.read_text(encoding="utf-8"):
+            errors.append(f"{page}: missing pinned text {marker}")
+    return errors
+
+
+def _load_module(name: str, relpath: str, root: Path):
+    import importlib.util
+
+    path = root / relpath
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+def inventory_errors(root: Path = ROOT) -> list[str]:
+    """One message per public item with no documentation."""
+    return _load_module("rgpot_inventory", "docs/inventory.py", root).errors(root)
+
+
+def generated_errors(root: Path = ROOT) -> list[str]:
+    """Generated files that no longer match their sources."""
+    errors = []
+    capnp = _load_module("rgpot_gen_capnp", "docs/gen_capnp_reference.py", root)
+    page = root / capnp.PAGE
+    if not page.is_file() or page.read_text(encoding="utf-8") != capnp.render(root):
+        errors.append(f"{capnp.PAGE} is stale; run python docs/gen_capnp_reference.py")
+    errors.extend(_load_module("rgpot_gen_llms", "scripts/gen_llms.py", root).stale(root))
+    errors.extend(_load_module("rgpot_verify_dois", "scripts/verify_dois.py", root).check(root))
+    return errors
+
+
 def main(argv: list[str] | None = None) -> int:
     import argparse
 
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
-    parser.add_argument("check", choices=("blocks", "reference", "facts", "all"))
+    parser.add_argument(
+        "check",
+        choices=("blocks", "reference", "facts", "coverage", "inventory", "generated", "all"),
+    )
     parser.add_argument("--build-dir", type=Path, default=None)
     parser.add_argument("--root", type=lambda p: Path(p).resolve(), default=ROOT)
     parser.add_argument(
@@ -2129,6 +2683,12 @@ def main(argv: list[str] | None = None) -> int:
         errors.extend(reference_errors(args.root))
     if args.check in ("facts", "all"):
         errors.extend(facts_errors(args.root))
+    if args.check in ("coverage", "all"):
+        errors.extend(coverage_errors(args.root))
+    if args.check in ("inventory", "all"):
+        errors.extend(inventory_errors(args.root))
+    if args.check in ("generated", "all"):
+        errors.extend(generated_errors(args.root))
     if pages:
         errors = [e for e in errors if wanted(e)]
     for error in errors:

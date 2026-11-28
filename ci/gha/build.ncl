@@ -12,6 +12,7 @@ let meson_build_test =
     -Dwith_examples=False \
     -Dwith_xtensor=False \
     -Dwith_eigen=False \
+    -Dwith_long_range=True \
     -Dwith_rpc=${{ matrix.rpc }} \
     -Dwith_cache=${{ matrix.cache }} \
     -Dpure_lib=False
@@ -93,6 +94,55 @@ let windows_meson_build_test =
   & { name = "Build & Test (Meson / MSVC + Flang kernels)" }
 in
 
+let mingw_options = m%"
+    -Dwith_tests=true \
+    -Dwith_examples=false \
+    -Dwith_xtensor=false \
+    -Dwith_eigen=true \
+    -Dwith_rpc=false \
+    -Dwith_fortran_pots=enabled \
+    -Dwith_cache=false \
+    -Dpure_lib=false
+"%
+in
+
+let mingw_wine_install =
+  S.run_bash m%"
+  set -euo pipefail
+  sudo apt-get update
+  sudo apt-get install -y --no-install-recommends \
+    g++-mingw-w64-x86-64-posix gfortran-mingw-w64-x86-64-posix \
+    wine wine64 cmake ninja-build pipx
+  pipx install 'meson>=1.5.2,<2'
+  echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+  rustup target add x86_64-pc-windows-gnu
+"%
+  & { name = "Install mingw-w64, wine and the Rust windows-gnu target" }
+in
+
+# The script reads the cross file %{P.mingw64_wine_cross_file}.
+let mingw_wine_build_test =
+  S.run_bash m%"
+  ci/gha/mingw_wine_build.sh build-mingw \
+    -Dwith_fast_nlist=enabled \
+    %{mingw_options}
+"%
+  & { name = "Build and test (tests under wine)" }
+in
+
+let msys2_build_test = {
+  name = "Build and test",
+  shell = "msys2 {0}",
+  run = m%"
+    set -euo pipefail
+    meson setup bbdir \
+      %{mingw_options}
+    meson compile -C bbdir
+    meson test -C bbdir --print-errorlogs
+  "%,
+}
+in
+
 let nodownload_export =
   S.run_bash m%"
   set -euo pipefail
@@ -127,13 +177,23 @@ in
 
 let fast_nlist_off_build_test =
   S.run_pixi m%"
+  msrv=$(sed -n 's/^rust-version = "\(.*\)"$/\1/p' Cargo.toml)
+  export PATH="${CARGO_HOME:-$HOME/.cargo}/bin:${PATH}"
+  rustup toolchain install "${msrv}" --profile minimal
+  export RUSTUP_TOOLCHAIN="${msrv}"
+  rustc -V | grep -F "rustc ${msrv}."
+  uv run --no-project --with pytest pytest -q tests/test_build_rust_core.py
   meson setup bbdir \
     -Dwith_tests=true \
+    -Dwith_eam_table=true \
+    -Dwith_long_range=true \
+    -Dwith_rust_core=true \
     -Dwith_examples=false \
     -Dwith_xtensor=false \
     -Dwith_eigen=false \
     -Dwith_rpc=false \
     -Dwith_cache=false \
+    -Dwith_long_range=true \
     -Dwith_fast_nlist=disabled \
     -Dpure_lib=true
   meson compile -C bbdir
@@ -146,11 +206,13 @@ let thread_limit_build =
   S.run_pixi m%"
   meson setup bbdir \
     -Dwith_tests=true \
+    -Dwith_rust_core=true \
     -Dwith_examples=false \
     -Dwith_xtensor=false \
     -Dwith_eigen=false \
     -Dwith_rpc=false \
-    -Dwith_cache=false
+    -Dwith_cache=false \
+    -Dwith_long_range=true
   meson compile -C bbdir
 "%
   & { name = "Build", id = "build" }
@@ -173,10 +235,7 @@ in
 {
   name = "Build Matrix",
   on = S.on_main_pr,
-  concurrency = {
-    group = "${{ github.workflow }}-${{ github.ref }}",
-    "cancel-in-progress" = true,
-  },
+  concurrency = S.concurrency_cancel,
   # build_and_test: no in-tree NWChem; dlopens libnwchemc. Frontend + stub always compile.
   # Suite nwchem energy/grad needs external libnwchemc; stub probe always runs.
   jobs = {
@@ -218,6 +277,43 @@ in
         windows_meson_build_test,
       ],
     },
+    # Cross build from Ubuntu with the tests under wine, then a native MSYS2
+    # MINGW64 build. Both use mingw-w64's C runtime, whose fma is not fused,
+    # and GNU ld for librgpot.dll.
+    build_mingw_wine = {
+      name = "meson / ubuntu-24.04 mingw-w64 cross [tests under wine]",
+      "runs-on" = P.ubuntu_mingw,
+      steps = [S.checkout_minimal, mingw_wine_install, mingw_wine_build_test],
+    },
+    build_msys2_mingw64 = {
+      name = "meson / windows-latest MSYS2 MINGW64",
+      "runs-on" = P.windows_msys2,
+      steps = [
+        # The image sets core.autocrlf=true; the .sh tests need LF endings.
+        {
+          name = "Keep LF line endings",
+          shell = "pwsh",
+          run = "git config --global core.autocrlf false",
+        },
+        S.checkout_minimal,
+        {
+          uses = P.setup_msys2,
+          with = {
+            msystem = "MINGW64",
+            update = true,
+            install = "git",
+            # gcc lists libgomp as optional. -fopenmp still asks ld for
+            # -lgomp. The openmp package is LLVM's runtime and does not
+            # provide that library.
+            # gcc also lists libquadmath as optional. gcc-libs depends on
+            # that runtime, and gcc-fortran is already requested here.
+            # The static archive itself ships in the gcc package.
+            pacboy = "gcc:p gcc-fortran:p gcc-libs:p libgomp:p meson:p ninja:p cmake:p pkgconf:p catch:p eigen3:p rust:p python:p",
+          },
+        },
+        msys2_build_test,
+      ],
+    },
     # Offline rehearsal for the conda-forge source build: configure, build and
     # test the `git archive` tree with --wrap-mode=nodownload, so the default
     # feature set is proven to need no wrap subproject.
@@ -225,8 +321,7 @@ in
     # Scope: the Fortran pot kernels are in-tree (CppCore/rgpot/fortran, vesin
     # vendored under third_party), so this job builds them from the archived
     # tree with no wrap involved. The wraps stay unexercised by construction:
-    # eigen (with_eigen), xxhash (with_cache), potentials-schema (with_rpc),
-    # fmt (pure_lib).
+    # eigen (with_eigen), xxhash (with_cache), fmt (pure_lib).
     nodownload_rehearsal = {
       name = "offline tarball build (nodownload / ubuntu)",
       "runs-on" = P.ubuntu,
@@ -240,6 +335,9 @@ in
     },
     # Cargo is present on this runner. The option still has to build and
     # test the C++ pair scan, which is what wheels and conda get.
+    # with_rust_core is on, so the plain rgpot-core archive is built and
+    # linked, and the rust core tests run. The build uses rustup's
+    # toolchain for the workspace rust-version, not pixi's newer rust.
     build_fast_nlist_off = {
       name = "meson / ubuntu [fast nlist off]",
       "runs-on" = P.ubuntu,
@@ -252,6 +350,8 @@ in
     },
     # Under OMP_THREAD_LIMIT every region gets fewer threads than it asks
     # for. One build, then the suite at a limit of one and of two.
+    # with_rust_core is on next to the fast pair list, so rgpot-bundle, the
+    # one archive that carries both, is what links.
     thread_limit = {
       name = "meson / ubuntu [OMP_THREAD_LIMIT 1, 2]",
       "runs-on" = P.ubuntu,
@@ -296,16 +396,18 @@ in
           uses = P.install_action,
           with = { tool = "cargo-nextest" },
         },
-        { name = "potctl unit tests", run = "cargo test -p potctl" },
+        { name = "potctl unit tests", run = "cargo test --locked -p potctl" },
         S.run_pixi m%"
-          cargo nextest run -p rgpot-core
-          cargo nextest run -p rgpot-core --all-features
+          cargo nextest run --locked -p rgpot-core
+          cargo nextest run --locked -p rgpot-core --all-features
         "%
         & { name = "Run Rust tests (nextest)" },
         S.run_pixi m%"
-          cargo test --doc -p rgpot-core
+          cargo test --locked --doc -p rgpot-core
         "%
         & { name = "Run Rust doc-tests" },
+        S.run_pixi "bash tools/check_header_drift.sh"
+        & { name = "Check rgpot.h is what cbindgen generates" },
       ],
     },
     client_bridge_stress = {

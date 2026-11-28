@@ -9,6 +9,8 @@
  */
 
 #include <algorithm>
+#include <cstdint>
+#include <optional>
 #include <sstream>
 #include <vector>
 
@@ -42,6 +44,7 @@ class MpiPefSession;
 
 #ifdef RGPOT_HAS_DFTD4
 #include "rgpot/D4Pot/D4Pot.hpp"
+#include "rgpot/rpc/D4Configure.hpp"
 #endif // RGPOT_HAS_DFTD4
 
 #ifdef RGPOT_HAS_METATOMIC
@@ -62,24 +65,39 @@ class MpiPefSession;
 #include "rgpot/LennardJones/LJClusterPot.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
 #include "rgpot/Morse/MorsePot.hpp"
+#include "rgpot/Models/ModelPots.hpp"
 #include "rgpot/NWChemPot/NWChemPot.hpp"
 #include "rgpot/Potential.hpp"
-#include "rgpot/abi/Handshake.hpp"
+#include "rgpot/StillingerWeber/SWSi.hpp"
 #include "rgpot/ZBL/ZBLPot.hpp"
+#ifdef RGPOT_HAS_CBE
+#include "rgpot/CBEPot/CBEPot.hpp"
+#endif
+#include "rgpot/abi/Handshake.hpp"
 #ifdef RGPOT_HAS_IPI
 #include "rgpot/IPIPot/IPIPot.hpp"
 #endif
+#include "rgpot/rpc/CompositeConfigure.hpp"
 #include "rgpot/rpc/MorseConfigure.hpp"
+#include "rgpot/rpc/MullerBrownConfigure.hpp"
 #include "rgpot/rpc/PotentialConfigArm.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
 #include "rgpot/types/adapters/capnp/capnp_adapter.hpp"
 #include "rgpot/units.hpp"
 
-#ifdef RGPOT_HAS_CP2K
-constexpr const char *kOwnArmBackends = "NWChem, CPMD, CP2K and Morse";
+#ifdef RGPOT_HAS_DFTD4
+#define RGPOT_OWN_ARM_TAIL "D2, D2Cpmd and D4"
 #else
-constexpr const char *kOwnArmBackends = "NWChem, CPMD and Morse";
+#define RGPOT_OWN_ARM_TAIL "D2 and D2Cpmd"
 #endif
+#ifdef RGPOT_HAS_CP2K
+constexpr const char *kOwnArmBackends =
+    "NWChem, CPMD, CP2K, Morse, Composite, MullerBrown, " RGPOT_OWN_ARM_TAIL;
+#else
+constexpr const char *kOwnArmBackends =
+    "NWChem, CPMD, Morse, Composite, MullerBrown, " RGPOT_OWN_ARM_TAIL;
+#endif
+#undef RGPOT_OWN_ARM_TAIL
 #ifdef RGPOT_POTSERV_MPI
 #ifdef RGPOT_HAS_CP2K
 constexpr const char *kCollectiveBackends = "NWChem, CPMD or CP2K";
@@ -105,6 +123,18 @@ private:
   rgpot::CPMDPot *m_cpmd = nullptr;
   /// Set when the backend is Morse; configure() replaces the pot it names.
   rgpot::MorsePot *m_morse = nullptr;
+  /// Set when the backend is Composite; configure() replaces the sum.
+  rgpot::SumPot *m_sum = nullptr;
+  /// Set when the backend is D2; configure() replaces the pot.
+  rgpot::D2Pot *m_d2 = nullptr;
+  /// Set when the backend is D2Cpmd; configure() replaces the pot.
+  rgpot::D2CpmdPot *m_d2cpmd = nullptr;
+  /// Set when the backend is Muller-Brown; configure() replaces the surface.
+  rgpot::MullerBrownPot *m_muller_brown = nullptr;
+#ifdef RGPOT_HAS_DFTD4
+  /// Set when the backend is D4; configure() replaces the pot.
+  rgpot::D4Pot *m_d4 = nullptr;
+#endif
 #ifdef RGPOT_HAS_IPI
   /// Set when the backend is the i-PI socket server. calculate copies the
   /// Cauchy stress stashed by the last force call.
@@ -123,7 +153,15 @@ public:
    */
   GenericPotImpl(std::unique_ptr<rgpot::PotentialBase> pot)
       : m_potential(std::move(pot)),
-        m_morse(dynamic_cast<rgpot::MorsePot *>(m_potential.get()))
+        m_morse(dynamic_cast<rgpot::MorsePot *>(m_potential.get())),
+        m_sum(dynamic_cast<rgpot::SumPot *>(m_potential.get())),
+        m_d2(dynamic_cast<rgpot::D2Pot *>(m_potential.get())),
+        m_d2cpmd(dynamic_cast<rgpot::D2CpmdPot *>(m_potential.get())),
+        m_muller_brown(dynamic_cast<rgpot::MullerBrownPot *>(m_potential.get()))
+#ifdef RGPOT_HAS_DFTD4
+        ,
+        m_d4(dynamic_cast<rgpot::D4Pot *>(m_potential.get()))
+#endif
 #ifdef RGPOT_HAS_IPI
         ,
         m_ipi(dynamic_cast<rgpot::IPIPot *>(m_potential.get()))
@@ -152,6 +190,138 @@ public:
         m_cp2k(static_cast<rgpot::CP2KPot *>(m_potential.get())), m_pef(pef) {}
 #endif
 
+private:
+  template <typename Context>
+  kj::Promise<void> calculateImpl(Context context, bool requireStress) {
+    const bool stressCapable = m_potential->caps().stress;
+    KJ_REQUIRE(!requireStress || stressCapable,
+               "the selected potential does not provide stress");
+
+    auto fip = context.getParams().getFip();
+    const size_t numAtoms = fip.getPos().size() / 3;
+
+    KJ_REQUIRE(fip.getAtmnrs().size() == numAtoms, "AtomNumbers size mismatch");
+
+    // Unit conversion factors (caller units -> internal angstrom/eV)
+    std::string lengthUnit = fip.getLengthUnit();
+    std::string energyUnit = fip.getEnergyUnit();
+    double len_to_angstrom =
+        rgpot::units::unit_conversion_factor(lengthUnit, "angstrom");
+    double ev_to_caller =
+        rgpot::units::unit_conversion_factor("eV", energyUnit);
+    // F_caller = dE_caller/dx_caller
+    //          = (d(E*E_eV)/d(x_A/len_to_angstrom))
+    //          = ev_to_caller * len_to_angstrom * F_A.
+    double force_to_caller = ev_to_caller * len_to_angstrom;
+
+    rgpot::types::AtomMatrix nativePositions =
+        rgpot::types::adapt::capnp::convertPositionsFromCapnp(fip.getPos(),
+                                                              numAtoms);
+    if (len_to_angstrom != 1.0) {
+      for (size_t i = 0; i < numAtoms * 3; ++i) {
+        nativePositions.data()[i] *= len_to_angstrom;
+      }
+    }
+
+    std::vector<int> nativeAtomTypes =
+        rgpot::types::adapt::capnp::convertAtomNumbersFromCapnp(
+            fip.getAtmnrs());
+    std::array<std::array<double, 3>, 3> nativeBoxMatrix =
+        rgpot::types::adapt::capnp::convertBoxMatrixFromCapnp(fip.getBox());
+    if (len_to_angstrom != 1.0) {
+      for (auto &row : nativeBoxMatrix)
+        for (auto &val : row)
+          val *= len_to_angstrom;
+    }
+
+    const std::optional<std::int64_t> orbitalKey =
+        fip.getHasOrbitalKey()
+            ? std::optional<std::int64_t>(fip.getOrbitalKey())
+            : std::nullopt;
+
+    // Potential always computes in eV/angstrom.
+    std::vector<double> nativeForces(numAtoms * 3, 0.0);
+    rgpot::ForceInput in_native{numAtoms, nativePositions.data(),
+                                nativeAtomTypes.data(), nativeBoxMatrix[0].data()};
+    rgpot::ForceOut out_native{};
+    out_native.F = nativeForces.data();
+    auto evaluate = [&]() -> rgpot::ForceOut {
+#ifdef RGPOT_POTSERV_MPI
+      if (m_pef) {
+        try {
+          auto [energy, forces, variance] =
+              m_pef->calculate(nativePositions, nativeAtomTypes, nativeBoxMatrix,
+                               orbitalKey);
+          rgpot::ForceOut out{};
+          out.F = nativeForces.data();
+          out.energy = energy;
+          out.variance = variance;
+          std::copy(forces.data(), forces.data() + (3 * numAtoms), out.F);
+          return out;
+        } catch (const std::exception &error) {
+          throw KJ_EXCEPTION(FAILED, error.what());
+        }
+      }
+#endif
+      if (orbitalKey) {
+        if (m_cpmd) {
+          m_cpmd->selectOrbitals(*orbitalKey);
+#ifdef RGPOT_HAS_CP2K
+        } else if (m_cp2k) {
+          m_cp2k->selectOrbitals(*orbitalKey);
+#endif
+        } else {
+          throw KJ_EXCEPTION(
+              FAILED,
+              "orbitalKey is supported only by CPMD and CP2K backends");
+        }
+      }
+      m_potential->forceBatch(
+          rgpot::ForceBatch{.nSystems = 1, .in = &in_native, .out = &out_native});
+      return out_native;
+    };
+    out_native = evaluate();
+
+    auto pres = context.getResults().initResult();
+    pres.setEnergy(out_native.energy * ev_to_caller);
+
+    auto forcesList = pres.initForces(numAtoms * 3);
+    if (force_to_caller != 1.0) {
+      for (size_t i = 0; i < numAtoms * 3; ++i) {
+        nativeForces[i] *= force_to_caller;
+      }
+    }
+    for (size_t i = 0; i < numAtoms * 3; ++i) {
+      forcesList.set(i, nativeForces[i]);
+    }
+
+    bool hasStress = out_native.has_stress != 0;
+    double stress[9] = {};
+    if (hasStress) {
+      std::copy(out_native.stress, out_native.stress + 9, stress);
+    }
+#ifdef RGPOT_HAS_IPI
+    if (!hasStress && m_ipi != nullptr) {
+      hasStress = m_ipi->copyStress(stress);
+    }
+#endif
+    if (hasStress) {
+      // sigma_caller = sigma_eV/A^3 * (eV -> caller) *
+      //                (A -> caller length)^3
+      const double stress_to_caller =
+          ev_to_caller * len_to_angstrom * len_to_angstrom * len_to_angstrom;
+      auto stressList = pres.initStress(9);
+      for (unsigned int i = 0; i < 9; ++i) {
+        stressList.set(i, stress[i] * stress_to_caller);
+      }
+    }
+
+    KJ_REQUIRE(!requireStress || hasStress,
+               "the selected potential returned no stress");
+    return kj::READY_NOW;
+  }
+
+public:
   /**
    * @brief Reports what this server speaks, so a client can refuse an
    * incompatible peer before the first calculate call.
@@ -161,9 +331,18 @@ public:
     caps.setBackendName("rgpot");
     caps.setBackendVersion(RGPOT_BUILD_VERSION);
     caps.setAvailable(true);
-    auto ops = caps.initOperations(2);
-    ops.set(0, ::Capabilities::Operation::ENERGY);
-    ops.set(1, ::Capabilities::Operation::FORCES);
+    const bool hasHvp = m_potential->caps().analyticHvp;
+    const bool hasStress = m_potential->caps().stress;
+    auto ops = caps.initOperations(2 + (hasHvp ? 1u : 0u) + (hasStress ? 1u : 0u));
+    unsigned int opIdx = 0;
+    ops.set(opIdx++, ::Capabilities::Operation::ENERGY);
+    ops.set(opIdx++, ::Capabilities::Operation::FORCES);
+    if (hasHvp) {
+      ops.set(opIdx++, ::Capabilities::Operation::HESSIAN_VECTOR);
+    }
+    if (hasStress) {
+      ops.set(opIdx++, ::Capabilities::Operation::STRESS);
+    }
     rgpot::abi::fill_compatibility(caps);
     return kj::READY_NOW;
   }
@@ -182,85 +361,47 @@ public:
    * @return An asynchronous promise for completion.
    */
   kj::Promise<void> calculate(CalculateContext context) override {
-    auto fip = context.getParams().getFip();
-    const size_t numAtoms = fip.getPos().size() / 3;
+    return calculateImpl(kj::mv(context), false);
+  }
 
-    KJ_REQUIRE(fip.getAtmnrs().size() == numAtoms, "AtomNumbers size mismatch");
+  kj::Promise<void> calculateStress(CalculateStressContext context) override {
+    return calculateImpl(kj::mv(context), true);
+  }
 
-    // Unit conversion factors (caller units -> internal angstrom/eV)
-    std::string lengthUnit = fip.getLengthUnit();
-    std::string energyUnit = fip.getEnergyUnit();
-    double len_to_angstrom = rgpot::units::unit_conversion_factor(lengthUnit, "angstrom");
-    double ev_to_caller = rgpot::units::unit_conversion_factor("eV", energyUnit);
-    // Force unit: energy/length in caller's system
-    double force_to_caller = ev_to_caller / len_to_angstrom;
-
-    rgpot::types::AtomMatrix nativePositions =
-        rgpot::types::adapt::capnp::convertPositionsFromCapnp(fip.getPos(),
-                                                              numAtoms);
-    // Convert positions from caller's length unit to angstrom
-    if (len_to_angstrom != 1.0) {
-      for (size_t i = 0; i < numAtoms * 3; ++i) {
-        nativePositions.data()[i] *= len_to_angstrom;
-      }
+  kj::Promise<void> calculateHvp(CalculateHvpContext context) override {
+    auto params = context.getParams();
+    auto fip = params.getFip();
+    auto direction = params.getDirection();
+    const std::size_t n = fip.getPos().size() / 3;
+    KJ_REQUIRE(fip.getPos().size() == 3 * n, "position size mismatch");
+    KJ_REQUIRE(fip.getAtmnrs().size() == n, "atomic number size mismatch");
+    KJ_REQUIRE(fip.getBox().size() == 9, "box size mismatch");
+    KJ_REQUIRE(direction.size() == 3 * n, "direction size mismatch");
+    KJ_REQUIRE(m_potential->caps().analyticHvp,
+               "potential has no analytic Hessian-vector product");
+    const double lengthToAngstrom = rgpot::units::unit_conversion_factor(
+        std::string(fip.getLengthUnit()), "angstrom");
+    const double evToCaller = rgpot::units::unit_conversion_factor(
+        "eV", std::string(fip.getEnergyUnit()));
+    std::vector<double> positions(3 * n), vector(3 * n), product(3 * n);
+    for (std::size_t i = 0; i < 3 * n; ++i) {
+      positions[i] = fip.getPos()[i] * lengthToAngstrom;
+      vector[i] = direction[i] * lengthToAngstrom;
     }
-
-    std::vector<int> nativeAtomTypes =
-        rgpot::types::adapt::capnp::convertAtomNumbersFromCapnp(
-            fip.getAtmnrs());
-    std::array<std::array<double, 3>, 3> nativeBoxMatrix =
-        rgpot::types::adapt::capnp::convertBoxMatrixFromCapnp(fip.getBox());
-    // Convert box from caller's length unit to angstrom
-    if (len_to_angstrom != 1.0) {
-      for (auto &row : nativeBoxMatrix)
-        for (auto &val : row)
-          val *= len_to_angstrom;
-    }
-
-    // Potential always computes in eV/angstrom
-    auto evaluate = [&]() {
-#ifdef RGPOT_POTSERV_MPI
-      if (m_pef) {
-        try {
-          return m_pef->calculate(nativePositions, nativeAtomTypes, nativeBoxMatrix);
-        } catch (const std::exception &error) {
-          throw KJ_EXCEPTION(FAILED, error.what());
-        }
-      }
-#endif
-      return (*m_potential)(nativePositions, nativeAtomTypes, nativeBoxMatrix);
-    };
-    auto [energy, forces, variance] = evaluate();
-    (void)variance;
-
-    // Convert results to caller's units
-    auto result = context.getResults();
-    auto pres = result.initResult();
-    pres.setEnergy(energy * ev_to_caller);
-
-    auto forcesList = pres.initForces(numAtoms * 3);
-    if (force_to_caller != 1.0) {
-      for (size_t i = 0; i < numAtoms * 3; ++i) {
-        forces.data()[i] *= force_to_caller;
-      }
-    }
-    rgpot::types::adapt::capnp::populateForcesToCapnp(forcesList, forces);
-
-#ifdef RGPOT_HAS_IPI
-    if (m_ipi != nullptr) {
-      double stress[9];
-      if (m_ipi->copyStress(stress)) {
-        // sigma_caller = sigma_eV/A^3 * (eV -> caller) * (A -> caller length)^3
-        const double stress_to_caller = ev_to_caller * len_to_angstrom *
-                                        len_to_angstrom * len_to_angstrom;
-        auto stressList = pres.initStress(9);
-        for (unsigned int i = 0; i < 9; ++i) {
-          stressList.set(i, stress[i] * stress_to_caller);
-        }
-      }
-    }
-#endif
-
+    std::vector<int> numbers(n);
+    for (std::size_t i = 0; i < n; ++i)
+      numbers[i] = fip.getAtmnrs()[i];
+    std::array<double, 9> box{};
+    for (std::size_t i = 0; i < 9; ++i)
+      box[i] = fip.getBox()[i] * lengthToAngstrom;
+    rgpot::ForceInput input{n, positions.data(), numbers.data(), box.data()};
+    m_potential->hessianVectorImpl(input, vector.data(), product.data());
+    auto output = context.getResults().initProduct(3 * n);
+    // HVP follows the same chain rule as force once direction has been
+    // converted: (H v)_caller = evToCaller * lengthToAngstrom * (H v)_A.
+    const double productToCaller = evToCaller * lengthToAngstrom;
+    for (std::size_t i = 0; i < 3 * n; ++i)
+      output.set(i, product[i] * productToCaller);
     return kj::READY_NOW;
   }
 
@@ -289,6 +430,58 @@ public:
       auto applied = rgpot::rpc::configureMorse(cfg, *m_morse);
       if (applied.replacement) {
         m_morse = applied.replacement.get();
+        m_potential = std::move(applied.replacement);
+      }
+      results.setOk(applied.ok);
+      results.setMessage(applied.message);
+      return kj::READY_NOW;
+    }
+    if (m_d2) {
+      auto applied = rgpot::rpc::configureD2(cfg);
+      if (applied.replacement) {
+        m_d2 = applied.replacement.get();
+        m_potential = std::move(applied.replacement);
+      }
+      results.setOk(applied.ok);
+      results.setMessage(applied.message);
+      return kj::READY_NOW;
+    }
+    if (m_d2cpmd) {
+      auto applied = rgpot::rpc::configureD2Cpmd(cfg);
+      if (applied.replacement) {
+        m_d2cpmd = applied.replacement.get();
+        m_potential = std::move(applied.replacement);
+      }
+      results.setOk(applied.ok);
+      results.setMessage(applied.message);
+      return kj::READY_NOW;
+    }
+#ifdef RGPOT_HAS_DFTD4
+    if (m_d4) {
+      auto applied = rgpot::rpc::configureD4(cfg);
+      if (applied.replacement) {
+        m_d4 = applied.replacement.get();
+        m_potential = std::move(applied.replacement);
+      }
+      results.setOk(applied.ok);
+      results.setMessage(applied.message);
+      return kj::READY_NOW;
+    }
+#endif
+    if (m_sum) {
+      auto applied = rgpot::rpc::configureComposite(cfg);
+      if (applied.replacement) {
+        m_sum = applied.replacement.get();
+        m_potential = std::move(applied.replacement);
+      }
+      results.setOk(applied.ok);
+      results.setMessage(applied.message);
+      return kj::READY_NOW;
+    }
+    if (m_muller_brown) {
+      auto applied = rgpot::rpc::configureMullerBrown(cfg);
+      if (applied.replacement) {
+        m_muller_brown = applied.replacement.get();
         m_potential = std::move(applied.replacement);
       }
       results.setOk(applied.ok);
@@ -340,6 +533,11 @@ public:
  * ./potserv <port> <PotentialType>
  * @endcode
  *
+ * PotentialType is one of LJ, LJCluster, Morse, ZBL, Eckart, MullerBrown,
+ * ModifiedMullerBrown, LEPS-HH2, LEPS-HCl2, LEPS-FH2, DoubleWell,
+ * CoupledProtonWell, Composite, D2 and D2Cpmd, plus the backends this build
+ * compiled in. The printed usage line is the same list.
+ *
  * @param argc Argument count.
  * @param argv Argument vector.
  * @return 0 on success, 1 on initialization failure.
@@ -351,7 +549,13 @@ int runServer(int argc, char *argv[]
 ) {
   if (argc < 3) {
     std::cerr << "Usage: " << argv[0] << " <port> <PotentialType>" << std::endl;
-    std::cerr << "  Available PotentialTypes: CuH2, LJ, LJCluster, Morse, ZBL"
+    std::cerr
+        << "  Available PotentialTypes: LJ, LJCluster, Morse, SWSi, ZBL, Eckart, "
+           "MullerBrown, ModifiedMullerBrown, LEPS-HH2, LEPS-HCl2, "
+           "LEPS-FH2, Composite, D2, D2Cpmd"
+#ifdef RGPOT_HAS_FORTRAN_POTS
+              << ", CuH2, EAMAl"
+#endif
 #ifdef RGPOT_HAS_IPI
               << ", IPI:unix:<path>, IPI:tcp:<host>:<port>"
 #endif
@@ -359,7 +563,7 @@ int runServer(int argc, char *argv[]
               << ", XTB, GFNFF, GFN0xTB, GFN1xTB"
 #endif
 #ifdef RGPOT_HAS_TBLITE
-              << ", TBLite, TBLiteGFN1, TBLiteIPEA1"
+              << ", TBLite, TBLiteGFN2, TBLiteGFN1, TBLiteIPEA1"
 #endif
 #ifdef RGPOT_HAS_DFTD3
               << ", D3"
@@ -368,7 +572,7 @@ int runServer(int argc, char *argv[]
               << ", D4"
 #endif
 #ifdef RGPOT_HAS_METATOMIC
-              << ", Metatomic:<model_path>"
+              << ", Metatomic:<model_path>[:<device>]"
 #endif
 #ifdef RGPOT_HAS_UMA
               << ", Uma:<model_path>, Uma:<model_path>:<task>"
@@ -381,6 +585,7 @@ int runServer(int argc, char *argv[]
 #ifdef RGPOT_HAS_CP2K
               << ", CP2K"
 #endif
+              << ", DoubleWell, CoupledProtonWell"
               << std::endl;
     return 1;
   }
@@ -412,6 +617,9 @@ int runServer(int argc, char *argv[]
   if (pot_type == "CuH2") {
     std::cout << "Loading CuH2 potential..." << std::endl;
     potential_to_use = std::make_unique<rgpot::fortranpots::CuH2Pot>();
+  } else if (pot_type == "EAMAl") {
+    std::cout << "Loading EAMAl potential..." << std::endl;
+    potential_to_use = std::make_unique<rgpot::fortranpots::EAMAlPot>();
   } else
 #endif // RGPOT_HAS_FORTRAN_POTS
       if (pot_type == "LJ") {
@@ -424,9 +632,47 @@ int runServer(int argc, char *argv[]
   } else if (pot_type == "Morse") {
     std::cout << "Loading Morse potential (Pt parameters)..." << std::endl;
     potential_to_use = std::make_unique<rgpot::MorsePot>();
+  } else if (pot_type == "SWSi") {
+    std::cout << "Loading Stillinger-Weber silicon potential..." << std::endl;
+    potential_to_use = std::make_unique<rgpot::StillingerWeberSi>();
   } else if (pot_type == "ZBL") {
     std::cout << "Loading ZBL potential..." << std::endl;
     potential_to_use = std::make_unique<rgpot::ZBLPot>();
+  } else if (pot_type == "Eckart") {
+    potential_to_use = std::make_unique<rgpot::EckartPot>();
+  } else if (pot_type == "MullerBrown") {
+    potential_to_use = std::make_unique<rgpot::MullerBrownPot>();
+  } else if (pot_type == "ModifiedMullerBrown") {
+    potential_to_use = std::make_unique<rgpot::ModifiedMullerBrownPot>();
+  } else if (pot_type == "LEPS-HH2") {
+    potential_to_use =
+        std::make_unique<rgpot::LepsPot>(rgpot::LepsSystem::HH2);
+  } else if (pot_type == "LEPS-HCl2") {
+    potential_to_use =
+        std::make_unique<rgpot::LepsPot>(rgpot::LepsSystem::HCl2);
+  } else if (pot_type == "LEPS-FH2") {
+    potential_to_use =
+        std::make_unique<rgpot::LepsPot>(rgpot::LepsSystem::FH2);
+  } else if (pot_type == "DoubleWell") {
+    potential_to_use =
+        std::make_unique<rgpot::DoubleWellPot>(2, 1.0, 2.0, 1.0, 0.25);
+  } else if (pot_type == "CoupledProtonWell") {
+    potential_to_use =
+        std::make_unique<rgpot::CoupledProtonWellPot>(1.0, 5.0, 8.0 / 25.0);
+#ifdef RGPOT_HAS_CBE
+  } else if (pot_type == "CBE") {
+    potential_to_use = std::make_unique<rgpot::CBEPot>();
+#endif
+  } else if (pot_type == "Composite") {
+    std::cout << "Loading an empty composite (configure() with the composite arm sets its terms)..."
+              << std::endl;
+    potential_to_use = std::make_unique<rgpot::SumPot>();
+  } else if (pot_type == "D2") {
+    std::cout << "Loading DFT-D2 (BLYP parameters)..." << std::endl;
+    potential_to_use = std::make_unique<rgpot::D2Pot>();
+  } else if (pot_type == "D2Cpmd") {
+    std::cout << "Loading CPMD's empirical D2 (BLYP s6)..." << std::endl;
+    potential_to_use = std::make_unique<rgpot::D2CpmdPot>();
 #ifdef RGPOT_HAS_IPI
   } else if (pot_type == "IPI" || pot_type.rfind("IPI:", 0) == 0) {
     if (pot_type.size() < 5) {
@@ -483,7 +729,9 @@ int runServer(int argc, char *argv[]
 #endif // RGPOT_HAS_DFTD3
 #ifdef RGPOT_HAS_DFTD4
   } else if (pot_type == "D4") {
-    std::cout << "Loading D4 potential (PBE ATM charge 0)..." << std::endl;
+    std::cout << "Loading D4 potential (PBE ATM charge 0, molecular; configure() takes "
+                 "the d4 arm)..."
+              << std::endl;
     potential_to_use = std::make_unique<rgpot::D4Pot>();
 #endif // RGPOT_HAS_DFTD4
 #ifdef RGPOT_HAS_METATOMIC

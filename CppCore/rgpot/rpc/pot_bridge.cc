@@ -16,6 +16,7 @@
 #include <capnp/ez-rpc.h>
 #include <capnp/message.h>
 #include <kj/common.h>
+#include <limits>
 #include <memory>
 #include <string>
 
@@ -33,6 +34,8 @@ struct PotClient {
   kj::WaitScope *wait_scope;    //!< Reference to the client wait scope.
   std::string last_error;       //!< Buffer for the most recent error message.
   bool server_checked = false;  //!< True once the server passed the handshake.
+  bool has_orbital_key = false; //!< Whether following requests name a key.
+  int64_t orbital_key = 0;      //!< Image or bead key sent with each request.
 
   /**
    * @brief Constructor for PotClient.
@@ -92,9 +95,25 @@ PotClient *pot_client_init(const char *host, int32_t port) {
  * and associated RPC state.
  */
 void pot_client_free(PotClient *client) {
-  if (client) {
-    delete client;
+  if (!client) {
+    return;
   }
+  try {
+    delete client;
+  } catch (...) {
+    // C ABI must not leak exceptions across extern "C". There is no status
+    // channel on free, so swallow and return.
+  }
+}
+
+int32_t pot_client_select_orbitals(PotClient *client, int64_t key) {
+  if (!client)
+    return -1;
+  client->last_error.clear();
+  client->has_orbital_key = true;
+  client->orbital_key = key;
+  client->server_checked = false;
+  return 0;
 }
 
 /**
@@ -119,14 +138,37 @@ int32_t pot_calculate(PotClient *client, int32_t natoms, const double *pos,
   if (!client)
     return -1;
   client->last_error.clear();
+  if (natoms < 0) {
+    client->last_error = "natoms must be non-negative";
+    return -1;
+  }
+  if (!pos || !atmnrs || !box || !out_energy || !out_forces) {
+    client->last_error =
+        "pos, atmnrs, box, out_energy and out_forces must be non-null";
+    return -1;
+  }
+  constexpr int32_t kMaxAtoms = std::numeric_limits<int32_t>::max() / 3;
+  if (natoms > kMaxAtoms) {
+    client->last_error = "natoms is too large";
+    return -1;
+  }
 
   try {
     auto &waitScope = *client->wait_scope;
     if (!client->server_checked) {
+      const auto expectation =
+          rgpot::abi::force_input_expectation(client->has_orbital_key);
       const std::string why =
-          rgpot::abi::check_server(client->capability, waitScope);
+          rgpot::abi::check_server(client->capability, waitScope, expectation);
       if (!why.empty()) {
-        client->last_error = "server refused: " + why;
+        if (client->has_orbital_key &&
+            why.find("protocol minor") != std::string::npos)
+          client->last_error =
+              "ForceInput orbital key requires RPC protocol minor " +
+              std::to_string(rgpot::abi::kOrbitalKeyIntroducedMinor) +
+              ": server refused: " + why;
+        else
+          client->last_error = "server refused: " + why;
         return -3;
       }
       client->server_checked = true;
@@ -136,7 +178,7 @@ int32_t pot_calculate(PotClient *client, int32_t natoms, const double *pos,
 
     // kj::arrayPtr creates a "view" (pointer + size) with NO copying.
     // It is essentially a span.
-    auto pos_view = kj::arrayPtr(pos, natoms * 3);
+    auto pos_view = kj::arrayPtr(pos, static_cast<size_t>(natoms) * 3);
     auto atm_view = kj::arrayPtr(atmnrs, natoms);
     auto box_view = kj::arrayPtr(box, 9);
 
@@ -145,6 +187,10 @@ int32_t pot_calculate(PotClient *client, int32_t natoms, const double *pos,
     fip.setPos(pos_view);
     fip.setAtmnrs(atm_view);
     fip.setBox(box_view);
+    if (client->has_orbital_key) {
+      fip.setHasOrbitalKey(true);
+      fip.setOrbitalKey(client->orbital_key);
+    }
 
     // ---------------------------------------------------------
 
@@ -162,7 +208,7 @@ int32_t pot_calculate(PotClient *client, int32_t natoms, const double *pos,
     auto res_forces = result.getForces();
 
     // Strict runtime check to ensure server didn't return garbage size
-    if (res_forces.size() != static_cast<size_t>(natoms * 3)) {
+    if (res_forces.size() != static_cast<size_t>(natoms) * 3) {
       client->last_error = "Server returned force array of incorrect size";
       return -2;
     }
@@ -172,6 +218,10 @@ int32_t pot_calculate(PotClient *client, int32_t natoms, const double *pos,
     }
 
     return 0;
+  }
+  catch (const kj::Exception &error) {
+    client->last_error = error.getDescription().cStr();
+    return -1;
   }
   CATCH_AND_REPORT(client, -1)
 }

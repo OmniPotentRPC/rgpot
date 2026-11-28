@@ -19,13 +19,16 @@
 
 #include <catch2/catch_all.hpp>
 #include "rgpot/ForceStructs.hpp"
+#include <barrier>
 #include <thread>
 #include <functional>
 #include <atomic>
 #include <algorithm>
 #include <cmath>
+#include <random>
 #include <vector>
 
+#include "TestFixtures.hpp"
 #include "rgpot/StillingerWeber/SWSi.hpp"
 #include "rgpot/Tersoff/TersoffSiC.hpp"
 #include "rgpot/fortran/FortranPots.hpp"
@@ -33,9 +36,14 @@
 #include "rgpot/types/AtomMatrix.hpp"
 
 #include <stdexcept>
+#ifdef _OPENMP
+#include <omp.h>
+#endif
 
 using Catch::Matchers::WithinAbs;
 using Catch::Matchers::WithinRel;
+using Catch::Matchers::ContainsSubstring;
+using rgpot::test_fixtures::maxForceNorm;
 using rgpot::types::AtomMatrix;
 
 namespace {
@@ -72,17 +80,7 @@ AtomMatrix feBcc() {
 
 /// The 20 Angstrom cube every fixture above sits in.
 std::array<std::array<double, 3>, 3> cube20() {
-  return {{{20.0, 0.0, 0.0}, {0.0, 20.0, 0.0}, {0.0, 0.0, 20.0}}};
-}
-
-double maxForceNorm(const AtomMatrix &forces) {
-  double worst = 0.0;
-  for (size_t i = 0; i < forces.rows(); ++i) {
-    const double n2 = forces(i, 0) * forces(i, 0) +
-                      forces(i, 1) * forces(i, 1) + forces(i, 2) * forces(i, 2);
-    worst = std::max(worst, std::sqrt(n2));
-  }
-  return worst;
+  return rgpot::test_fixtures::cubicCell(20.0);
 }
 
 void requireNoNetForce(const AtomMatrix &forces) {
@@ -370,59 +368,476 @@ TEST_CASE("Tersoff held skin reaches the 1989 kernel only",
   REQUIRE_THROWS_AS(held.setHeldSkin(-1.0), std::invalid_argument);
 }
 
-TEST_CASE("Tersoff writes no stress into a reused output",
+namespace {
+
+struct TersoffStress {
+  double energy = 0.0;
+  std::array<double, 9> stress{};
+  std::vector<double> force;
+};
+
+TersoffStress tersoffStress(const rgpot::fortranpots::TersoffPot &pot,
+                            const std::vector<double> &R,
+                            const std::vector<int> &types,
+                            const std::array<double, 9> &box) {
+  TersoffStress out;
+  out.force.assign(R.size(), 0.0);
+  rgpot::ForceInput in{.nAtoms = R.size() / 3,
+                       .pos = R.data(),
+                       .atmnrs = types.data(),
+                       .box = box.data()};
+  rgpot::ForceOut fo{.F = out.force.data(),
+                     .energy = 0.0,
+                     .variance = 0.0,
+                     .stress = {},
+                     .has_stress = 0};
+  pot.forceImpl(in, &fo);
+  REQUIRE(fo.has_stress == 1);
+  out.energy = fo.energy;
+  std::copy(fo.stress, fo.stress + 9, out.stress.begin());
+  return out;
+}
+
+double tersoffStrainDifference(const std::vector<double> &R,
+                               const std::vector<int> &types,
+                               const std::array<double, 9> &box, int row,
+                               int col) {
+  constexpr double h = 2e-4;
+  const rgpot::fortranpots::TersoffPot pot;
+  auto energyAt = [&](double eps) {
+    std::vector<double> p = R;
+    std::array<double, 9> cell = box;
+    for (std::size_t a = 0; a < R.size() / 3; ++a) {
+      p[3 * a + col] += eps * R[3 * a + row];
+    }
+    for (int k = 0; k < 3; ++k) {
+      cell[3 * k + col] += eps * box[3 * k + row];
+    }
+    return tersoffStress(pot, p, types, cell).energy;
+  };
+  return (8.0 * (energyAt(h) - energyAt(-h)) -
+          (energyAt(2 * h) - energyAt(-2 * h))) /
+         (12.0 * h * rgpot::cellVolume(box.data()));
+}
+
+void checkSymmetric(const std::array<double, 9> &s) {
+  REQUIRE(s[1] == s[3]);
+  REQUIRE(s[2] == s[6]);
+  REQUIRE(s[5] == s[7]);
+}
+
+} // namespace
+
+TEST_CASE("Tersoff wrapper stress matches a strain difference on gather path",
           "[fortran][tersoff][stress]") {
-  const double pos[6] = {0.0, 0.0, 0.0, 2.0, 0.0, 0.0};
-  const double box[9] = {20, 0, 0, 0, 20, 0, 0, 0, 20};
-  const int sic[2] = {14, 6};
-  const int si[2] = {14, 14};
-  const rgpot::ForceInput in_sic{
-      .nAtoms = 2, .pos = pos, .atmnrs = sic, .box = box};
-  const rgpot::ForceInput in_si{
-      .nAtoms = 2, .pos = pos, .atmnrs = si, .box = box};
-
-  // Fresh outputs give the reference energies and forces of each call.
-  auto fresh = [](const auto &pot, const rgpot::ForceInput &in, double *f) {
-    rgpot::ForceOut o{
-        .F = f, .energy = 0.0, .variance = 0.0, .stress = {}, .has_stress = 0};
-    pot.forceImpl(in, &o);
-    return o.energy;
-  };
-  double f_sic[6];
-  double f_si[6];
-  rgpot::TersoffSiC kernel;
-  const double e_sic = fresh(kernel, in_sic, f_sic);
-  const double e_si = fresh(rgpot::fortranpots::TersoffPot{}, in_si, f_si);
-  REQUIRE_THAT(e_sic, WithinAbs(-3.565, 1e-3));
-  REQUIRE_THAT(e_si, WithinAbs(-1.902, 1e-3));
-
-  auto check = [](const rgpot::ForceOut &o, const double *f, double e) {
-    REQUIRE(o.has_stress == 0);
-    for (const double s : o.stress) {
-      REQUIRE(s == 0.0);
-    }
-    REQUIRE(o.energy == e);
-    for (int i = 0; i < 6; ++i) {
-      REQUIRE(o.F[i] == f[i]);
-    }
-  };
-
   rgpot::fortranpots::TersoffPot pot;
-  REQUIRE_FALSE(pot.caps().stress);
-  const rgpot::ForceInput *order[2][2] = {{&in_sic, &in_si}, {&in_si, &in_sic}};
-  for (const auto &seq : order) {
-    double got[6];
-    rgpot::ForceOut out{.F = got,
-                        .energy = 0.0,
-                        .variance = 0.0,
-                        .stress = {},
-                        .has_stress = 0};
-    for (const rgpot::ForceInput *in : seq) {
-      pot.forceImpl(*in, &out);
-      const bool carbide = in == &in_sic;
-      check(out, carbide ? f_sic : f_si, carbide ? e_sic : e_si);
+  REQUIRE(pot.caps().stress);
+  const double a = 5.432;
+  std::vector<double> diamond;
+  rgpot::test_fixtures::appendDiamond(diamond, 2, a);
+  const std::vector<int> si(diamond.size() / 3, 14);
+
+  SECTION("periodic diamond") {
+    const std::array<double, 9> box{2 * a, 0, 0, 0, 2 * a, 0, 0, 0, 2 * a};
+    const TersoffStress got = tersoffStress(pot, diamond, si, box);
+    checkSymmetric(got.stress);
+    for (int k = 0; k < 9; ++k) {
+      CAPTURE(k, got.stress[k]);
+      REQUIRE_THAT(got.stress[k],
+                   WithinAbs(tersoffStrainDifference(diamond, si, box, k / 3,
+                                                     k % 3),
+                             5e-10));
     }
   }
+
+  SECTION("strained rattled silicon cell") {
+    const std::array<double, 9> box{2 * a, 0, 0, 0.06 * a, 2 * a,
+                                    0, -0.03 * a, 0.04 * a, 2 * a};
+    std::vector<double> rattled = diamond;
+    std::mt19937_64 gen(20261123);
+    for (double &x : rattled) {
+      x += 0.3 * (static_cast<double>(gen() >> 11) * 0x1.0p-53 - 0.5);
+    }
+    const TersoffStress got = tersoffStress(pot, rattled, si, box);
+    checkSymmetric(got.stress);
+    for (int k = 0; k < 9; ++k) {
+      CAPTURE(k, got.stress[k]);
+      REQUIRE_THAT(got.stress[k],
+                   WithinAbs(tersoffStrainDifference(rattled, si, box, k / 3,
+                                                     k % 3),
+                             5e-10));
+    }
+  }
+}
+
+TEST_CASE("Tersoff wrapper stress matches SiC kernel on mixed species path",
+          "[fortran][tersoff][stress]") {
+  std::vector<double> pos;
+  rgpot::test_fixtures::appendDiamond(pos, 2, 4.03);
+  std::vector<int> types(pos.size() / 3, 14);
+  for (std::size_t a = 0; a < types.size(); ++a) {
+    if (a % 8 < 4) {
+      types[a] = 6;
+    }
+  }
+  std::mt19937_64 gen(20261123);
+  for (double &x : pos) {
+    x += 0.05 * (static_cast<double>(gen() >> 11) * 0x1.0p-53 - 0.5);
+  }
+  const std::array<double, 9> box{8.06, 0, 0, 0.18, 8.06, 0, 0, -0.11, 8.06};
+  rgpot::fortranpots::TersoffPot face;
+  rgpot::TersoffSiC kernel;
+  std::vector<double> ff(pos.size(), 0.0);
+  std::vector<double> fk(pos.size(), 0.0);
+  rgpot::ForceInput in{
+      .nAtoms = pos.size() / 3, .pos = pos.data(), .atmnrs = types.data(), .box = box.data()};
+  rgpot::ForceOut of{
+      .F = ff.data(), .energy = 0.0, .variance = 0.0, .stress = {}, .has_stress = 0};
+  rgpot::ForceOut ok{
+      .F = fk.data(), .energy = 0.0, .variance = 0.0, .stress = {}, .has_stress = 0};
+  face.forceImpl(in, &of);
+  kernel.forceImpl(in, &ok);
+  REQUIRE(of.has_stress == 1);
+  REQUIRE(ok.has_stress == 1);
+  REQUIRE(of.energy == ok.energy);
+  REQUIRE(of.variance == ok.variance);
+  REQUIRE(ff == fk);
+  for (int k = 0; k < 9; ++k) {
+    REQUIRE(of.stress[k] == ok.stress[k]);
+  }
+  checkSymmetric({of.stress[0], of.stress[1], of.stress[2], of.stress[3],
+                  of.stress[4], of.stress[5], of.stress[6], of.stress[7],
+                  of.stress[8]});
+}
+
+TEST_CASE("Tersoff gather stress is invariant across thread counts",
+          "[fortran][tersoff][stress]") {
+#ifdef _OPENMP
+  std::vector<double> pos;
+  rgpot::test_fixtures::appendDiamond(pos, 2, 5.432);
+  std::vector<int> types(pos.size() / 3, 14);
+  const std::array<double, 9> box{10.864, 0, 0, 0.2, 10.864, 0, 0, 0.15,
+                                  10.864};
+  rgpot::fortranpots::TersoffPot pot;
+  const int saved = omp_get_max_threads();
+  omp_set_num_threads(1);
+  const TersoffStress one = tersoffStress(pot, pos, types, box);
+  const int more = std::min(saved > 1 ? saved : 2, 4);
+  omp_set_num_threads(more);
+  const TersoffStress many = tersoffStress(pot, pos, types, box);
+  omp_set_num_threads(saved);
+  REQUIRE(one.energy == many.energy);
+  REQUIRE(one.force == many.force);
+  REQUIRE(one.stress == many.stress);
+#else
+  SUCCEED("OpenMP not enabled in this build");
+#endif
+}
+
+TEST_CASE("Tersoff no-box zero-atom call keeps has_stress clear",
+          "[fortran][tersoff][stress]") {
+  rgpot::fortranpots::TersoffPot pot;
+  double force = 1.0;
+  rgpot::ForceInput in{
+      .nAtoms = 0, .pos = nullptr, .atmnrs = nullptr, .box = nullptr};
+  rgpot::ForceOut out{
+      .F = &force, .energy = 1.0, .variance = 1.0, .stress = {1, 2, 3, 4, 5, 6, 7, 8, 9}, .has_stress = 1};
+  pot.forceImpl(in, &out);
+  REQUIRE(out.energy == 0.0);
+  REQUIRE(out.variance == 0.0);
+  REQUIRE(out.has_stress == 0);
+  for (double c : out.stress) {
+    REQUIRE(c == 0.0);
+  }
+
+  const AtomMatrix pos = siDiamond();
+  const std::vector<int> types(pos.rows(), 14);
+  std::vector<double> force_buf(pos.size(), 0.0);
+  rgpot::ForceInput atom_in{
+      .nAtoms = pos.rows(),
+      .pos = pos.data(),
+      .atmnrs = types.data(),
+      .box = nullptr};
+  rgpot::ForceOut atom_out{.F = force_buf.data(),
+                           .energy = 1.0,
+                           .variance = 1.0,
+                           .stress = {1, 2, 3, 4, 5, 6, 7, 8, 9},
+                           .has_stress = 1};
+  REQUIRE_THROWS_WITH(pot.forceImpl(atom_in, &atom_out),
+                      ContainsSubstring("required neighbour pointer is null"));
+}
+
+TEST_CASE("Tersoff negative-determinant box matches right-handed mirror",
+          "[fortran][tersoff][stress]") {
+  rgpot::fortranpots::TersoffPot pot;
+  const double a = 5.432;
+  std::vector<double> diamond;
+  rgpot::test_fixtures::appendDiamond(diamond, 2, a);
+  std::mt19937_64 gen(20261124);
+  for (double &x : diamond) {
+    x += 0.08 * (static_cast<double>(gen() >> 11) * 0x1.0p-53 - 0.5);
+  }
+  const std::array<double, 9> box_rh{
+      2 * a, 0, 0, 0.06 * a, 2 * a, 0, -0.03 * a, 0.04 * a, 2 * a};
+
+  auto checkMirror = [&](const std::vector<int> &types) {
+    const TersoffStress rh = tersoffStress(pot, diamond, types, box_rh);
+
+    // Negating one lattice vector flips det(box) < 0 without changing the
+    // Bravais lattice or atomic positions.
+    std::array<double, 9> box_flip_a = box_rh;
+    box_flip_a[0] = -box_flip_a[0];
+    box_flip_a[1] = -box_flip_a[1];
+    box_flip_a[2] = -box_flip_a[2];
+    const TersoffStress lh_vec = tersoffStress(pot, diamond, types, box_flip_a);
+    REQUIRE_THAT(lh_vec.energy, WithinAbs(rh.energy, 1e-12));
+    for (std::size_t i = 0; i < rh.force.size(); ++i) {
+      REQUIRE_THAT(lh_vec.force[i], WithinAbs(rh.force[i], 1e-12));
+    }
+    for (int k = 0; k < 9; ++k) {
+      REQUIRE_THAT(lh_vec.stress[k], WithinAbs(rh.stress[k], 1e-12));
+    }
+
+    // Spatial inversion (pos, box) -> (-pos, -box) has det < 0 and keeps
+    // energy and the entire stress tensor invariant.
+    std::vector<double> pos_inv(diamond.size());
+    for (std::size_t i = 0; i < diamond.size(); ++i) {
+      pos_inv[i] = -diamond[i];
+    }
+    std::array<double, 9> box_inv{};
+    for (int k = 0; k < 9; ++k) {
+      box_inv[k] = -box_rh[k];
+    }
+    const TersoffStress lh_inv = tersoffStress(pot, pos_inv, types, box_inv);
+    REQUIRE_THAT(lh_inv.energy, WithinAbs(rh.energy, 1e-12));
+    for (std::size_t i = 0; i < rh.force.size(); ++i) {
+      REQUIRE_THAT(lh_inv.force[i], WithinAbs(-rh.force[i], 1e-12));
+    }
+    for (int k = 0; k < 9; ++k) {
+      REQUIRE_THAT(lh_inv.stress[k], WithinAbs(rh.stress[k], 1e-12));
+    }
+
+    // Single-axis mirror z -> -z (det < 0) keeps energy invariant and
+    // transforms forces as P*f and stress as P*sigma*P^T.
+    std::vector<double> pos_z(diamond);
+    for (std::size_t i = 2; i < pos_z.size(); i += 3) {
+      pos_z[i] = -pos_z[i];
+    }
+    std::array<double, 9> box_z = box_rh;
+    for (int k = 2; k < 9; k += 3) {
+      box_z[k] = -box_z[k];
+    }
+    const TersoffStress lh_z = tersoffStress(pot, pos_z, types, box_z);
+    REQUIRE_THAT(lh_z.energy, WithinAbs(rh.energy, 1e-12));
+    for (std::size_t i = 0; i < rh.force.size(); ++i) {
+      const double sign = (i % 3 == 2) ? -1.0 : 1.0;
+      REQUIRE_THAT(lh_z.force[i], WithinAbs(sign * rh.force[i], 1e-12));
+    }
+    for (int r = 0; r < 3; ++r) {
+      for (int c = 0; c < 3; ++c) {
+        const double sr = (r == 2) ? -1.0 : 1.0;
+        const double sc = (c == 2) ? -1.0 : 1.0;
+        REQUIRE_THAT(lh_z.stress[3 * r + c],
+                     WithinAbs(sr * sc * rh.stress[3 * r + c], 1e-12));
+      }
+    }
+  };
+
+  SECTION("all-silicon gather path") {
+    const std::vector<int> si(diamond.size() / 3, 14);
+    checkMirror(si);
+  }
+
+  SECTION("mixed-species SiC path") {
+    std::vector<int> sic(diamond.size() / 3, 14);
+    for (std::size_t i = 0; i < sic.size(); ++i) {
+      if (i % 8 < 4) {
+        sic[i] = 6;
+      }
+    }
+    checkMirror(sic);
+  }
+
+  SECTION("zero-volume orthorhombic box") {
+    const std::array<double, 9> zero_ortho{10.0, 0, 0, 0, 0.0, 0, 0, 0, 10.0};
+    const std::vector<int> si(diamond.size() / 3, 14);
+    std::vector<double> force_buf(diamond.size(), 0.0);
+    rgpot::ForceInput si_in{.nAtoms = si.size(),
+                            .pos = diamond.data(),
+                            .atmnrs = si.data(),
+                            .box = zero_ortho.data()};
+    rgpot::ForceOut si_out{.F = force_buf.data(),
+                           .energy = 0.0,
+                           .variance = 0.0,
+                           .stress = {},
+                           .has_stress = 0};
+    REQUIRE_THROWS_WITH(pot.forceImpl(si_in, &si_out),
+                        ContainsSubstring("positive volume"));
+
+    std::vector<int> sic(si);
+    sic[0] = 6;
+    rgpot::ForceInput sic_in{.nAtoms = sic.size(),
+                             .pos = diamond.data(),
+                             .atmnrs = sic.data(),
+                             .box = zero_ortho.data()};
+    rgpot::ForceOut sic_out{.F = force_buf.data(),
+                            .energy = 0.0,
+                            .variance = 0.0,
+                            .stress = {1, 2, 3, 4, 5, 6, 7, 8, 9},
+                            .has_stress = 1};
+    pot.forceImpl(sic_in, &sic_out);
+    REQUIRE(sic_out.has_stress == 0);
+    for (double c : sic_out.stress) {
+      REQUIRE(c == 0.0);
+    }
+  }
+}
+
+TEST_CASE("Tersoff concurrent errors keep complete messages",
+          "[fortran][tersoff][threads]") {
+  constexpr int threadCount = 16;
+  constexpr int iterations = 100;
+  const AtomMatrix pos = siDiamond();
+  const std::vector<int> types(pos.rows(), 14);
+  const std::array<double, 9> zeroBox{10.0, 0, 0, 0, 0.0, 0, 0, 0, 10.0};
+  const std::string expected =
+      "Tersoff potential failed (status 4): rgpot_neighbors: box must be "
+      "finite, and a periodic box must have positive volume";
+  std::barrier<> ready(threadCount);
+  std::atomic<int> failures{0};
+  std::vector<std::thread> threads;
+  threads.reserve(threadCount);
+
+  for (int worker = 0; worker < threadCount; ++worker) {
+    threads.emplace_back([&] {
+      rgpot::fortranpots::TersoffPot pot;
+      std::vector<double> force(pos.size(), 0.0);
+      rgpot::ForceInput in{.nAtoms = pos.rows(),
+                           .pos = pos.data(),
+                           .atmnrs = types.data(),
+                           .box = zeroBox.data()};
+      for (int attempt = 0; attempt < iterations; ++attempt) {
+        rgpot::ForceOut out{.F = force.data(),
+                            .energy = 0.0,
+                            .variance = 0.0,
+                            .stress = {},
+                            .has_stress = 0};
+        ready.arrive_and_wait();
+        try {
+          pot.forceImpl(in, &out);
+          ++failures;
+        } catch (const std::runtime_error &error) {
+          if (error.what() != expected) {
+            ++failures;
+          }
+        } catch (...) {
+          ++failures;
+        }
+      }
+    });
+  }
+  for (auto &thread : threads) {
+    thread.join();
+  }
+  REQUIRE(failures.load() == 0);
+}
+
+TEST_CASE("Tersoff stress path from many threads matches one thread",
+          "[fortran][tersoff][stress][threads]") {
+  constexpr int threadCount = 12;
+  constexpr int rounds = 20;
+  struct Frame {
+    std::vector<double> pos;
+    std::vector<int> types;
+    std::array<double, 9> box{};
+  };
+  std::vector<Frame> frames(threadCount);
+  for (int k = 0; k < threadCount; ++k) {
+    Frame &frame = frames[static_cast<std::size_t>(k)];
+    const bool silicon = k % 2 == 0;
+    const double a = silicon ? 5.432 : 4.03;
+    rgpot::test_fixtures::appendDiamond(frame.pos, 2, a);
+    frame.types.assign(frame.pos.size() / 3, 14);
+    if (!silicon) {
+      for (std::size_t i = 0; i < frame.types.size(); ++i) {
+        if (i % 8 < 4) {
+          frame.types[i] = 6;
+        }
+      }
+    }
+    std::mt19937_64 gen(20261125 + static_cast<unsigned>(k));
+    for (double &x : frame.pos) {
+      x += 0.08 * (static_cast<double>(gen() >> 11) * 0x1.0p-53 - 0.5);
+    }
+    frame.box = {2 * a, 0, 0, 0.03 * k, 2 * a, 0, 0, -0.02 * k, 2 * a};
+  }
+  const std::array<double, 9> zeroBox{10.0, 0, 0, 0, 0.0, 0, 0, 0, 10.0};
+  const std::string expected =
+      "Tersoff potential failed (status 4): rgpot_neighbors: box must be "
+      "finite, and a periodic box must have positive volume";
+
+  std::vector<TersoffStress> refs;
+  {
+    rgpot::fortranpots::TersoffPot pot;
+    for (const Frame &frame : frames) {
+      refs.push_back(tersoffStress(pot, frame.pos, frame.types, frame.box));
+    }
+  }
+
+  std::barrier<> ready(threadCount);
+  std::atomic<int> failures{0};
+  std::vector<std::thread> threads;
+  threads.reserve(threadCount);
+  for (int worker = 0; worker < threadCount; ++worker) {
+    threads.emplace_back([&, worker] {
+      const Frame &frame = frames[static_cast<std::size_t>(worker)];
+      const Frame &silicon = frames[static_cast<std::size_t>(worker - worker % 2)];
+      const TersoffStress &ref = refs[static_cast<std::size_t>(worker)];
+      rgpot::fortranpots::TersoffPot pot;
+      std::vector<double> force(frame.pos.size(), 0.0);
+      rgpot::ForceInput in{.nAtoms = frame.pos.size() / 3,
+                           .pos = frame.pos.data(),
+                           .atmnrs = frame.types.data(),
+                           .box = frame.box.data()};
+      rgpot::ForceInput bad{.nAtoms = silicon.pos.size() / 3,
+                            .pos = silicon.pos.data(),
+                            .atmnrs = silicon.types.data(),
+                            .box = zeroBox.data()};
+      for (int round = 0; round < rounds; ++round) {
+        rgpot::ForceOut out{.F = force.data(),
+                            .energy = 0.0,
+                            .variance = 0.0,
+                            .stress = {},
+                            .has_stress = 0};
+        ready.arrive_and_wait();
+        try {
+          pot.forceImpl(in, &out);
+          if (out.has_stress != 1 || out.energy != ref.energy ||
+              force != ref.force ||
+              !std::equal(ref.stress.begin(), ref.stress.end(), out.stress)) {
+            ++failures;
+          }
+        } catch (...) {
+          ++failures;
+        }
+        ready.arrive_and_wait();
+        try {
+          pot.forceImpl(bad, &out);
+          ++failures;
+        } catch (const std::runtime_error &error) {
+          if (error.what() != expected) {
+            ++failures;
+          }
+        } catch (...) {
+          ++failures;
+        }
+      }
+    });
+  }
+  for (auto &thread : threads) {
+    thread.join();
+  }
+  REQUIRE(failures.load() == 0);
 }
 
 TEST_CASE("EDIP silicon matches the eOn reference", "[fortran][edip]") {

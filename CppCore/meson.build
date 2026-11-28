@@ -35,6 +35,7 @@ _args += _build_identity_args
 # the features only known later (see the end of meson.build).
 _rt_atoms = {
     'tests': get_option('with_tests'),
+    'examples': get_option('with_examples'),
     'core': not get_option('with_rpc_client_only'),
     'client': get_option('with_rpc_client_only'),
     'rpc': rpc_enabled,
@@ -42,6 +43,8 @@ _rt_atoms = {
     'cache': get_option('with_cache'),
     'ipi': has_ipi and not get_option('with_rpc_client_only'),
     'eam_table': has_eam_table,
+    'orca': has_orca,
+    'eigen': has_eigen,
     'xtensor': has_xtensor,
     'python': find_program('python3', required: false).found(),
     'water': has_water,
@@ -50,10 +53,35 @@ _rt_atoms = {
     'dftd4': has_dftd4,
     'long_range': has_long_range,
     'metatomic': has_metatomic,
+    'uma': has_uma,
     'rust_core': get_option('with_rust_core'),
+    'mdi': mdi_enabled,
+    'pymdi': has_pymdi,
 }
+# Flipped only in the block that registers rgpot_so_exports. The registry
+# feature of the same name is this value, so a static fast-list object,
+# which does not register the pin, does not have to list it.
+rgpot_registers_so_exports = false
 _rt_tests = []
 _rt_kw = {}
+_tsan_supp = meson.project_source_root() / 'CppCore' / 'tests' / 'tsan.supp'
+_sanitize = get_option('b_sanitize')
+_timeout_scale = 1
+if 'thread' in _sanitize
+    _timeout_scale = 8
+elif _sanitize != 'none'
+    _timeout_scale = 3
+endif
+_tsan_options = run_command(
+    'sh',
+    '-c',
+    'printf %s "$TSAN_OPTIONS"',
+    check: false,
+).stdout()
+if _tsan_options != ''
+    _tsan_options += ':'
+endif
+_tsan_options += 'suppressions=' + _tsan_supp
 foreach _line : _fs.read('tests/registry.txt').split('\n')
     _line = _line.strip()
     if _line == '' or _line.startswith('#') or _line.startswith('@')
@@ -68,12 +96,14 @@ foreach _line : _fs.read('tests/registry.txt').split('\n')
     _workdir = _kind == 'unit' ? '.' : ''
     _env = {}
     _kw = {}
+    _has_timeout = false
     _first = true
     foreach _word : _words
         if _first
             _first = false
         elif _word.startswith('timeout=')
-            _kw += {'timeout': _word.substring(8).to_int()}
+            _has_timeout = true
+            _kw += {'timeout': _word.substring(8).to_int() * _timeout_scale}
         elif _word.startswith('suite=')
             _kw += {'suite': _word.substring(6)}
         elif _word.startswith('workdir=')
@@ -83,6 +113,10 @@ foreach _line : _fs.read('tests/registry.txt').split('\n')
             _env += {_pair[0]: _pair[1]}
         elif _word == 'serial'
             _kw += {'is_parallel': false}
+        elif _word == 'coverage_serial'
+            # Ordinary builds stay parallel. Instrumentation is what makes
+            # these registrations saturate one another's cores.
+            _kw += {'is_parallel': not get_option('b_coverage')}
         elif _word == 'should_fail'
             _kw += {'should_fail': true}
         elif _word == 'fp_contract=off'
@@ -95,6 +129,12 @@ foreach _line : _fs.read('tests/registry.txt').split('\n')
         _kw += {'workdir': meson.project_source_root()}
     elif _workdir != ''
         _kw += {'workdir': meson.project_source_root() / _workdir}
+    endif
+    if _has_timeout and _timeout_scale != 1
+        _env += {'RGPOT_TEST_TIMEOUT_SCALE': _timeout_scale.to_string()}
+    endif
+    if 'thread' in _sanitize and _kind != 'custom'
+        _env += {'TSAN_OPTIONS': _tsan_options}
     endif
     if _env.keys().length() > 0
         _kw += {'env': _env}
@@ -124,15 +164,23 @@ if get_option('with_cache') and not get_option('with_rpc_client_only')
     _rgpot_srcs += files('rgpot/PotentialCache.cc')
 endif
 
+# RGPOT_API (rgpot/rgpot_api.h) exports the C ABI from code built with
+# RGPOT_BUILDING: the library archives and the tests that link them.
+# A consumer gets these arguments without it, and imports from the DLL.
+rgpot_api_args = []
+if get_option('default_library') == 'static'
+    rgpot_api_args += ['-DRGPOT_STATIC']
+endif
+rgpot_consumer_args = _args + rgpot_api_args
+_args += ['-DRGPOT_BUILDING']
+
 # ELF soversion of librgpot. The single assignment is kCxxSoversion in
 # rgpot/abi/CxxLayout.hpp, next to the C++ layout stamp. A layout edit
 # that bumps the constant moves every build system's SONAME with it.
 _cxx_layout_hpp = _fs.read('rgpot/abi/CxxLayout.hpp')
 _cxx_so_parts = _cxx_layout_hpp.split('kCxxSoversion = ')
 if _cxx_so_parts.length() != 2
-    error(
-        'CxxLayout.hpp must contain exactly one "kCxxSoversion = " assignment',
-    )
+    error('CxxLayout.hpp must contain exactly one "kCxxSoversion = " assignment')
 endif
 rgpot_cxx_soversion = _cxx_so_parts[1].split(';')[0].strip()
 
@@ -170,11 +218,10 @@ if _mpi_dep.found()
 endif
 _rgpot_srcs += files('rgpot/PotHelpers.cc')
 _rgpot_srcs += files('rgpot/units.cc')
+_rgpot_srcs += files('rgpot/SumPot/SumPot.cc')
+_rgpot_srcs += files('rgpot/D2Pot/D2CpmdPot.cc', 'rgpot/D2Pot/D2Pot.cc')
 _rgpot_srcs += files('rgpot/abi/CxxLayout.cc')
-_rgpot_srcs += files(
-    'rgpot/simd/dispatch.cc',
-    'rgpot/simd/scalar_kernels.cc',
-)
+_rgpot_srcs += files('rgpot/simd/dispatch.cc', 'rgpot/simd/scalar_kernels.cc')
 if have_highway
     _rgpot_srcs += files('rgpot/simd/hwy_kernels.cc')
 endif
@@ -188,6 +235,7 @@ endif
 _fp_contract_off = cppc.get_supported_arguments(
     ['-ffp-contract=off', '/fp:precise'],
 )
+_c99_args = cc.get_supported_arguments(['-std=gnu99'])
 # Lets GCC if-convert the exp clamps and use sqrtpd: neither flag changes a
 # computed value (no errno from sqrt, no FP traps assumed), and the vector
 # loops then run the scalar body's operations lane by lane. GCC's -O2 cost
@@ -227,14 +275,132 @@ rgpot_minimage = static_library(
     pic: true,
     install: false,
 )
-# threadsRequested lives in Slices.cc. The regions are templates in
-# Slices.hpp, but the thread count is read here, so this archive has to be
-# built with OpenMP or every potential stays on one thread.
-_halfshell_omp = dependency('openmp', language: 'cpp', required: false)
+# threadsRequested, teamsOpened, teamSize, teamFor and countTeam live in
+# Slices.cc. Keeping the object inside rgpot_halfshell satisfies
+# --no-undefined links that take halfshell without rgpot_core, while
+# rgpot_core links rgpot_halfshell instead of compiling a second copy.
+#
+# Every OpenMP target takes rgpot_openmp_deps. A static library hands the
+# link arguments of its dependencies to whatever links it, so a static
+# librgpot would put -fopenmp on every consumer's link line. Outside a
+# shared build the targets therefore compile with the OpenMP flag and link
+# the runtime library by name, which is what the compiler driver adds to a
+# link that carries the flag.
+#
+# The runtime is the one the driver selects, not one picked from a list: Clang
+# links libomp, or libgomp under -fopenmp=libgomp, and objects compiled for
+# one do not link against the other. The driver's own link line names the
+# library (-lomp, -lgomp, -liomp5) and the directories it searches for it, so
+# the library comes from there and has to define that runtime's entry point.
+# When it cannot be found and checked, the targets keep the OpenMP flag, and
+# configure says so.
+#
+# use_openmp=false never looks for OpenMP: rgpot_openmp is a dependency that
+# was not found, so every target above and below compiles without the
+# OpenMP flag, the _OPENMP regions of Slices.hpp run serially, and neither
+# librgpot nor a consumer of rgpot_dep gets the flag or the runtime.
+if get_option('use_openmp')
+    rgpot_openmp = dependency('openmp', language: 'cpp', required: false)
+else
+    rgpot_openmp = dependency('', required: false)
+endif
+rgpot_openmp_deps = []
+rgpot_openmp_runtime_deps = []
+if rgpot_openmp.found()
+    rgpot_openmp_deps = [rgpot_openmp]
+    if get_option('default_library') != 'shared' and cppc.get_argument_syntax() != 'msvc'
+        _omp_tokens = []
+        _omp_flag = cppc.first_supported_argument(
+            ['-fopenmp', '-qopenmp', '-openmp'],
+        )
+        if _omp_flag.length() > 0
+            _omp_probe = run_command(
+                cppc.cmd_array(),
+                _omp_flag,
+                '-###',
+                '-x',
+                'c++',
+                files('rgpot/Slices.cc'),
+                '-o',
+                'rgpot_openmp_probe',
+                check: false,
+            )
+            if _omp_probe.returncode() == 0
+                _omp_tokens = (
+                    _omp_probe.stdout() + ' ' + _omp_probe.stderr()
+                ).split()
+            endif
+        endif
+        _omp_entry_points = {
+            'omp': '__kmpc_fork_call',
+            'iomp5': '__kmpc_fork_call',
+            'gomp': 'GOMP_parallel',
+        }
+        _omp_name = ''
+        _omp_dirs = []
+        foreach _tok : _omp_tokens
+            _arg = _tok.strip('"\'')
+            if _arg.startswith('-L') and _arg != '-L'
+                _omp_dirs += [_arg.substring(2)]
+            elif _arg.startswith('-l') and _omp_name == ''
+                if _omp_entry_points.has_key(_arg.substring(2))
+                    _omp_name = _arg.substring(2)
+                endif
+            endif
+        endforeach
+        _omp_lib = []
+        if _omp_name != ''
+            _omp_found = cppc.find_library(
+                _omp_name,
+                dirs: _omp_dirs,
+                required: false,
+            )
+            _omp_entry = _omp_entry_points[_omp_name]
+            if _omp_found.found() and cppc.links(
+                'extern "C" int @0@(void); int main() { void *volatile p = (void *)&@0@; return p == 0; }'.format(
+                    _omp_entry,
+                ),
+                dependencies: _omp_found,
+                name: 'OpenMP runtime lib@0@ defines @1@'.format(
+                    _omp_name,
+                    _omp_entry,
+                ),
+            )
+                _omp_lib = [_omp_found]
+            endif
+        endif
+        if _omp_lib.length() > 0
+            rgpot_openmp_runtime_deps = _omp_lib
+            rgpot_openmp_deps = [
+                rgpot_openmp.partial_dependency(
+                    compile_args: true,
+                    includes: true,
+                ),
+            ] + _omp_lib
+        else
+            rgpot_openmp_runtime_deps = [
+                rgpot_openmp.partial_dependency(link_args: true),
+            ]
+            message(
+                'OpenMP runtime of @0@ not found or not usable: a static librgpot links consumers with the OpenMP flag'.format(
+                    cppc.get_id(),
+                ),
+            )
+        endif
+    endif
+endif
+rgpot_slices = static_library(
+    'rgpot_slices',
+    files('rgpot/Slices.cc'),
+    include_directories: _incdirs,
+    cpp_args: _args + _fp_contract_off,
+    dependencies: rgpot_openmp_deps,
+    pic: true,
+    install: false,
+)
 rgpot_halfshell = static_library(
     'rgpot_halfshell',
     files(
-        'rgpot/Slices.cc',
         'rgpot/nlist/HalfShell.cc',
         'rgpot/nlist/HalfShellWalk.cc',
         'rgpot/nlist/NeighbourList.cc',
@@ -242,7 +408,9 @@ rgpot_halfshell = static_library(
     ),
     include_directories: _incdirs,
     cpp_args: _args,
-    dependencies: _halfshell_omp.found() ? [_halfshell_omp] : [],
+    dependencies: rgpot_openmp_deps,
+    link_whole: [rgpot_slices],
+    link_with: [rgpot_minimage, rgpot_exact_fma],
     pic: true,
     install: false,
 )
@@ -251,16 +419,13 @@ rgpot_halfshell = static_library(
 # them in when RPC is on (server or client-only); lean -Dwith_rpc=false builds
 # (xtb/tblite/metatomic CI) must not require pkg-config 'capnp-rpc'.
 _rpc_stack = rpc_enabled or get_option('with_rpc_client_only')
-# Inputs of the effective schema (the vendored copy plus the rgpot-local
-# series in rgpot/rpc/local/series); every target that applies it depends
-# on them.
-rgpot_schema_inputs = files('rgpot/rpc/local/series')
-foreach _line : _fs.read('rgpot/rpc/local/series').split('\n')
-    _line = _line.strip()
-    if _line != '' and not _line.startswith('#')
-        rgpot_schema_inputs += files('rgpot/rpc/local' / _line)
-    endif
-endforeach
+# The vendored schema: rgconf's potential.capnp and the common.capnp it
+# imports, compiled, installed and served as they are (see rgpot/rpc/schema.pin).
+rgpot_schema_files = files(
+    'rgpot/rpc/Potentials.capnp',
+    'rgpot/rpc/common.capnp',
+)
+rgpot_schema = rgpot_schema_files[0]
 _metatomic_build_rpath = ''
 if _rpc_stack
     subdir('rgpot/rpc')
@@ -280,10 +445,8 @@ if not get_option('with_rpc_client_only')
     # Product-sums in the simd sources are explicit. Contraction stays off
     # in this archive so a multiply that is not written as mul_add is not fused.
     _deps += dependency('threads')
-    _nlist_openmp = dependency('openmp', language: 'cpp', required: false)
-    if _nlist_openmp.found()
-        _deps += _nlist_openmp
-    endif
+    _deps_sans_openmp = _deps
+    _deps += rgpot_openmp_deps
     _rgpot_srcs += files(
         'rgpot/plugin/PluginBridge.cc',
         'rgpot/plugin/PluginRegistry.cc',
@@ -304,6 +467,7 @@ if not get_option('with_rpc_client_only')
         cpp_args: _core_args,
         include_directories: _incdirs,
         link_whole: [rgpot_minimage, rgpot_exact_fma],
+        link_with: [rgpot_halfshell],
         pic: true,
         install: false,
     )
@@ -320,6 +484,14 @@ if not get_option('with_rpc_client_only')
     subdir('rgpot/Morse')  # 'morse'
     rgpotentials += [morse]
 
+    subdir('rgpot/Models')
+    rgpotentials += [model_pots]
+
+    if has_cbe
+        subdir('rgpot/CBEPot')
+        rgpotentials += [cbe_pot]
+    endif
+
     subdir('rgpot/Gupta')  # 'gupta'
     rgpotentials += [gupta]
 
@@ -328,6 +500,14 @@ if not get_option('with_rpc_client_only')
 
     subdir('rgpot/Tersoff')  # 'tersoff_sic': 1989 Tersoff Si-C
     rgpotentials += [tersoff_sic]
+
+    subdir('rgpot/MEAM')  # 'meam': Baskes MEAM and Lee-Baskes 2NN MEAM
+    rgpotentials += [meam]
+
+    if has_orca
+        subdir('rgpot/ORCAPot')  # 'orca_pot': child-process ORCA frontend
+        rgpotentials += [orca_pot]
+    endif
 
     subdir('rgpot/EMT')  # 'asap_emt'
     rgpotentials += [asap_emt]
@@ -365,6 +545,10 @@ if not get_option('with_rpc_client_only')
     # Pure dlopen consumer of split mopacc (no Cap'n Proto, no OpenMOPAC embed).
     subdir('rgpot/MOPACPot')  # 'mopacpot'
     rgpotentials += [mopacpot]
+
+    # Pure dlopen consumer of the split orcac shim (liborcac).
+    subdir('rgpot/ORCACPot')  # 'orcacpot'
+    rgpotentials += [orcacpot]
 
     subdir('rgpot/ExternalPot')  # lammps / gromacs / openmm constructors
     rgpotentials += [external_pot]
@@ -439,6 +623,8 @@ if not get_option('with_rpc_client_only')
     # engine plugin (has_metatomic); it is dlopen'd, not linked.
     if has_metatomic and not get_option('with_python')
         rgpotentials += [metatomicpot]
+    endif
+    if has_uma and not get_option('with_python')
         subdir('rgpot/UmaPot')
         rgpotentials += [uma]
     endif
@@ -455,6 +641,22 @@ if not get_option('with_rpc_client_only')
         endif
     endif
 
+    # makePotential: one entry point from a PotentialConfig to a potential.
+    # It reads the generated schema, so it ships with the RPC stack, and
+    # builds the engine-library arms through EnginePot.
+    if _rpc_stack
+        potential_factory = static_library(
+            'potential_factory',
+            files('rgpot/EnginePot/EnginePot.cc', 'rgpot/PotentialFactory.cc'),
+            dependencies: _deps + [ptlrpc_hdr_dep, external_pot_dl],
+            cpp_args: _args,
+            include_directories: _incdirs,
+            pic: true,
+            install: false,
+        )
+        rgpotentials += [potential_factory]
+    endif
+
     _linkto += rgpotentials
 
     # Create the umbrella library: every pot and the core ship inside one
@@ -463,9 +665,6 @@ if not get_option('with_rpc_client_only')
     # vesin objects and the Fortran runtime enter here, once, rather than
     # through the convenience archives (see the vesin_hdr_dep note).
     rgpot_deps = _deps_sans_core + [vesin_dep, fastnlist_dep] + fortran_rt_deps
-    if eam_openmp.found()
-        rgpot_deps += eam_openmp
-    endif
     _rpc_whole = []
     if _rpc_stack
         # link_whole, not link_with: the RPC entry points are called by
@@ -473,9 +672,22 @@ if not get_option('with_rpc_client_only')
         rgpot_deps += [ptlrpc_hdr_dep]
         _rpc_whole += [ptlrpc]
     endif
-    _rgpot_link_args = []
+    _rgpot_link_args = fastnlist_export_args
     if has_fortran
         _rgpot_link_args += _fortran_hide_args
+    endif
+    if has_fast_nlist and not _fast_as_object and host_system != 'windows'
+        if host_system == 'darwin'
+            _rgpot_link_args += [
+                '-Wl,-force_load,' + _fastnlist_tgt[0].full_path(),
+            ]
+        else
+            _rgpot_link_args += [
+                '-Wl,--whole-archive',
+                _fastnlist_tgt[0].full_path(),
+                '-Wl,--no-whole-archive',
+            ]
+        endif
     endif
     _rgpot_srcs = []
     _rgpot_cpp_args = _args
@@ -498,14 +710,79 @@ if not get_option('with_rpc_client_only')
         version: meson.project_version(),
         soversion: rgpot_cxx_soversion,
         install: not meson.is_subproject(),
+        kwargs: fastnlist_umbrella_kwargs,
     )
+
+    # 74 rgpot_* exports when the rust archive is linked normally, 128 when
+    # the bundle is whole-archived. The extra 54 are the public C ABI.
+    # Two of the umbrella exports are the Muller-Brown entry points and 22 are
+    # the MD session entry points.
+    if get_option('with_rust_core') and host_machine.system() == 'linux'
+        _so_export_whole = false
+        if has_fast_nlist
+            _so_export_whole = not _fast_as_object
+        endif
+        if _so_export_whole or not has_fast_nlist
+            if _so_export_whole
+                _so_export_archive = _fastnlist_tgt[0].full_path()
+            else
+                _so_export_archive = rgpot_rust_target[0].full_path()
+            endif
+            # scripts/ lives at the repository root. This file is in
+            # CppCore, so a bare scripts/ path would miss both files.
+            _so_export_args = [
+                meson.project_source_root() / 'scripts' / 'check_rgpot_exports.py',
+                rgpot.full_path(),
+                _so_export_archive,
+                meson.project_source_root() / 'scripts' / 'abi_core_baseline.txt',
+            ]
+            if _so_export_whole
+                # The flag ends the positional baseline list, so the fast
+                # baseline has to come before it.
+                _so_export_args += [
+                    meson.project_source_root() / 'scripts' / 'abi_baseline_fast.txt',
+                ]
+                _so_export_args += ['--whole-archive']
+            endif
+            rgpot_registers_so_exports = true
+            test(
+                'rgpot_so_exports',
+                find_program('python3'),
+                args: _so_export_args,
+                depends: [rgpot, rgpot_rust_target],
+                timeout: 30,
+            )
+        endif
+    endif
+
+    if has_fortran
+        # Plugin anneal dlopens this as RGPOT_CUH2_LIBRARY. Link the shared
+        # umbrella instead of embedding the neighbour implementation again,
+        # so every process uses one Neighbours generation counter.
+        rgpot_cuh2 = library(
+            'rgpot_cuh2',
+            rgpot_cuh2_sources,
+            link_with: rgpot,
+            # C++ is the link language so Meson does not add the Fortran
+            # runtime. fortran_rt_deps is the same search the umbrella uses
+            # for _gfortran_* and the flang equivalents.
+            link_language: 'cpp',
+            dependencies: _fortran_nlist_omp_link + fortran_rt_deps,
+            fortran_args: _cuh2_plugin_args,
+            install: not meson.is_subproject(),
+            gnu_symbol_visibility: 'default',
+        )
+    endif
 
     # Generic rgpot_engine_* plugins (engine_c_abi.h) for the backends that
     # have no tensor runtime: one shared table over PotentialBase
     # (rgpot/engine/EngineTable.cc) and a small backend file each. The UMA,
     # Metatomic and XTB engines add the same table to their own libraries.
     if _rpc_stack and host_system != 'windows'
-        _engine_common = files('rgpot/engine/EngineTable.cc')
+        _engine_common = [
+            engine_abi_stamp_source,
+            files('rgpot/engine/EngineTable.cc'),
+        ]
         _engine_args = _args + [
             '-DRGPOT_ENGINE_BUILD',
             '-DRGPOT_ENGINE_PROJECT_VERSION="@0@"'.format(
@@ -520,7 +797,10 @@ if not get_option('with_rpc_client_only')
             capnp_rpc_dep,
             ptlrpc_dep,
         ] + fortran_rt_deps
-        _classical_whole = [lennard_jones, morse, zbl]
+        _classical_whole = [lennard_jones, morse, zbl, model_pots]
+        if has_cbe
+            _classical_whole += [cbe_pot]
+        endif
         if has_water
             _classical_whole += [water_pots]
         endif
@@ -531,8 +811,23 @@ if not get_option('with_rpc_client_only')
             'classical_engine',
             [_engine_common, files('rgpot/engine/ClassicalEngine.cc')],
             dependencies: _engine_deps,
-            link_with: [rgpot_core],
+            link_with: [rgpot],
             link_whole: _classical_whole,
+            cpp_args: _engine_args,
+            include_directories: _incdirs,
+            gnu_symbol_visibility: 'default',
+            install: not meson.is_subproject(),
+        )
+        _composite_whole = [lennard_jones, morse, zbl, cpmdpot]
+        if has_dftd4
+            _composite_whole += [d4pot]
+        endif
+        composite_engine = shared_library(
+            'composite_engine',
+            [_engine_common, files('rgpot/engine/CompositeEngine.cc')],
+            dependencies: _engine_deps + [cpmd_dl_dep],
+            link_with: [rgpot],
+            link_whole: _composite_whole,
             cpp_args: _engine_args,
             include_directories: _incdirs,
             gnu_symbol_visibility: 'default',
@@ -542,7 +837,7 @@ if not get_option('with_rpc_client_only')
             'mopac_engine',
             [_engine_common, files('rgpot/engine/MopacEngine.cc')],
             dependencies: _engine_deps + [mopac_dl_dep],
-            link_with: [rgpot_core],
+            link_with: [rgpot],
             link_whole: [mopacpot],
             cpp_args: _engine_args,
             include_directories: _incdirs,
@@ -553,8 +848,31 @@ if not get_option('with_rpc_client_only')
             'nwchem_engine',
             [_engine_common, files('rgpot/engine/NWChemEngine.cc')],
             dependencies: _engine_deps + [nwchem_dl_dep],
-            link_with: [rgpot_core],
+            link_with: [rgpot],
             link_whole: [nwchempot],
+            cpp_args: _engine_args,
+            include_directories: _incdirs,
+            gnu_symbol_visibility: 'default',
+            install: not meson.is_subproject(),
+            # NWChem keeps MPI and Fortran runtime state; a dlclose of the engine
+            # must not unmap it.
+            link_args: meson.get_compiler('cpp').get_supported_link_arguments(
+                ['-Wl,-z,nodelete'],
+            ),
+        )
+        _cpmd_dl = dependency('dl', required: false)
+        if not _cpmd_dl.found()
+            _cpmd_dl = meson.get_compiler('cpp').find_library(
+                'dl',
+                required: false,
+            )
+        endif
+        cpmd_engine = shared_library(
+            'cpmd_engine',
+            [_engine_common, files('rgpot/engine/CpmdEngine.cc')],
+            dependencies: _engine_deps + [_cpmd_dl],
+            link_with: [rgpot_core],
+            link_whole: [cpmdpot],
             cpp_args: _engine_args,
             include_directories: _incdirs,
             gnu_symbol_visibility: 'default',
@@ -565,12 +883,17 @@ if not get_option('with_rpc_client_only')
                 'skala_engine',
                 [_engine_common, files('rgpot/engine/SkalaEngine.cc')],
                 dependencies: _engine_deps + [nwchem_dl_dep],
-                link_with: [rgpot_core],
+                link_with: [rgpot],
                 link_whole: [nwchempot, skala],
                 cpp_args: _engine_args,
                 include_directories: _incdirs,
                 gnu_symbol_visibility: 'default',
                 install: not meson.is_subproject(),
+                # NWChem keeps MPI and Fortran runtime state; a dlclose of the
+                # engine must not unmap it.
+                link_args: meson.get_compiler('cpp').get_supported_link_arguments(
+                    ['-Wl,-z,nodelete'],
+                ),
             )
         endif
     endif
@@ -581,18 +904,38 @@ if not get_option('with_rpc_client_only')
     # The static umbrella already contains the relocatable fast-list
     # object. Repeating that object through rgpot_dep defines it twice.
     # Shared builds keep the archive on the consumer link line.
-    _rgpot_consumer_deps = _deps_sans_core + [
-        vesin_dep,
-        fastnlist_native_dep,
-    ] + fortran_rt_deps
+    _rgpot_consumer_deps = _deps_sans_core + [vesin_dep, fastnlist_native_dep] + fortran_rt_deps
     if _rpc_stack
         _rgpot_consumer_deps += [ptlrpc_hdr_dep]
     endif
+    # rgpot_dep hands the OpenMP dependency on, so its consumer compiles
+    # and links with the OpenMP flag. rgpot_dep_no_openmp does not. librgpot
+    # keeps its teams: they open in its own objects, and the templates in
+    # Slices.hpp run serially in a translation unit without _OPENMP. A
+    # shared librgpot records the runtime as NEEDED. A static one carries
+    # the runtime by name in rgpot_openmp_deps.
+    _rgpot_openmp_consumer = rgpot_openmp.found() ? [rgpot_openmp] : []
     rgpot_dep = declare_dependency(
         link_with: rgpot,
-        dependencies: _rgpot_consumer_deps,
+        dependencies: _rgpot_consumer_deps + _rgpot_openmp_consumer,
         include_directories: _incdirs,
-        compile_args: _args,
+        compile_args: rgpot_consumer_args,
+    )
+    # The same list built from the dependencies taken before OpenMP joined
+    # _deps, so nothing has to be told apart by name afterwards. A static
+    # librgpot still needs the runtime library on the consumer's link line.
+    _rgpot_consumer_deps_no_openmp = _deps_sans_openmp + [
+        vesin_dep,
+        fastnlist_native_dep,
+    ] + fortran_rt_deps + rgpot_openmp_runtime_deps
+    if _rpc_stack
+        _rgpot_consumer_deps_no_openmp += [ptlrpc_hdr_dep]
+    endif
+    rgpot_dep_no_openmp = declare_dependency(
+        link_with: rgpot,
+        dependencies: _rgpot_consumer_deps_no_openmp,
+        include_directories: _incdirs,
+        compile_args: rgpot_consumer_args,
     )
 
     # The Fortran kernels must stay invisible outside librgpot: an
@@ -604,6 +947,13 @@ if not get_option('with_rpc_client_only')
             find_program('../scripts/audit_fortran_symbols.sh'),
             args: [rgpot.full_path()],
             depends: [rgpot],
+        )
+        # A procedure-local static is shared by every thread, so two
+        # instances failing at once would share it.
+        test(
+            'FortranStaticAudit',
+            find_program('../scripts/audit_fortran_statics.sh'),
+            args: [fortran_kernels, rgpot_sw_lib, rgpot_sw_capi_lib],
         )
     endif
     # librgpot must not pull libmpi into a host: the MPI side is dlopen'd.
@@ -694,9 +1044,7 @@ endif
 if get_option('with_examples') and not get_option('with_rpc_client_only')
     example_array = []
     if has_fortran
-        example_array += [
-            ['CallCuH2Pot', 'cuh2_call', 'call_cuh2.cc', ''],
-        ]
+        example_array += [['CallCuH2Pot', 'cuh2_call', 'call_cuh2.cc', '']]
     endif
     if has_eigen
         example_array += [
@@ -730,7 +1078,7 @@ if get_option('with_examples') and not get_option('with_rpc_client_only')
     executable(
         'time_pair_scaling',
         sources: ['examples/time_pair_scaling.cc'],
-        dependencies: _deps + [vesin_dep] + fortran_rt_deps,
+        dependencies: _deps + [vesin_dep, fastnlist_dep] + fortran_rt_deps,
         link_with: _linkto,
         cpp_args: _args,
     )
@@ -786,7 +1134,7 @@ if get_option('with_examples') and not get_option('with_rpc_client_only')
                 cpp_args: _args,
                 build_rpath: _metatomic_build_rpath,
             ),
-            workdir: meson.source_root() + example.get(3),
+            kwargs: _rt_kw[example.get(0)],
         )
     endforeach
 endif
@@ -847,6 +1195,19 @@ if get_option('with_tests')
     )
     test_args = _args
     test_args += ['-DRGPOTTEST']
+    # Committed CBE bit goldens are the doubles of x86-64 glibc libm.
+    # Other hosts keep the tolerance checks and skip the bit comparison.
+    if host_machine.system() == 'linux' and host_machine.cpu_family() == 'x86_64'
+        if cc.has_header('features.h')
+            _cbe_glibc = cc.get_define(
+                '__GLIBC__',
+                prefix: '#include <features.h>',
+            )
+            if _cbe_glibc != ''
+                test_args += ['-DRGPOT_CBE_BIT_EXACT_HOST']
+            endif
+        endif
+    endif
     if _mpi_dep.found()
         # Tests expect librgpot_mpi next to them (it builds in this
         # directory), whether or not they link MPI themselves.
@@ -1412,10 +1773,7 @@ if get_option('with_tests')
             install: false,
         )
         cpmdc_fake_env = environment()
-        cpmdc_fake_env.set(
-            'RGPOT_CPMD_ENGINE',
-            cpmdc_fake_engine.full_path(),
-        )
+        cpmdc_fake_env.set('RGPOT_CPMD_ENGINE', cpmdc_fake_engine.full_path())
         cpmdc_gradient_engine = shared_library(
             'cpmdc_gradient_engine',
             sources: ['tests/cpmdc_gradient_engine.cc'],
@@ -1444,6 +1802,22 @@ if get_option('with_tests')
             env: cpmdc_gradient_env,
             depends: cpmdc_gradient_engine,
             kwargs: _rt_kw['CPMDPotGradientStressTest'],
+        )
+        test(
+            'CompositeCpmdDispersionTest',
+            executable(
+                'composite_cpmd_dispersion_test',
+                sources: ['tests/CompositeCpmdDispersionTest.cc'],
+                dependencies: test_deps + [ptlrpc_dep],
+                include_directories: _incdirs + ['.'],
+                cpp_args: test_args,
+                link_with: _linkto,
+                link_language: 'cpp',
+                build_rpath: _metatomic_build_rpath,
+            ),
+            env: cpmdc_gradient_env,
+            depends: cpmdc_gradient_engine,
+            kwargs: _rt_kw['CompositeCpmdDispersionTest'],
         )
         test(
             'CPMDPotMessageAbiTest',
@@ -1820,6 +2194,76 @@ if get_option('with_tests')
             depends: cpmdc_fake_engine,
             kwargs: _rt_kw['ProfileLoaderTest'],
         )
+        lammpc_fake_variants = {
+            'lammpc_fake_engine': [],
+            'lammpc_fake_engine_nostress': ['-DLAMMPC_FAKE_NO_STRESS'],
+            'lammpc_fake_engine_abi2': ['-DLAMMPC_FAKE_BRIDGE_ABI_MAJOR=2'],
+        }
+        lammpc_fake_libs = {}
+        lammpc_fake_targets = []
+        foreach _name, _defs : lammpc_fake_variants
+            lammpc_fake_libs += {
+                _name: shared_library(
+                    _name,
+                    sources: ['tests/lammpc_fake_engine.cc'],
+                    cpp_args: _build_identity_args + _defs,
+                    dependencies: [ptlrpc_dep],
+                    include_directories: _incdirs + ['.'],
+                    install: false,
+                ),
+            }
+            lammpc_fake_targets += lammpc_fake_libs[_name]
+        endforeach
+        lammps_legacy_engines = {}
+        foreach _name : ['lammps_legacy_engine_a', 'lammps_legacy_engine_b']
+            lammps_legacy_engines += {
+                _name: shared_library(
+                    _name,
+                    sources: ['tests/external_refcount_engine.c'],
+                    include_directories: _incdirs,
+                    c_args: ['-DRGPOT_ENGINE_BUILD'],
+                    install: false,
+                ),
+            }
+            lammpc_fake_targets += lammps_legacy_engines[_name]
+        endforeach
+        lammpc_fake_env = environment()
+        lammpc_fake_env.set(
+            'RGPOT_LAMMPS_LEGACY_ENGINE_A',
+            lammps_legacy_engines['lammps_legacy_engine_a'].full_path(),
+        )
+        lammpc_fake_env.set(
+            'RGPOT_LAMMPS_LEGACY_ENGINE_B',
+            lammps_legacy_engines['lammps_legacy_engine_b'].full_path(),
+        )
+        lammpc_fake_env.set(
+            'RGPOT_LAMMPC_ENGINE',
+            lammpc_fake_libs['lammpc_fake_engine'].full_path(),
+        )
+        lammpc_fake_env.set(
+            'RGPOT_LAMMPC_NOSTRESS_ENGINE',
+            lammpc_fake_libs['lammpc_fake_engine_nostress'].full_path(),
+        )
+        lammpc_fake_env.set(
+            'RGPOT_LAMMPC_ABI2_ENGINE',
+            lammpc_fake_libs['lammpc_fake_engine_abi2'].full_path(),
+        )
+        test(
+            'LammpcPotTest',
+            executable(
+                'lammpc_pot_test',
+                sources: ['tests/LammpcPotTest.cc'],
+                dependencies: test_deps + [ptlrpc_dep],
+                include_directories: _incdirs + ['.'],
+                cpp_args: test_args,
+                link_with: _linkto,
+                link_language: 'cpp',
+                build_rpath: _metatomic_build_rpath,
+            ),
+            env: lammpc_fake_env,
+            depends: lammpc_fake_targets,
+            kwargs: _rt_kw['LammpcPotTest'],
+        )
         test(
             'test_cpmd_abi',
             executable(
@@ -1894,6 +2338,85 @@ if get_option('with_tests')
             depends: mopacc_fake_engine,
             kwargs: _rt_kw['MOPACPotEmptyVariable'],
         )
+        mopacc_upstream_stub = shared_library(
+            'mopacc_upstream_stub',
+            sources: ['tests/mopacc_upstream_stub.c'],
+            install: false,
+        )
+        mopacc_upstream_env = environment(
+            {'RGPOT_MOPACC_ENGINE': mopacc_upstream_stub.full_path()},
+        )
+        mopac_upstream_abi_test = executable(
+            'mopac_upstream_abi_test',
+            sources: ['tests/MOPACUpstreamAbiTest.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+        )
+        test(
+            'MOPACUpstreamAbiTest',
+            mopac_upstream_abi_test,
+            env: mopacc_upstream_env,
+            depends: mopacc_upstream_stub,
+            kwargs: _rt_kw['MOPACUpstreamAbiTest'],
+        )
+        mopacc_gate_env = environment()
+        mopacc_gate_libs = []
+        # name, c abi, lib abi, new layout, result size, params size,
+        # set_params status; see tests/mopacc_abi_gate_engine.c.
+        foreach gate : [
+            ['ABI1', '1', '1', '0', '0', '0', '0'],
+            ['NO_C_ABI', '0', '2', '1', '1', '1', '0'],
+            ['C_ABI1', '1', '2', '1', '1', '1', '0'],
+            ['ABI3', '3', '3', '1', '1', '1', '0'],
+            ['ABI2_NO_LIB_ABI', '2', '0', '1', '1', '1', '0'],
+            ['ABI2_LIB_ABI1', '2', '1', '1', '1', '1', '0'],
+            ['ABI2_LIB_ABI3', '2', '3', '1', '1', '1', '0'],
+            ['ABI2_OLD_LAYOUT', '2', '2', '0', '1', '1', '0'],
+            ['ABI2_NO_RESULT_SIZE', '2', '2', '1', '0', '1', '0'],
+            ['ABI2_BAD_RESULT_SIZE', '2', '2', '1', '2', '1', '0'],
+            ['ABI2_NO_PARAMS_SIZE', '2', '2', '1', '1', '0', '0'],
+            ['ABI2_BAD_PARAMS_SIZE', '2', '2', '1', '1', '2', '0'],
+            ['ABI2_SET_PARAMS_FAILS', '2', '2', '1', '1', '1', '7'],
+            ['ABI2_OK', '2', '2', '1', '1', '1', '0'],
+        ]
+            gate_lib = shared_library(
+                'mopacc_gate_' + gate[0].to_lower(),
+                sources: ['tests/mopacc_abi_gate_engine.c'],
+                c_args: [
+                    '-DGATE_C_ABI=' + gate[1],
+                    '-DGATE_LIB_ABI=' + gate[2],
+                    '-DGATE_NEW_LAYOUT=' + gate[3],
+                    '-DGATE_RESULT_SIZE=' + gate[4],
+                    '-DGATE_PARAMS_SIZE=' + gate[5],
+                    '-DGATE_SET_PARAMS_STATUS=' + gate[6],
+                ],
+                install: false,
+            )
+            mopacc_gate_libs += gate_lib
+            mopacc_gate_env.set(
+                'RGPOT_MOPACC_GATE_' + gate[0],
+                gate_lib.full_path(),
+            )
+        endforeach
+        mopac_abi_gate_test = executable(
+            'mopac_abi_gate_test',
+            sources: ['tests/MOPACAbiGateTest.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+        )
+        test(
+            'MOPACAbiGateTest',
+            mopac_abi_gate_test,
+            env: mopacc_gate_env,
+            depends: mopacc_gate_libs,
+            kwargs: _rt_kw['MOPACAbiGateTest'],
+        )
         test(
             'test_mopac_abi',
             executable(
@@ -1950,6 +2473,35 @@ if get_option('with_tests')
                 ['-ffp-contract=off', '/fp:precise'],
             )
         endif
+        # The calculator-group symbol check opens librgpot.so when meson
+        # builds one, and otherwise looks the symbols up in the test
+        # binary, which then has to export them.
+        if _rt[0] == 'CalculatorGroupTest'
+            if get_option('default_library') == 'static'
+                _export_dynamic = true
+            else
+                _export_dynamic = false
+                case_args += [
+                    '-DRGPOT_TEST_SHARED_LIBRARY',
+                    '-DRGPOT_TEST_SHARED_LIBRARY_PATH="@0@"'.format(
+                        rgpot.full_path(),
+                    ),
+                ]
+            endif
+        else
+            _export_dynamic = false
+        endif
+        if _rt[0] == 'ModelPotsTest'
+            # This test links the model C API archive directly. On Windows its
+            # declarations must not name DLL import thunks.
+            case_args += ['-DRGPOT_MODEL_BUILD']
+        endif
+        if _rt[0] == 'MdProjectedLangevinTest' and get_option('b_coverage')
+            # Instrumentation stretches the long sampling runs onto the
+            # registry timeout. The test keeps the same checks and takes
+            # fewer steps when this macro is set.
+            case_args += ['-DRGPOT_COVERAGE']
+        endif
         _test_exe = executable(
             _rt[2][0],
             sources: ['tests/' + _rt[2][1]],
@@ -1959,8 +2511,24 @@ if get_option('with_tests')
             link_with: _linkto,
             link_language: 'cpp',
             build_rpath: _metatomic_build_rpath,
+            export_dynamic: _export_dynamic,
         )
-        test(_rt[0], _test_exe, kwargs: _rt_kw[_rt[0]])
+        if _rt[0] == 'CalculatorGroupTest'
+            test(
+                _rt[0],
+                _test_exe,
+                args: _rt[2].slice(2, _rt[2].length()),
+                depends: [rgpot],
+                kwargs: _rt_kw[_rt[0]],
+            )
+        else
+            test(
+                _rt[0],
+                _test_exe,
+                args: _rt[2].slice(2, _rt[2].length()),
+                kwargs: _rt_kw[_rt[0]],
+            )
+        endif
         _rt_exes += {_rt[0]: _test_exe}
         if _rt[0] == 'CalculatorGroupTest'
             calculator_group_test_exe = _test_exe
@@ -1968,10 +2536,18 @@ if get_option('with_tests')
     endforeach
     foreach _rt : _rt_tests
         if _rt[1] == 'rerun'
-            test(_rt[0], _rt_exes[_rt[2][0]], kwargs: _rt_kw[_rt[0]])
+            test(
+                _rt[0],
+                _rt_exes[_rt[2][0]],
+                args: _rt[2].slice(1, _rt[2].length()),
+                kwargs: _rt_kw[_rt[0]],
+            )
         endif
     endforeach
     _nlist_link = [rgpot_halfshell, rgpot_minimage, rgpot_exact_fma]
+    if not get_option('with_rpc_client_only')
+        _nlist_link += [rgpot_core]
+    endif
     foreach _rt : _rt_tests
         if _rt[1] == 'nlist'
             test(
@@ -1989,33 +2565,10 @@ if get_option('with_tests')
             )
         endif
     endforeach
-    _capnp_dep = dependency('capnp', required: false)
-    _capnpc_dep = dependency('capnpc', required: false)
     # socketpair, fork and waitpid. Windows has no POSIX process pair.
-    if _capnp_dep.found() and _capnpc_dep.found() and host_machine.system() != 'windows'
-        # The neighbour structs are rgpot-local: they exist only in the
-        # effective schema, not in the vendored copy.
-        if is_variable('rgpot_effective_schema')
-            _nlist_schema = rgpot_effective_schema
-        else
-            _nlist_schema = custom_target(
-                'nlist_effective_schema',
-                input: 'rgpot/rpc/Potentials.capnp',
-                output: 'Potentials.capnp',
-                command: [
-                    find_program('python3', 'python'),
-                    files('rgpot/rpc/schema_ledger.py'),
-                    'apply',
-                    '--root',
-                    meson.project_source_root(),
-                    '--schema',
-                    '@INPUT@',
-                    '--out',
-                    '@OUTPUT@',
-                ],
-                depend_files: rgpot_schema_inputs,
-            )
-        endif
+    if _rpc_stack and host_machine.system() != 'windows'
+        _capnp_dep = dependency('capnp')
+        _capnpc_dep = dependency('capnpc')
         test(
             'nlist_stream',
             executable(
@@ -2026,8 +2579,8 @@ if get_option('with_tests')
                 dependencies: [_capnp_dep, _capnpc_dep],
                 link_with: _nlist_link,
             ),
-            args: [_nlist_schema.full_path()],
-            depends: _nlist_schema,
+            args: [rgpot_schema.full_path()],
+            kwargs: _rt_kw['nlist_stream'],
         )
         _capnp_tool = find_program('capnp', required: false)
         if _capnp_tool.found()
@@ -2038,22 +2591,51 @@ if get_option('with_tests')
                     meson.current_source_dir() / 'tests' / 'test_nlist_capnp.py',
                     meson.project_source_root(),
                     _capnp_tool.full_path(),
-                    _nlist_schema.full_path(),
+                    rgpot_schema.full_path(),
                 ],
-                depends: _nlist_schema,
+                kwargs: _rt_kw['nlist_capnp_roundtrip'],
             )
         endif
     endif
     _rustc = find_program('rustc', required: false)
     if _rustc.found()
+        _nlist_rust_args = [
+            meson.current_source_dir() / 'examples' / 'nlist_rust_test.sh',
+            meson.project_source_root(),
+            meson.current_build_dir(),
+        ]
+        if _cxx_rt_flag != ''
+            _nlist_rust_args += [_cxx_rt_flag]
+        endif
+        if _sanitize != 'none'
+            _nlist_rust_args += ['-fsanitize=' + _sanitize]
+        endif
+        _nlist_rust_cc = cc.cmd_array()
+        _nlist_rust_cxx = cppc.cmd_array()
+        _nlist_rust_env = {
+            'CC': _nlist_rust_cc[_nlist_rust_cc.length() - 1],
+            'CXX': _nlist_rust_cxx[_nlist_rust_cxx.length() - 1],
+            'RUSTC': _rustc.full_path(),
+        }
+        if 'thread' in _sanitize
+            _nlist_rust_env += {'TSAN_OPTIONS': _tsan_options}
+        endif
+        if rust_target != ''
+            _nlist_rust_env += {
+                'RGPOT_RUST_TARGET': rust_target,
+                'CXX': rust_linker,
+            }
+        endif
+        if exe_wrapper_args.length() > 0
+            _nlist_rust_env += {
+                'RGPOT_EXE_WRAPPER': exe_wrapper_args[0].full_path(),
+            }
+        endif
         test(
             'nlist_rust',
             find_program('sh'),
-            args: [
-                meson.current_source_dir() / 'examples' / 'nlist_rust_test.sh',
-                meson.project_source_root(),
-                meson.current_build_dir(),
-            ],
+            args: _nlist_rust_args,
+            env: _nlist_rust_env,
             depends: _nlist_link,
         )
     endif
@@ -2125,7 +2707,7 @@ if get_option('with_tests')
                 ),
                 args: [
                     'd6f5cbaa04ac49e6f02ee64c10eb83d44d951756556924dcc17966453dcd8b11',
-                ] + _isa_exes,
+                ] + exe_wrapper_args + ['--'] + _isa_exes,
             )
         endif
         test(
@@ -2168,22 +2750,28 @@ if get_option('with_tests')
             'rgpot_layout_fixture',
             sources: ['tests/layout_fixture.cc'],
             include_directories: _incdirs + ['.'],
+            dependencies: has_fmt ? [fmt_dep] : [],
             cpp_args: test_args,
-            dependencies: test_deps,
+            link_with: rgpot,
+            gnu_symbol_visibility: 'hidden',
             install: false,
         )
+        _layout_env = {'RGPOT_LAYOUT_FIXTURE': layout_fixture.full_path()}
+        if get_option('default_library') != 'static'
+            _layout_env += {'RGPOT_SHARED_LIBRARY': '1'}
+        endif
         test(
             'CxxLayoutTest',
             executable(
                 'cxx_layout_test',
                 sources: ['tests/CxxLayoutTest.cc'],
-                dependencies: test_deps,
+                dependencies: [catch2_dep, _dl_dep] + (has_fmt ? [fmt_dep] : []),
                 include_directories: _incdirs + ['.'],
                 cpp_args: test_args,
-                link_with: _linkto,
+                link_with: rgpot,
                 link_language: 'cpp',
             ),
-            env: {'RGPOT_LAYOUT_FIXTURE': layout_fixture.full_path()},
+            env: _layout_env,
             depends: [layout_fixture],
             kwargs: _rt_kw['CxxLayoutTest'],
         )
@@ -2225,7 +2813,11 @@ if get_option('with_tests')
             # no torch.
             engine_stub = shared_library(
                 'engine_stub',
-                ['tests/engine_stub.cc', 'rgpot/engine/EngineTable.cc'],
+                [
+                    'tests/engine_stub.cc',
+                    'rgpot/engine/EngineTable.cc',
+                    engine_abi_stamp_source,
+                ],
                 include_directories: _incdirs + ['.'],
                 cpp_args: test_args + [
                     '-DRGPOT_ENGINE_PROJECT_VERSION="@0@"'.format(
@@ -2256,22 +2848,118 @@ if get_option('with_tests')
                 kwargs: _rt_kw['EngineAdapterTest'],
             )
         endif
+        if host_system == 'linux'
+            external_refcount_engine = shared_library(
+                'external_refcount_engine',
+                sources: ['tests/external_refcount_engine.c'],
+                include_directories: _incdirs,
+                c_args: ['-DRGPOT_ENGINE_BUILD'],
+                install: false,
+            )
+            external_refcount_empty = shared_library(
+                'external_refcount_empty',
+                sources: ['tests/external_refcount_empty.c'],
+                install: false,
+            )
+            test(
+                'external_engine_refcount',
+                executable(
+                    'external_engine_refcount',
+                    sources: ['tests/external_engine_refcount.cpp'],
+                    dependencies: [rgpot_dep],
+                    include_directories: _incdirs + ['.'],
+                    cpp_args: test_args,
+                    link_language: 'cpp',
+                ),
+                args: [
+                    external_refcount_engine.full_path(),
+                    external_refcount_empty.full_path(),
+                ],
+                depends: [external_refcount_engine, external_refcount_empty],
+                kwargs: _rt_kw['external_engine_refcount'],
+            )
+            external_reentrant_engine = shared_library(
+                'external_reentrant_engine',
+                sources: ['tests/external_reentrant_engine.c'],
+                dependencies: [_dl_dep],
+                include_directories: _incdirs,
+                c_args: ['-DRGPOT_ENGINE_BUILD'],
+                install: false,
+            )
+            test(
+                'external_constructor_reentry',
+                executable(
+                    'external_constructor_reentry',
+                    sources: ['tests/external_constructor_reentry.cpp'],
+                    dependencies: [rgpot_dep],
+                    include_directories: _incdirs + ['.'],
+                    cpp_args: test_args,
+                    export_dynamic: true,
+                    link_language: 'cpp',
+                ),
+                args: [
+                    external_reentrant_engine.full_path(),
+                    external_refcount_engine.full_path(),
+                ],
+                depends: [
+                    external_reentrant_engine,
+                    external_refcount_engine,
+                ],
+                kwargs: _rt_kw['external_constructor_reentry'],
+            )
+            test(
+                'external_close_unlocked',
+                executable(
+                    'external_close_unlocked',
+                    sources: ['tests/external_close_unlocked.cpp'],
+                    dependencies: [rgpot_dep, dependency('threads')],
+                    include_directories: _incdirs + ['.'],
+                    cpp_args: test_args,
+                    export_dynamic: true,
+                    link_language: 'cpp',
+                ),
+                args: [external_refcount_engine.full_path()],
+                depends: [external_refcount_engine],
+                kwargs: _rt_kw['external_close_unlocked'],
+            )
+        endif
         if _rpc_stack and host_system != 'windows'
             engine_table_env = environment()
-            engine_table_expect = ['CLASSICAL', 'MOPAC', 'NWCHEM']
+            engine_table_expect = [
+                'CLASSICAL',
+                'COMPOSITE',
+                'MOPAC',
+                'NWCHEM',
+                'CPMD',
+            ]
             engine_table_depends = [
                 classical_engine,
+                composite_engine,
                 mopac_engine,
                 nwchem_engine,
+                cpmd_engine,
+                cpmdc_fake_engine,
             ]
             engine_table_env.set(
                 'RGPOT_ENGINE_CLASSICAL',
                 classical_engine.full_path(),
             )
+            engine_table_env.set(
+                'RGPOT_ENGINE_COMPOSITE',
+                composite_engine.full_path(),
+            )
             engine_table_env.set('RGPOT_ENGINE_MOPAC', mopac_engine.full_path())
             engine_table_env.set(
                 'RGPOT_ENGINE_NWCHEM',
                 nwchem_engine.full_path(),
+            )
+            engine_table_env.set(
+                'RGPOT_ENGINE_CPMD',
+                cpmd_engine.full_path(),
+            )
+            engine_table_env.set(
+                'RGPOT_CPMD_ENGINE',
+                cpmdc_fake_engine.full_path(),
             )
             if has_skala
                 engine_table_expect += ['SKALA']
@@ -2345,6 +3033,96 @@ if get_option('with_tests')
                 depends: engine_table_depends,
                 workdir: meson.source_root(),
             )
+            # makePotential over the classical engine (plugin arm) and a
+            # stand-in liborcac ABI 1 (orca arm).
+            orcac_fake_engine = shared_library(
+                'orcac_fake_engine',
+                sources: ['tests/orcac_fake_engine.c'],
+                include_directories: _incdirs,
+                gnu_symbol_visibility: 'hidden',
+                install: false,
+            )
+            potential_factory_env = environment()
+            potential_factory_env.set(
+                'RGPOT_FACTORY_CLASSICAL_ENGINE',
+                classical_engine.full_path(),
+            )
+            potential_factory_env.set(
+                'RGPOT_FACTORY_ORCAC_FAKE',
+                orcac_fake_engine.full_path(),
+            )
+            potential_factory_depends = [classical_engine, orcac_fake_engine]
+            _orcac_exports = [
+                files('../scripts/check_engine_exports.py'),
+                files('tests/orcac_abi1_exports.txt'),
+            ]
+            _orcac_exports_py = find_program('python3', required: false)
+            if _orcac_exports_py.found()
+                test(
+                    'OrcacFakeExports',
+                    _orcac_exports_py,
+                    args: [
+                        _orcac_exports[0],
+                        orcac_fake_engine,
+                        _orcac_exports[1],
+                    ],
+                    kwargs: _rt_kw['OrcacFakeExports'],
+                )
+            endif
+            # -Dorcac_main=enabled builds liborcac from the orcac commit of
+            # subprojects/orcac.wrap (the commit orcac.h.pin names) and runs
+            # the orca arm against it and orcac's fake_orca.sh replay.
+            _orcac_main = subproject(
+                'orcac',
+                required: get_option('orcac_main'),
+                default_options: ['with_tests=false'],
+            )
+            if _orcac_main.found()
+                _orcac_wrap = _fs.read('../subprojects/orcac.wrap')
+                _orcac_tree = _orcac_wrap.split('directory = ')[1].split('\n')[0].strip()
+                _liborcac_main = _orcac_main.get_variable('liborcac')
+                potential_factory_env.set(
+                    'RGPOT_FACTORY_ORCAC_REAL',
+                    _liborcac_main.full_path(),
+                )
+                potential_factory_env.set(
+                    'RGPOT_FACTORY_ORCAC_DATA',
+                    meson.global_source_root() / 'subprojects' / _orcac_tree / 'tests' / 'data' / 'orca',
+                )
+                potential_factory_depends += [_liborcac_main]
+                if _orcac_exports_py.found()
+                    test(
+                        'OrcacMainExports',
+                        _orcac_exports_py,
+                        args: [
+                            _orcac_exports[0],
+                            _liborcac_main,
+                            _orcac_exports[1],
+                        ],
+                        kwargs: _rt_kw['OrcacMainExports'],
+                    )
+                endif
+            endif
+            test(
+                'PotentialFactoryTest',
+                executable(
+                    'potential_factory_test',
+                    sources: ['tests/PotentialFactoryTest.cc'],
+                    dependencies: test_deps + [
+                        capnp_rpc_dep,
+                        ptlrpc_dep,
+                        _dl_dep,
+                    ],
+                    include_directories: _incdirs + ['.'],
+                    cpp_args: test_args,
+                    link_with: _linkto,
+                    link_language: 'cpp',
+                    build_rpath: _metatomic_build_rpath,
+                ),
+                env: potential_factory_env,
+                depends: potential_factory_depends,
+                kwargs: _rt_kw['PotentialFactoryTest'],
+            )
         endif
         python3_prog = find_program('python3', required: false)
         if python3_prog.found()
@@ -2352,19 +3130,44 @@ if get_option('with_tests')
                 'print_cxx_layout_stamp',
                 sources: ['tests/print_cxx_layout_stamp.cc'],
                 include_directories: _incdirs + ['.'],
+                dependencies: has_fmt ? [fmt_dep] : [],
                 cpp_args: _args,
                 link_language: 'cpp',
             )
+            _soversion_args = [
+                files('tests/check_cxx_soversion.py'),
+                rgpot_cxx_soversion,
+                rgpot.full_path(),
+                cxx_layout_stamp.full_path(),
+            ]
+            _soversion_depends = [rgpot, cxx_layout_stamp]
+            if has_fortran and host_system != 'windows'
+                _soversion_args += [rgpot_cuh2.full_path()]
+                _soversion_depends += [rgpot_cuh2]
+            endif
+            if _rpc_stack and host_system != 'windows'
+                _soversion_args += [
+                    classical_engine.full_path(),
+                    composite_engine.full_path(),
+                    mopac_engine.full_path(),
+                    nwchem_engine.full_path(),
+                ]
+                _soversion_depends += [
+                    classical_engine,
+                    composite_engine,
+                    mopac_engine,
+                    nwchem_engine,
+                ]
+                if has_skala
+                    _soversion_args += [skala_engine.full_path()]
+                    _soversion_depends += [skala_engine]
+                endif
+            endif
             test(
                 'CxxSoversion',
                 python3_prog,
-                args: [
-                    files('tests/check_cxx_soversion.py'),
-                    rgpot_cxx_soversion,
-                    rgpot.full_path(),
-                    cxx_layout_stamp.full_path(),
-                ],
-                depends: [rgpot, cxx_layout_stamp],
+                args: _soversion_args + ['--exe-wrapper'] + exe_wrapper_args,
+                depends: _soversion_depends,
             )
         endif
     endif
@@ -2499,6 +3302,26 @@ if get_option('with_tests')
             # Hot Si13 frames whose SCC runs out its iterations, twice.
             timeout: 120,
         )
+        if get_option('with_rust_core')
+            test(
+                'FusedXtbTest',
+                executable(
+                    'fused_xtb_test',
+                    sources: ['tests/FusedXtbTest.cc'],
+                    dependencies: test_deps,
+                    include_directories: _incdirs + ['.'],
+                    cpp_args: test_args,
+                    link_with: _linkto,
+                    link_language: 'cpp',
+                    build_rpath: _xtb_test_rpath,
+                ),
+                env: xtb_test_env,
+                depends: [xtb_engine],
+                workdir: meson.source_root(),
+                suite: 'xtb',
+                timeout: 120,
+            )
+        endif
         test(
             'XTBDlopenTest',
             executable(
@@ -2674,6 +3497,57 @@ if get_option('with_tests')
             workdir: meson.source_root(),
             timeout: 0,
         )
+        hessian_bench = executable(
+            'hessian_bench',
+            sources: ['tests/hessian_bench.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+            build_rpath: _metatomic_build_rpath,
+            install: false,
+        )
+        benchmark(
+            'hessian_bench',
+            hessian_bench,
+            workdir: meson.source_root(),
+            timeout: 0,
+        )
+        thread_count_bench = executable(
+            'thread_count_bench',
+            sources: ['tests/thread_count_bench.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+            build_rpath: _metatomic_build_rpath,
+            install: false,
+        )
+        benchmark(
+            'thread_count_bench',
+            thread_count_bench,
+            workdir: meson.source_root(),
+            timeout: 0,
+        )
+        morse_omp_bench = executable(
+            'morse_omp_bench',
+            sources: ['tests/morse_omp_bench.cc'],
+            dependencies: test_deps,
+            include_directories: _incdirs + ['.'],
+            cpp_args: test_args,
+            link_with: _linkto,
+            link_language: 'cpp',
+            build_rpath: _metatomic_build_rpath,
+            install: false,
+        )
+        benchmark(
+            'morse_omp_bench',
+            morse_omp_bench,
+            workdir: meson.project_source_root(),
+            timeout: 0,
+        )
         # tools/lr_physics drives these. The bench pins workers with
         # sched_setaffinity, which only Linux has.
         if has_long_range and host_machine.system() == 'linux'
@@ -2754,23 +3628,42 @@ endif
 if not meson.is_subproject()
     install_headers('../include/rgpot/plugin.h', subdir: 'rgpot')
     # Headers: #include "rgpot/NWChemPot/..." with -I${prefix}/include
+    # install_subdir matches exclude_files against each file's path
+    # relative to rgpot/. A glob is not such a path, so '*.cc' drops
+    # nothing and PotHelpers.cc, EMT/EMTPot.cc and the other
+    # implementation files are installed. Pass every implementation path
+    # literally. The rpc/*.capnp schema files stay out because
+    # rpc/meson.build installs them next to the generated headers.
+    _install_py = find_program('python3', required: false)
+    if not _install_py.found()
+        error('installing headers needs python3 to list implementation sources')
+    endif
+    _install_impl = run_command(
+        _install_py,
+        meson.current_source_dir() / 'tests' / 'check_installed_sources.py',
+        '--list',
+        meson.current_source_dir() / 'rgpot',
+        check: true,
+    ).stdout().strip().split(
+        '\n',
+    )
+    _install_exclude = ['rpc/Potentials.capnp', 'rpc/common.capnp']
+    foreach _rel : _install_impl
+        if _rel != ''
+            _install_exclude += [_rel]
+        endif
+    endforeach
     install_subdir(
         'rgpot',
         install_dir: get_option('includedir'),
-        exclude_directories: ['__pycache__', 'rpc/local'],
-        exclude_files: [
-            '*.o',
-            '*.a',
-            '*.so',
-            '*.cc',
-            '*.c',
-            '*.cpp',
-            '*.f90',
-            '*.F',
-            '*.py',
-            # rpc/meson.build installs the effective schema in its place.
-            'rpc/Potentials.capnp',
+        exclude_directories: [
+            '__pycache__',
+            'rpc/local',
+            'ExternalPot/detail',
+            'Morse/detail',
+            'SuttonChen/detail',
         ],
+        exclude_files: _install_exclude,
     )
 
     # The .pc always ships: consumers discover whatever this build enabled
@@ -2792,6 +3685,9 @@ if not meson.is_subproject()
         endif
         if has_eam_table
             _pc_cflags += ['-DRGPOT_HAS_EAM_TABLE=TRUE']
+        endif
+        if has_orca
+            _pc_cflags += ['-DRGPOT_HAS_ORCA=TRUE']
         endif
         if has_metatomic
             _pc_cflags += ['-DRGPOT_HAS_METATOMIC_POT=TRUE']
@@ -2837,6 +3733,14 @@ if not meson.is_subproject()
             '-DRGPOT_HAS_CPMD_FRONTEND=TRUE',
         ]
     endif
+    if (
+        get_option('default_library') == 'static'
+        or get_option('with_rpc_client_only')
+    )
+        _pc_cflags += ['-DRGPOT_STATIC']
+    endif
+
+    _pc_libs += fastnlist_pc_libs
 
     pkg = import('pkgconfig')
     pkg.generate(

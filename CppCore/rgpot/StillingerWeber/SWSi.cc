@@ -10,13 +10,13 @@
 
 #include "rgpot/StillingerWeber/SWSi.hpp"
 
+#include "rgpot/CentreTerms.hpp"
 #include "rgpot/ParamHash.hpp"
 #include "rgpot/nlist/NeighbourList.hpp"
+#include "rgpot/nlist/ThreeBodyCommon.hpp"
 #include "rgpot/stress.hpp"
 
-#include <algorithm>
 #include <cmath>
-#include <cstring>
 #include <stdexcept>
 #include <vector>
 
@@ -61,6 +61,77 @@ PairTerm pairTerm(double r) {
   return {true, f2, dedr, gexp, dgdr};
 }
 
+/// IndexHalf counts a pair when the partner index is above the centre,
+/// which is the whole cell. Otherwise the partner must sit above the
+/// centre in the images the host stored (fullPairFromHere), so a
+/// full list does not add the pair from both ends.
+template <bool IndexHalf, typename Sink>
+void swCentre(int i, const std::vector<Bond> &nb, double scale, Sink &sink) {
+  const int m = static_cast<int>(nb.size());
+  for (int a = 0; a < m; ++a) {
+    const Bond &bj = nb[static_cast<std::size_t>(a)];
+    if constexpr (IndexHalf) {
+      if (bj.j <= i) {
+        continue;
+      }
+    } else if (!fullPairFromHere(0.0, 0.0, 0.0, bj.z, bj.y, bj.x)) {
+      continue;
+    }
+    const PairTerm t = pairTerm(bj.r);
+    if (!t.live) {
+      continue;
+    }
+    sink.energy(StillingerWeberSi::kEpsilon * t.f2);
+    const double inv_r = 1.0 / bj.r;
+    const double sx = scale * t.dedr * bj.x * inv_r;
+    const double sy = scale * t.dedr * bj.y * inv_r;
+    const double sz = scale * t.dedr * bj.z * inv_r;
+    sink.pair(static_cast<std::size_t>(a), bj.j, sx, sy, sz);
+    if (sink.strained()) {
+      // dE/d(bj) is (dedr / r) bj. bj is the negative of the d in
+      // stress.hpp when the walk stores r_i - r_j. The term is
+      // quadratic in that vector, so the sign does not change it.
+      sink.pairStrain(-t.dedr * inv_r, bj.x, bj.y, bj.z);
+    }
+  }
+  for (int a = 0; a < m; ++a) {
+    const Bond &bj = nb[static_cast<std::size_t>(a)];
+    for (int b = a + 1; b < m; ++b) {
+      const Bond &bk = nb[static_cast<std::size_t>(b)];
+      const double inv_r1 = 1.0 / bj.r;
+      const double inv_r2 = 1.0 / bk.r;
+      const double inv = inv_r1 * inv_r2;
+      double cth = (bj.x * bk.x + bj.y * bk.y + bj.z * bk.z) * inv;
+      if (cth > 1.0) {
+        cth = 1.0;
+      } else if (cth < -1.0) {
+        cth = -1.0;
+      }
+      const double ang = cth + (1.0 / 3.0);
+      const double ang2 = ang * ang;
+      sink.energy(StillingerWeberSi::kEpsilon * StillingerWeberSi::kLambda * bj.gexp * bk.gexp *
+                  ang2);
+      const double pref = StillingerWeberSi::kEpsilon * StillingerWeberSi::kLambda;
+      const double d_edcth = pref * bj.gexp * bk.gexp * 2.0 * ang;
+      const double d_edr1 = pref * bj.dgdr * bk.gexp * ang2;
+      const double d_edr2 = pref * bj.gexp * bk.dgdr * ang2;
+      const double g1x = d_edr1 * bj.x * inv_r1 + d_edcth * (bk.x * inv - cth * bj.x * inv_r1 * inv_r1);
+      const double g1y = d_edr1 * bj.y * inv_r1 + d_edcth * (bk.y * inv - cth * bj.y * inv_r1 * inv_r1);
+      const double g1z = d_edr1 * bj.z * inv_r1 + d_edcth * (bk.z * inv - cth * bj.z * inv_r1 * inv_r1);
+      const double g2x = d_edr2 * bk.x * inv_r2 + d_edcth * (bj.x * inv - cth * bk.x * inv_r2 * inv_r2);
+      const double g2y = d_edr2 * bk.y * inv_r2 + d_edcth * (bj.y * inv - cth * bk.y * inv_r2 * inv_r2);
+      const double g2z = d_edr2 * bk.z * inv_r2 + d_edcth * (bj.z * inv - cth * bk.z * inv_r2 * inv_r2);
+      // g is dE/d(neighbor). Force on that atom is -g.
+      sink.triplet(static_cast<std::size_t>(a), bj.j, static_cast<std::size_t>(b), bk.j, scale, g1x,
+                   g1y, g1z, g2x, g2y, g2z);
+      if (sink.strained()) {
+        sink.bondStrain(bj.x, bj.y, bj.z, g1x, g1y, g1z);
+        sink.bondStrain(bk.x, bk.y, bk.z, g2x, g2y, g2z);
+      }
+    }
+  }
+}
+
 } // namespace
 
 StillingerWeberSi::StillingerWeberSi() : Potential(PotType::SWSi1985) {
@@ -92,7 +163,7 @@ void StillingerWeberSi::forceImpl(const ForceInput &in, ForceOut *out) const {
   }
   double strain[6] = {};
   evaluate(in.pos, in.box, in.nAtoms, &out->energy, out->F, 1.0, nullptr,
-           strain);
+           strain, neighbours_);
   publishCauchyStress(out, strain, cellVolume(in.box));
 }
 
@@ -107,7 +178,8 @@ void StillingerWeberSi::energyAndGradient(
     throw std::invalid_argument("StillingerWeberSi: null energy buffer");
   }
   // Gradient is dE/dx, the negation of the force written by forceImpl.
-  evaluate(positions, box, n_atoms, energy, gradient, -1.0, neighbors, nullptr);
+  evaluate(positions, box, n_atoms, energy, gradient, -1.0, neighbors, nullptr,
+           neighbours_);
 }
 
 void StillingerWeberSi::energyAndGradientBatch(
@@ -123,17 +195,23 @@ void StillingerWeberSi::energyAndGradientBatch(
     throw std::invalid_argument("StillingerWeberSi: null batch buffer");
   }
   const std::size_t stride = n_atoms * 3;
-  for (std::size_t c = 0; c < n_config; ++c) {
-    energyAndGradient(positions + c * stride, atomic_numbers, box, n_atoms,
-                      energies + c, gradients + c * stride);
-  }
+  // One neighbour list per system, on the thread that evaluates it. The
+  // instance list stays with the single-system calls.
+  forEachBatchSystem(
+      n_config, [&](std::size_t) { return n_atoms; },
+      [&](std::size_t c) {
+        nlist::Neighbours cells;
+        evaluate(positions + c * stride, box, n_atoms, energies + c,
+                 gradients + c * stride, -1.0, nullptr, nullptr, cells);
+      },
+      kTeamMinAtoms, kTeamFrom);
 }
 
 void StillingerWeberSi::evaluate(const double *positions, const double *box,
                                  std::size_t n_atoms, double *energy,
                                  double *acc, double scale,
-                                 nlist::NeighborList *neighbors,
-                                 double *strain) const {
+                                 nlist::NeighborList *neighbors, double *strain,
+                                 nlist::Neighbours &cells) const {
   *energy = 0.0;
   const std::size_t n3 = n_atoms * 3;
   for (std::size_t i = 0; i < n3; ++i) {
@@ -147,28 +225,15 @@ void StillingerWeberSi::evaluate(const double *positions, const double *box,
   const double cut2 = cut * cut;
   const int n = static_cast<int>(n_atoms);
 
-  const double skin = (neighbors != nullptr && neighbors->skin > 0.0)
-                          ? neighbors->skin
-                          : (mode_ == nlist::Mode::Stream ? 0.0 : cut / 5.0);
-  const auto before = neighbours_.builds();
-  nlist::updateCells(neighbours_, positions, n_atoms, box, cut, skin, nlist::Image::Round,
-                     mode_, {true, true, true});
-  if (neighbors != nullptr && neighbors->skin > 0.0 &&
-      (neighbours_.builds() != before || !neighbors->built)) {
-    neighbors->ref.assign(positions, positions + 3 * n_atoms);
-    std::memcpy(neighbors->box, box, 9 * sizeof(double));
-    neighbors->n = n_atoms;
-    neighbors->cutoff = cut;
-    neighbors->skin_used = neighbors->skin;
-    neighbors->built = true;
-  }
+  nlist::updateThreeBodyCells(cells, positions, n_atoms, box, cut, mode_,
+                              neighbors);
 
   // One atom of bonds. A stream reads the bins directly, so the scratch
   // is that atom and not a copy of every bond. A stored call reads the
   // index row, which is already paid for.
   auto load = [&](int i, std::vector<Bond> &nb) {
-    nb.clear();
-    auto take = [&](std::int32_t, std::int32_t j, double dx, double dy, double dz, double r2) {
+    auto take = [&](std::int32_t, std::int32_t j, double dx, double dy,
+                    double dz, double r2) {
       if (!std::isfinite(dx) || !std::isfinite(dy) || !std::isfinite(dz)) {
         throw std::invalid_argument("StillingerWeberSi: non-finite position");
       }
@@ -182,190 +247,92 @@ void StillingerWeberSi::evaluate(const double *positions, const double *box,
       }
       nb.push_back(Bond{static_cast<int>(j), -dx, -dy, -dz, r, t.gexp, t.dgdr});
     };
-    if (neighbours_.streaming()) {
-      neighbours_.forAtom(static_cast<std::int32_t>(i), take);
-    } else {
-      nlist::visitDirected(neighbours_, i, static_cast<std::int64_t>(i) + 1, take);
-    }
-    std::sort(nb.begin(), nb.end(), [](const Bond &a, const Bond &b) { return a.j < b.j; });
+    nlist::collectAtomBonds(cells, i, nb, take);
   };
-  auto pairForces = [&](int i, const std::vector<Bond> &nb, double *force,
-                        double &local_e, double *local_strain) {
-    for (const Bond &bj : nb) {
-      if (bj.j <= i) {
+  const std::size_t from = teamThreshold(kTeamMinAtoms);
+  if (n_atoms < from) {
+    std::vector<Bond> nb;
+    for (int i = 0; i < n; ++i) {
+      load(i, nb);
+      CentreDirect sink(i, acc, energy, strain);
+      swCentre<true>(i, nb, scale, sink);
+    }
+    return;
+  }
+  sumCentres<std::vector<Bond>>(
+      n_atoms, from, kTeamFrom,
+      [&](std::int32_t i, CentreTerms &terms, std::vector<Bond> &nb) {
+        load(i, nb);
+        terms.reset(i, nb);
+        swCentre<true>(static_cast<int>(i), nb, scale, terms);
+      },
+      acc, *energy, strain);
+}
+
+void StillingerWeberSi::forceStage(const HalfList &list, const double *, double *forces,
+                                   StageTally *tally) const {
+  if (!list.full) {
+    throw std::invalid_argument(
+        "StillingerWeberSi: staged evaluation needs a full neighbour list");
+  }
+  if (!list.newton) {
+    throw std::invalid_argument("StillingerWeberSi: staged evaluation needs newton on");
+  }
+  if (list.nAtoms == 0) {
+    return;
+  }
+  if (list.pos == nullptr || forces == nullptr || list.count == nullptr ||
+      list.neighbours == nullptr || (list.nRows > 0 && list.rows == nullptr)) {
+    throw std::invalid_argument("StillingerWeberSi: null staged buffer");
+  }
+  const double cut = kCut * kSigma;
+  const double cut2 = cut * cut;
+  const auto owned = static_cast<int>(list.nOwned);
+  double energy = 0.0;
+  double strain[6] = {};
+  std::vector<Bond> nb;
+  for (std::size_t k = 0; k < list.nRows; ++k) {
+    const int i = list.rows[k];
+    if (i < 0 || i >= owned) {
+      continue;
+    }
+    nb.clear();
+    const int n = list.count[static_cast<std::size_t>(i)];
+    const int *row = n > 0 ? list.neighbours[static_cast<std::size_t>(i)] : nullptr;
+    if (n > 0 && row == nullptr) {
+      throw std::invalid_argument("StillingerWeberSi: null neighbour row");
+    }
+    const double *xi = list.pos + 3 * static_cast<std::size_t>(i);
+    for (int q = 0; q < n; ++q) {
+      const int j = row[q] & list.indexMask;
+      const double *xj = list.pos + 3 * static_cast<std::size_t>(j);
+      const double dx = xi[0] - xj[0];
+      const double dy = xi[1] - xj[1];
+      const double dz = xi[2] - xj[2];
+      if (!std::isfinite(dx) || !std::isfinite(dy) || !std::isfinite(dz)) {
+        throw std::invalid_argument("StillingerWeberSi: non-finite position");
+      }
+      const double r2 = dx * dx + dy * dy + dz * dz;
+      if (!(r2 > 0.0) || r2 >= cut2) {
         continue;
       }
-      const PairTerm t = pairTerm(bj.r);
+      const double r = std::sqrt(r2);
+      const PairTerm t = pairTerm(r);
       if (!t.live) {
         continue;
       }
-      local_e += kEpsilon * t.f2;
-      const double inv_r = 1.0 / bj.r;
-      const double sx = scale * t.dedr * bj.x * inv_r;
-      const double sy = scale * t.dedr * bj.y * inv_r;
-      const double sz = scale * t.dedr * bj.z * inv_r;
-      force[3 * i] += sx;
-      force[3 * i + 1] += sy;
-      force[3 * i + 2] += sz;
-      force[3 * bj.j] -= sx;
-      force[3 * bj.j + 1] -= sy;
-      force[3 * bj.j + 2] -= sz;
-      if (local_strain != nullptr) {
-        // dE/d(bj) is (dedr / r) bj. bj is the negative of the d in
-        // stress.hpp when the walk stores r_i - r_j. The term is
-        // quadratic in that vector, so the sign does not change it.
-        accumulatePairStrain(local_strain, -t.dedr * inv_r, bj.x, bj.y, bj.z);
-      }
+      nb.push_back(Bond{j, -dx, -dy, -dz, r, t.gexp, t.dgdr});
     }
-  };
-
-  const int nt = nlist::threadsRequested();
-  if (nt == 1) {
-  std::vector<Bond> nb;
-  for (int i = 0; i < n; ++i) {
-    load(i, nb);
-    pairForces(i, nb, acc, *energy, strain);
-    const int m = static_cast<int>(nb.size());
-    for (int a = 0; a < m; ++a) {
-      const Bond &bj = nb[static_cast<std::size_t>(a)];
-      for (int b = a + 1; b < m; ++b) {
-        const Bond &bk = nb[static_cast<std::size_t>(b)];
-        const double inv_r1 = 1.0 / bj.r;
-        const double inv_r2 = 1.0 / bk.r;
-        const double inv = inv_r1 * inv_r2;
-        double cth = (bj.x * bk.x + bj.y * bk.y + bj.z * bk.z) * inv;
-        if (cth > 1.0) {
-          cth = 1.0;
-        } else if (cth < -1.0) {
-          cth = -1.0;
-        }
-        const double ang = cth + (1.0 / 3.0);
-        const double ang2 = ang * ang;
-        *energy += kEpsilon * kLambda * bj.gexp * bk.gexp * ang2;
-        const double pref = kEpsilon * kLambda;
-        const double d_edcth = pref * bj.gexp * bk.gexp * 2.0 * ang;
-        const double d_edr1 = pref * bj.dgdr * bk.gexp * ang2;
-        const double d_edr2 = pref * bj.gexp * bk.dgdr * ang2;
-        const double g1x =
-            d_edr1 * bj.x * inv_r1 +
-            d_edcth * (bk.x * inv - cth * bj.x * inv_r1 * inv_r1);
-        const double g1y =
-            d_edr1 * bj.y * inv_r1 +
-            d_edcth * (bk.y * inv - cth * bj.y * inv_r1 * inv_r1);
-        const double g1z =
-            d_edr1 * bj.z * inv_r1 +
-            d_edcth * (bk.z * inv - cth * bj.z * inv_r1 * inv_r1);
-        const double g2x =
-            d_edr2 * bk.x * inv_r2 +
-            d_edcth * (bj.x * inv - cth * bk.x * inv_r2 * inv_r2);
-        const double g2y =
-            d_edr2 * bk.y * inv_r2 +
-            d_edcth * (bj.y * inv - cth * bk.y * inv_r2 * inv_r2);
-        const double g2z =
-            d_edr2 * bk.z * inv_r2 +
-            d_edcth * (bj.z * inv - cth * bk.z * inv_r2 * inv_r2);
-        // g is dE/d(neighbor). Force on that atom is -g.
-        acc[3 * bj.j] -= scale * g1x;
-        acc[3 * bj.j + 1] -= scale * g1y;
-        acc[3 * bj.j + 2] -= scale * g1z;
-        acc[3 * bk.j] -= scale * g2x;
-        acc[3 * bk.j + 1] -= scale * g2y;
-        acc[3 * bk.j + 2] -= scale * g2z;
-        acc[3 * i] += scale * (g1x + g2x);
-        acc[3 * i + 1] += scale * (g1y + g2y);
-        acc[3 * i + 2] += scale * (g1z + g2z);
-        if (strain != nullptr) {
-          accumulateBondStrain(strain, bj.x, bj.y, bj.z, g1x, g1y, g1z);
-          accumulateBondStrain(strain, bk.x, bk.y, bk.z, g2x, g2y, g2z);
-        }
-      }
-    }
+    std::sort(nb.begin(), nb.end(), [](const Bond &a, const Bond &b) { return a.j < b.j; });
+    CentreDirect sink(i, forces, &energy, strain);
+    swCentre<false>(i, nb, 1.0, sink);
   }
-
-  } else {
-    std::vector<double> owned(static_cast<std::size_t>(nt) * n3, 0.0);
-    std::vector<double> energies(static_cast<std::size_t>(nt), 0.0);
-    std::vector<double> vir(static_cast<std::size_t>(nt) * 6, 0.0);
-    nlist::forEachSlice(nt, [&](int t) {
-      const auto range = nlist::partition(n, t, nt);
-      double *local = owned.data() + static_cast<std::size_t>(t) * n3;
-      double local_e = 0.0;
-      double *local_strain =
-          strain == nullptr ? nullptr : vir.data() + static_cast<std::size_t>(t) * 6;
-      std::vector<Bond> nb;
-  for (int i = static_cast<int>(range.begin); i < static_cast<int>(range.end); ++i) {
-    load(i, nb);
-    pairForces(i, nb, local, local_e, local_strain);
-    const int m = static_cast<int>(nb.size());
-    for (int a = 0; a < m; ++a) {
-      const Bond &bj = nb[static_cast<std::size_t>(a)];
-      for (int b = a + 1; b < m; ++b) {
-        const Bond &bk = nb[static_cast<std::size_t>(b)];
-        const double inv_r1 = 1.0 / bj.r;
-        const double inv_r2 = 1.0 / bk.r;
-        const double inv = inv_r1 * inv_r2;
-        double cth = (bj.x * bk.x + bj.y * bk.y + bj.z * bk.z) * inv;
-        if (cth > 1.0) {
-          cth = 1.0;
-        } else if (cth < -1.0) {
-          cth = -1.0;
-        }
-        const double ang = cth + (1.0 / 3.0);
-        const double ang2 = ang * ang;
-        local_e += kEpsilon * kLambda * bj.gexp * bk.gexp * ang2;
-        const double pref = kEpsilon * kLambda;
-        const double d_edcth = pref * bj.gexp * bk.gexp * 2.0 * ang;
-        const double d_edr1 = pref * bj.dgdr * bk.gexp * ang2;
-        const double d_edr2 = pref * bj.gexp * bk.dgdr * ang2;
-        const double g1x =
-            d_edr1 * bj.x * inv_r1 +
-            d_edcth * (bk.x * inv - cth * bj.x * inv_r1 * inv_r1);
-        const double g1y =
-            d_edr1 * bj.y * inv_r1 +
-            d_edcth * (bk.y * inv - cth * bj.y * inv_r1 * inv_r1);
-        const double g1z =
-            d_edr1 * bj.z * inv_r1 +
-            d_edcth * (bk.z * inv - cth * bj.z * inv_r1 * inv_r1);
-        const double g2x =
-            d_edr2 * bk.x * inv_r2 +
-            d_edcth * (bj.x * inv - cth * bk.x * inv_r2 * inv_r2);
-        const double g2y =
-            d_edr2 * bk.y * inv_r2 +
-            d_edcth * (bj.y * inv - cth * bk.y * inv_r2 * inv_r2);
-        const double g2z =
-            d_edr2 * bk.z * inv_r2 +
-            d_edcth * (bj.z * inv - cth * bk.z * inv_r2 * inv_r2);
-        // g is dE/d(neighbor). Force on that atom is -g.
-        local[3 * bj.j] -= scale * g1x;
-        local[3 * bj.j + 1] -= scale * g1y;
-        local[3 * bj.j + 2] -= scale * g1z;
-        local[3 * bk.j] -= scale * g2x;
-        local[3 * bk.j + 1] -= scale * g2y;
-        local[3 * bk.j + 2] -= scale * g2z;
-        local[3 * i] += scale * (g1x + g2x);
-        local[3 * i + 1] += scale * (g1y + g2y);
-        local[3 * i + 2] += scale * (g1z + g2z);
-        if (local_strain != nullptr) {
-          accumulateBondStrain(local_strain, bj.x, bj.y, bj.z, g1x, g1y, g1z);
-          accumulateBondStrain(local_strain, bk.x, bk.y, bk.z, g2x, g2y, g2z);
-        }
-      }
-    }
+  if (tally == nullptr) {
+    return;
   }
-      energies[static_cast<std::size_t>(t)] = local_e;
-    });
-    for (int t = 0; t < nt; ++t) {
-      *energy += energies[static_cast<std::size_t>(t)];
-      const double *local = owned.data() + static_cast<std::size_t>(t) * n3;
-      for (std::size_t k = 0; k < n3; ++k) {
-        acc[k] += local[k];
-      }
-      if (strain != nullptr) {
-        for (int k = 0; k < 6; ++k) {
-          strain[k] += vir[static_cast<std::size_t>(t) * 6 + static_cast<std::size_t>(k)];
-        }
-      }
-    }
+  tally->energy += energy;
+  for (int c = 0; c < 6; ++c) {
+    tally->virial[c] -= strain[c];
   }
 }
 

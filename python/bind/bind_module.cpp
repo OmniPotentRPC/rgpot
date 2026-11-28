@@ -12,6 +12,7 @@
 #include <cstring>
 #include <map>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <tuple>
@@ -20,6 +21,7 @@
 
 #include <nanobind/nanobind.h>
 #include <nanobind/ndarray.h>
+#include <nanobind/stl/optional.h>
 #include <nanobind/stl/string.h>
 #include <nanobind/stl/tuple.h>
 #include <nanobind/stl/vector.h>
@@ -28,20 +30,25 @@
 
 #include "pot_holder.hpp"
 
+#include "rgpot/D2Pot/D2CpmdPot.hpp"
+#include "rgpot/D2Pot/D2Pot.hpp"
+#include "rgpot/EMT/EMTPot.hpp"
 #include "rgpot/ExternalPot/ExternalPot.hpp"
 #include "rgpot/LennardJones/LJClusterPot.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
+#include "rgpot/Models/ModelPots.hpp"
 #include "rgpot/Morse/MorsePot.hpp"
 #include "rgpot/StillingerWeber/SWSi.hpp"
+#include "rgpot/SumPot/SumPot.hpp"
 #include "rgpot/Tersoff/TersoffSiC.hpp"
 #include "rgpot/XcKernel/XcKernel.hpp"
+#include "rgpot/elements.hpp"
 #include "rgpot/nlist/NeighbourList.hpp"
 #include "rgpot/types/AtomMatrix.hpp"
+#include "rgpot/units.hpp"
 
-#ifdef RGPOT_HAS_METATOMIC
 #include "rgpot/MetatomicPot/MetatomicConfig.hpp"
 #include "rgpot/MetatomicPot/MetatomicDlopen.hpp"
-#endif
 
 #ifdef RGPOT_HAS_CACHE
 #include "rgpot/PotentialCache.hpp"
@@ -55,6 +62,9 @@
 #endif
 #ifdef RGPOT_HAS_EXPR
 #include "rgpot/ExprPot/ExprPot.hpp"
+#endif
+#ifdef RGPOT_HAS_EAM_TABLE
+#include "rgpot/EAMTable/EAMTablePot.hpp"
 #endif
 #ifdef RGPOT_HAS_FORTRAN_POTS
 #include "rgpot/fortran/FortranPots.hpp"
@@ -74,13 +84,31 @@ using rgpot::types::AtomMatrix;
 
 namespace {
 
-void translate_invalid_argument(const std::exception_ptr &ptr, void *) {
+void translate_kernel_error(const std::exception_ptr &ptr, void *) {
   try {
     std::rethrow_exception(ptr);
   } catch (const std::invalid_argument &err) {
     PyErr_SetString(PyExc_ValueError, err.what());
+  } catch (const std::domain_error &err) {
+    throw rgbind::NumericalError(err.what());
   }
 }
+
+#ifdef RGPOT_HAS_EAM_TABLE
+rgpot::EAMTableFormat eam_table_format(const std::string &name) {
+  if (name == "funcfl" || name == "eam") {
+    return rgpot::EAMTableFormat::Funcfl;
+  }
+  if (name == "setfl" || name == "alloy" || name == "eam/alloy") {
+    return rgpot::EAMTableFormat::Setfl;
+  }
+  if (name == "fs" || name == "eam/fs" || name == "finnis-sinclair") {
+    return rgpot::EAMTableFormat::FinnisSinclair;
+  }
+  throw std::invalid_argument(
+      "EAM table format must be funcfl, setfl, or fs, got '" + name + "'");
+}
+#endif
 
 #ifdef RGPOT_HAS_DFTD3
 rgpot::D3Damping d3_damping(const std::string &name) {
@@ -95,7 +123,6 @@ rgpot::D3Damping d3_damping(const std::string &name) {
 }
 #endif
 
-#ifdef RGPOT_HAS_EXPR
 struct ChildSpec {
   std::string name;
   std::string kind;
@@ -103,6 +130,7 @@ struct ChildSpec {
   std::string damping = "bj";
   bool atm = true;
   double charge = 0.0;
+  bool periodic = false; // d4: the box as a 3D lattice, with the stress.
   // LJ and Morse dict fields. Absent keys keep the C++ config defaults,
   // which differ (LJ cutoff is 15 A, Morse cutoff is 9.5 A).
   bool has_u0 = false;
@@ -119,6 +147,21 @@ struct ChildSpec {
   double a = 0.0;
   bool has_re = false;
   double re = 0.0;
+  // D2 dict fields; a functional names s6 and d from dftd3's table.
+  bool has_functional = false;
+  bool has_s6 = false;
+  double s6 = 0.0;
+  bool has_d = false;
+  double d = 0.0;
+  bool has_sr = false;
+  double sr = 0.0;
+  // d2cpmd dict fields, beside s6 and functional.
+  bool has_alpha = false;
+  double alpha = 0.0;
+  bool has_vdweps = false;
+  double vdweps = 0.0;
+  bool has_symmetry = false;
+  int symmetry = 0;
 };
 
 std::string child_kind(nb::handle spec) {
@@ -135,7 +178,7 @@ std::string child_kind(nb::handle spec) {
     }
   }
   throw nb::value_error(
-      "ExprPot child spec must be a kind string or a dict with 'kind'");
+      "a child spec must be a kind string or a dict with 'kind'");
 }
 
 ChildSpec child_spec_from(const std::string &name, nb::handle spec) {
@@ -145,7 +188,32 @@ ChildSpec child_spec_from(const std::string &name, nb::handle spec) {
   if (nb::isinstance<nb::dict>(spec)) {
     auto d = nb::cast<nb::dict>(spec);
     if (d.contains("functional")) {
+      out.has_functional = true;
       out.functional = nb::cast<std::string>(d["functional"]);
+    }
+    if (d.contains("s6")) {
+      out.has_s6 = true;
+      out.s6 = nb::cast<double>(d["s6"]);
+    }
+    if (d.contains("d")) {
+      out.has_d = true;
+      out.d = nb::cast<double>(d["d"]);
+    }
+    if (d.contains("sr")) {
+      out.has_sr = true;
+      out.sr = nb::cast<double>(d["sr"]);
+    }
+    if (d.contains("alpha")) {
+      out.has_alpha = true;
+      out.alpha = nb::cast<double>(d["alpha"]);
+    }
+    if (d.contains("vdweps")) {
+      out.has_vdweps = true;
+      out.vdweps = nb::cast<double>(d["vdweps"]);
+    }
+    if (d.contains("symmetry")) {
+      out.has_symmetry = true;
+      out.symmetry = nb::cast<int>(d["symmetry"]);
     }
     if (d.contains("atm")) {
       out.atm = nb::cast<bool>(d["atm"]);
@@ -155,6 +223,9 @@ ChildSpec child_spec_from(const std::string &name, nb::handle spec) {
     }
     if (d.contains("charge")) {
       out.charge = nb::cast<double>(d["charge"]);
+    }
+    if (d.contains("periodic")) {
+      out.periodic = nb::cast<bool>(d["periodic"]);
     }
     if (d.contains("u0")) {
       out.has_u0 = true;
@@ -188,41 +259,116 @@ ChildSpec child_spec_from(const std::string &name, nb::handle spec) {
   return out;
 }
 
-std::unique_ptr<rgpot::PotentialBase> child_from_spec(const ChildSpec &spec) {
+rgpot::LJConfig lj_config_from(const ChildSpec &spec) {
+  rgpot::LJConfig cfg;
+  if (spec.has_u0) {
+    cfg.u0 = spec.u0;
+  }
+  if (spec.has_cutoff) {
+    cfg.cutoff = spec.cutoff;
+  }
+  if (spec.has_psi) {
+    cfg.psi = spec.psi;
+  }
+  if (spec.has_switch_width) {
+    cfg.switch_width = spec.switch_width;
+  }
+  return cfg;
+}
+
+rgpot::MorseConfig morse_config_from(const ChildSpec &spec) {
+  rgpot::MorseConfig cfg;
+  if (spec.has_De) {
+    cfg.De = spec.De;
+  }
+  if (spec.has_a) {
+    cfg.a = spec.a;
+  }
+  if (spec.has_re) {
+    cfg.re = spec.re;
+  }
+  if (spec.has_cutoff) {
+    cfg.cutoff = spec.cutoff;
+  }
+  if (spec.has_switch_width) {
+    cfg.switch_width = spec.switch_width;
+  }
+  return cfg;
+}
+
+rgpot::D2Config d2_config_from(const ChildSpec &spec) {
+  rgpot::D2Config cfg =
+      spec.has_functional ? rgpot::d2_config_for(spec.functional) : rgpot::D2Config{};
+  if (spec.has_s6) {
+    cfg.s6 = spec.s6;
+  }
+  if (spec.has_d) {
+    cfg.d = spec.d;
+  }
+  if (spec.has_sr) {
+    cfg.sr = spec.sr;
+  }
+  if (spec.has_cutoff) {
+    cfg.cutoff = spec.cutoff;
+  }
+  return cfg;
+}
+
+/// Radius, in Angstrom, past which the child needs a periodic cell wider than
+/// twice that radius to see every neighbour it counts. The value is the
+/// cutoff the child is built with, so a kind with a default cutoff reports
+/// its class default. A kind that sums every image itself (d2, d3, d4) or is
+/// defined by CPMD's minimum image (d2cpmd) needs no wider cell and reports
+/// 0. An unknown kind throws, so no child resolves to a silent 0.
+double child_cutoff(const ChildSpec &spec) {
   if (spec.kind == "lj") {
-    rgpot::LJConfig cfg;
-    if (spec.has_u0) {
-      cfg.u0 = spec.u0;
-    }
-    if (spec.has_cutoff) {
-      cfg.cutoff = spec.cutoff;
-    }
-    if (spec.has_psi) {
-      cfg.psi = spec.psi;
-    }
-    if (spec.has_switch_width) {
-      cfg.switch_width = spec.switch_width;
-    }
-    return std::make_unique<rgpot::LJPot>(cfg);
+    return lj_config_from(spec).cutoff;
   }
   if (spec.kind == "morse") {
-    rgpot::MorseConfig cfg;
-    if (spec.has_De) {
-      cfg.De = spec.De;
+    return morse_config_from(spec).cutoff;
+  }
+  if (spec.kind == "d2" || spec.kind == "d2cpmd") {
+    return 0.0;
+  }
+#ifdef RGPOT_HAS_DFTD3
+  if (spec.kind == "d3") {
+    return 0.0;
+  }
+#endif
+#ifdef RGPOT_HAS_DFTD4
+  if (spec.kind == "d4") {
+    return 0.0;
+  }
+#endif
+  throw std::invalid_argument("unknown child kind: " + spec.kind);
+}
+
+std::unique_ptr<rgpot::PotentialBase> child_from_spec(const ChildSpec &spec) {
+  if (spec.kind == "lj") {
+    return std::make_unique<rgpot::LJPot>(lj_config_from(spec));
+  }
+  if (spec.kind == "morse") {
+    return std::make_unique<rgpot::MorsePot>(morse_config_from(spec));
+  }
+  if (spec.kind == "d2") {
+    return std::make_unique<rgpot::D2Pot>(d2_config_from(spec));
+  }
+  if (spec.kind == "d2cpmd") {
+    rgpot::D2CpmdConfig cfg = spec.has_functional ? rgpot::d2_cpmd_config_for(spec.functional)
+                                                  : rgpot::D2CpmdConfig{};
+    if (spec.has_s6) {
+      cfg.s6 = spec.s6;
     }
-    if (spec.has_a) {
-      cfg.a = spec.a;
+    if (spec.has_alpha) {
+      cfg.alpha = spec.alpha;
     }
-    if (spec.has_re) {
-      cfg.re = spec.re;
+    if (spec.has_vdweps) {
+      cfg.vdweps = spec.vdweps;
     }
-    if (spec.has_cutoff) {
-      cfg.cutoff = spec.cutoff;
+    if (spec.has_symmetry) {
+      cfg.symmetry = spec.symmetry;
     }
-    if (spec.has_switch_width) {
-      cfg.switch_width = spec.switch_width;
-    }
-    return std::make_unique<rgpot::MorsePot>(cfg);
+    return std::make_unique<rgpot::D2CpmdPot>(cfg);
   }
 #ifdef RGPOT_HAS_DFTD3
   if (spec.kind == "d3") {
@@ -239,12 +385,86 @@ std::unique_ptr<rgpot::PotentialBase> child_from_spec(const ChildSpec &spec) {
     cfg.functional = spec.functional;
     cfg.charge = spec.charge;
     cfg.atm = spec.atm;
+    cfg.periodic = spec.periodic;
     return std::make_unique<rgpot::D4Pot>(cfg);
   }
 #endif
-  throw std::invalid_argument("unknown ExprPot child kind: " + spec.kind);
+  throw std::invalid_argument("unknown child kind: " + spec.kind);
 }
 
+/// SumPot terms: a list of child specs, each with an optional name (term<i>
+/// by default), weight (1) and enabled (true).
+struct SumSpec {
+  rgpot::SumTerm term;
+  ChildSpec child;
+};
+
+std::vector<SumSpec> sum_specs_from(const nb::list &terms) {
+  std::vector<SumSpec> out;
+  out.reserve(terms.size());
+  for (std::size_t i = 0; i < terms.size(); ++i) {
+    nb::handle item = terms[i];
+    SumSpec spec;
+    spec.term.name = "term" + std::to_string(i);
+    if (nb::isinstance<nb::dict>(item)) {
+      auto d = nb::cast<nb::dict>(item);
+      if (d.contains("name")) {
+        spec.term.name = nb::cast<std::string>(d["name"]);
+      }
+      if (d.contains("weight")) {
+        spec.term.weight = nb::cast<double>(d["weight"]);
+      }
+      if (d.contains("enabled")) {
+        spec.term.enabled = nb::cast<bool>(d["enabled"]);
+      }
+    }
+    spec.child = child_spec_from(spec.term.name, item);
+    out.push_back(std::move(spec));
+  }
+  return out;
+}
+
+std::unique_ptr<rgpot::SumPot> sum_from_specs(const std::vector<SumSpec> &specs) {
+  auto sum = std::make_unique<rgpot::SumPot>();
+  for (const SumSpec &spec : specs) {
+    sum->add(spec.term,
+             spec.term.enabled ? child_from_spec(spec.child) : nullptr);
+  }
+  return sum;
+}
+
+double sum_cutoff(const std::vector<SumSpec> &specs) {
+  double cutoff = 0.0;
+  for (const SumSpec &spec : specs) {
+    if (spec.term.enabled) {
+      cutoff = std::max(cutoff, child_cutoff(spec.child));
+    }
+  }
+  return cutoff;
+}
+
+nb::list sum_components(const rgpot::SumPot &pot) {
+  nb::list out;
+  for (const rgpot::SumComponent &c : pot.lastComponents()) {
+    nb::dict d;
+    d["name"] = c.name;
+    d["weight"] = c.weight;
+    d["enabled"] = c.enabled;
+    d["evaluated"] = c.evaluated;
+    d["energy"] = c.energy;
+    d["variance"] = c.variance;
+    d["forces"] = rgpot::pybind::vector_to_numpy(c.forces, {c.forces.size() / 3, 3});
+    if (c.has_stress) {
+      d["stress"] = rgpot::pybind::stress_to_numpy(c.stress.data());
+    } else {
+      d["stress"] = nb::none();
+    }
+    out.append(d);
+  }
+  return out;
+}
+
+#ifdef RGPOT_HAS_EXPR
 std::unique_ptr<rgpot::ExprPot>
 expr_from_specs(const std::string &expression,
                 const std::vector<ChildSpec> &specs) {
@@ -347,10 +567,9 @@ void bind_default_pot(nb::module_ &m, const char *name) {
 }
 #endif
 
-nb::tuple stillinger_weber_energy_gradient(rgpot::StillingerWeberSi &self,
-                                           const F64 &positions,
-                                           nb::handle atom_types,
-                                           const F64 &box) {
+template <typename Pot>
+nb::tuple energy_gradient_call(Pot &self, const F64 &positions,
+                               nb::handle atom_types, const F64 &box) {
   if (box.ndim() != 2 || box.shape(0) != 3 || box.shape(1) != 3) {
     throw std::invalid_argument("box must have shape (3, 3)");
   }
@@ -367,11 +586,11 @@ nb::tuple stillinger_weber_energy_gradient(rgpot::StillingerWeberSi &self,
     const std::vector<int> species = rgpot::pybind::read_types(atom_types, n);
     auto *grad = new double[std::max<std::size_t>(n * 3, 1)]();
     double energy = 0.0;
-    {
-      nb::gil_scoped_release release;
+    rgpot::pybind::run_detached([&] {
       self.energyAndGradient(positions.data(), species.data(), cell, n, &energy,
                              grad);
-    }
+      return 0;
+    });
     auto arr =
         nb::ndarray<nb::numpy, double, nb::c_contig>(grad, {n, 3}, own(grad));
     return nb::make_tuple(energy, arr);
@@ -386,11 +605,11 @@ nb::tuple stillinger_weber_energy_gradient(rgpot::StillingerWeberSi &self,
     const std::vector<int> species = rgpot::pybind::read_types(atom_types, n);
     auto *energies = new double[std::max<std::size_t>(n_config, 1)]();
     auto *grads = new double[std::max<std::size_t>(n_config * n * 3, 1)]();
-    {
-      nb::gil_scoped_release release;
+    rgpot::pybind::run_detached([&] {
       self.energyAndGradientBatch(n_config, positions.data(), species.data(),
                                   cell, n, energies, grads);
-    }
+      return 0;
+    });
     auto earr = nb::ndarray<nb::numpy, double, nb::c_contig>(
         energies, {n_config}, own(energies));
     auto garr = nb::ndarray<nb::numpy, double, nb::c_contig>(
@@ -401,57 +620,60 @@ nb::tuple stillinger_weber_energy_gradient(rgpot::StillingerWeberSi &self,
       "positions must have shape (n_atoms, 3) or (n_config, n_atoms, 3)");
 }
 
-nb::tuple tersoff_sic_energy_gradient(rgpot::TersoffSiC &self,
-                                      const F64 &positions,
-                                      nb::handle atom_types, const F64 &box) {
-  if (box.ndim() != 2 || box.shape(0) != 3 || box.shape(1) != 3) {
-    throw std::invalid_argument("box must have shape (3, 3)");
-  }
-  const double *cell = box.data();
-  auto own = [](double *buf) {
-    return nb::capsule(
-        buf, [](void *p) noexcept { delete[] static_cast<double *>(p); });
-  };
-  if (positions.ndim() == 2) {
-    if (positions.shape(1) != 3) {
-      throw std::invalid_argument("positions must have shape (n_atoms, 3)");
-    }
-    const auto n = static_cast<std::size_t>(positions.shape(0));
-    const std::vector<int> species = rgpot::pybind::read_types(atom_types, n);
-    auto *grad = new double[std::max<std::size_t>(n * 3, 1)]();
-    double energy = 0.0;
-    {
-      nb::gil_scoped_release release;
-      self.energyAndGradient(positions.data(), species.data(), cell, n, &energy,
-                             grad);
-    }
-    auto arr =
-        nb::ndarray<nb::numpy, double, nb::c_contig>(grad, {n, 3}, own(grad));
-    return nb::make_tuple(energy, arr);
-  }
-  if (positions.ndim() == 3) {
-    if (positions.shape(2) != 3) {
-      throw std::invalid_argument(
-          "positions must have shape (n_config, n_atoms, 3)");
-    }
-    const auto n_config = static_cast<std::size_t>(positions.shape(0));
-    const auto n = static_cast<std::size_t>(positions.shape(1));
-    const std::vector<int> species = rgpot::pybind::read_types(atom_types, n);
-    auto *energies = new double[std::max<std::size_t>(n_config, 1)]();
-    auto *grads = new double[std::max<std::size_t>(n_config * n * 3, 1)]();
-    {
-      nb::gil_scoped_release release;
-      self.energyAndGradientBatch(n_config, positions.data(), species.data(),
-                                  cell, n, energies, grads);
-    }
-    auto earr = nb::ndarray<nb::numpy, double, nb::c_contig>(
-        energies, {n_config}, own(energies));
-    auto garr = nb::ndarray<nb::numpy, double, nb::c_contig>(
-        grads, {n_config, n, 3}, own(grads));
-    return nb::make_tuple(earr, garr);
-  }
-  throw std::invalid_argument(
-      "positions must have shape (n_atoms, 3) or (n_config, n_atoms, 3)");
+template <typename Pot, typename Cfg>
+auto bind_lj_like(nb::module_ &m, const char *name, const char *init_doc) {
+  auto cls = nb::class_<PotHolder<Pot>>(m, name);
+  cls.def(
+      "__init__",
+      [](PotHolder<Pot> *self, double u0, double cutoff, double psi,
+         double switch_width) {
+        new (self) PotHolder<Pot>([=] {
+          Cfg cfg;
+          cfg.u0 = u0;
+          cfg.cutoff = cutoff;
+          cfg.psi = psi;
+          cfg.switch_width = switch_width;
+          return std::make_unique<Pot>(cfg);
+        });
+      },
+      nb::arg("u0") = 1.0, nb::arg("cutoff") = 15.0, nb::arg("psi") = 1.0,
+      nb::arg("switch_width") = 0.0, init_doc);
+  cls.def("config", [](const PotHolder<Pot> &self) {
+    const Cfg &cfg = self.primary().config();
+    nb::dict out;
+    out["u0"] = cfg.u0;
+    out["cutoff"] = cfg.cutoff;
+    out["psi"] = cfg.psi;
+    out["switch_width"] = cfg.switch_width;
+    return out;
+  });
+  return cls;
+}
+
+template <typename Pot>
+void bind_md_native_pot(nb::module_ &m, const char *name,
+                        const char *unit_label) {
+  auto cls = nb::class_<Pot>(m, name);
+  cls.def(
+      "__call__",
+      [](Pot &self, const F64 &positions, nb::handle atom_types,
+         const F64 &box) {
+        auto geom = rgpot::pybind::read_geom(positions, atom_types, box);
+        return rgpot::pybind::call_detached(self, geom);
+      },
+      nb::arg("positions").noconvert(), nb::arg("atom_types"),
+      nb::arg("box").noconvert(),
+      "Energy, forces and variance. Positions are Angstrom, energy is eV.");
+  cls.def("native_u0", &Pot::nativeU0,
+          (std::string("Well depth stored for ") + unit_label + ", kJ/mol.")
+              .c_str());
+  cls.def("native_cutoff", &Pot::nativeCutoff,
+          (std::string("Cutoff stored for ") + unit_label + ", nanometres.")
+              .c_str());
+  cls.def("native_psi", &Pot::nativePsi,
+          (std::string("Zero crossing stored for ") + unit_label +
+           ", nanometres.")
+              .c_str());
 }
 
 } // namespace
@@ -459,20 +681,18 @@ nb::tuple tersoff_sic_energy_gradient(rgpot::TersoffSiC &self,
 NB_MODULE(_core, m) {
   // F1, F3, F7. install_policy registers NumericalError and the
   // in-use translator. A second translator maps invalid_argument to
-  // ValueError (F7).
+  // ValueError and domain_error to NumericalError (F7).
   rgbind::install_policy(m);
-  nb::register_exception_translator(translate_invalid_argument);
+  nb::register_exception_translator(translate_kernel_error);
 
   m.doc() = "rgpot Python bindings (nanobind). Classes that need a build "
             "option, such as ExprPot, D3Pot, D4Pot, XcKernel and the Fortran "
             "kernels, are absent when the build left them out. Evaluations "
             "release the interpreter while the kernel runs.";
   m.attr("__version__") = RGPOT_PY_VERSION;
-#ifdef RGPOT_HAS_METATOMIC
+  // MetatomicDlopen is linked into every librgpot. Torch is not.
+  // The engine plugin itself stays optional and is opened at runtime.
   m.attr("has_metatomic_dlopen") = true;
-#else
-  m.attr("has_metatomic_dlopen") = false;
-#endif
 #ifdef RGPOT_HAS_CACHE
   m.attr("has_cache") = true;
 #else
@@ -503,11 +723,29 @@ NB_MODULE(_core, m) {
 #else
   m.attr("has_fortran_pots") = false;
 #endif
+#ifdef RGPOT_HAS_EAM_TABLE
+  m.attr("has_eam_table") = true;
+#else
+  m.attr("has_eam_table") = false;
+#endif
 #ifdef RGPOT_HAS_IPI
   m.attr("has_ipi") = true;
 #else
   m.attr("has_ipi") = false;
 #endif
+
+  m.def(
+      "atomic_number",
+      [](const std::string &symbol) {
+        const int number = rgpot::elements::atomicNumber(symbol);
+        if (number == 0)
+          throw std::invalid_argument("unknown element " + symbol);
+        return number;
+      },
+      nb::arg("symbol"), "Atomic number of an element symbol.");
+  m.def("unit_conversion_factor", &rgpot::units::unit_conversion_factor,
+        nb::arg("from_unit"), nb::arg("to_unit"),
+        "Multiplicative conversion factor between compatible unit expressions.");
 
   // F6 round trip. -0.0, NaN, and subnormals are copied unchanged.
   m.def(
@@ -519,24 +757,11 @@ NB_MODULE(_core, m) {
       [](const F64 &positions, nb::handle atom_types, const F64 &box) {
         auto geom = rgpot::pybind::read_geom(positions, atom_types, box);
         rgpot::LJPot pot;
-        double energy = 0.0;
-        double variance = 0.0;
-        AtomMatrix forces;
-        {
-          nb::gil_scoped_release release;
-          std::tie(energy, forces, variance) =
-              pot(geom.pos, geom.types, geom.box);
-        }
-        if (!std::isfinite(energy)) {
-          throw rgbind::NumericalError("energy is not finite");
-        }
-        return nb::make_tuple(energy, rgpot::pybind::matrix_to_numpy(forces),
-                              variance);
+        return rgpot::pybind::call_detached(pot, geom);
       },
       nb::arg("positions").noconvert(), nb::arg("atom_types"),
       nb::arg("box").noconvert());
 
-#ifdef RGPOT_HAS_METATOMIC
   m.def(
       "evaluate_metatomic_dlopen",
       [](const F64 &positions, nb::handle atom_types, const F64 &box,
@@ -565,10 +790,10 @@ NB_MODULE(_core, m) {
         }
         rgpot::ForceInput in{n, geom.pos.data(), geom.types.data(), flat};
         rgpot::ForceOut out{forces.data(), 0.0, 0.0, {}, 0};
-        {
-          nb::gil_scoped_release release;
+        rgpot::pybind::run_detached([&] {
           front.forceImpl(in, &out);
-        }
+          return 0;
+        });
         if (!std::isfinite(out.energy)) {
           throw rgbind::NumericalError("energy is not finite");
         }
@@ -584,7 +809,6 @@ NB_MODULE(_core, m) {
       "the directories in EON_POTENTIALS_PATH and RGPOT_ENGINE_PATH. "
       "rgpot.evaluate_metatomic also tries the engines bundled with the "
       "package. Each call builds its own frontend.");
-#endif
 
 #ifdef RGPOT_HAS_CACHE
   nb::class_<rgpot::cache::PotentialCache>(m, "PotentialCache")
@@ -602,35 +826,12 @@ NB_MODULE(_core, m) {
       .def("reset_counts", &rgpot::cache::PotentialCache::reset_counts);
 #endif
 
-  auto lj = nb::class_<PotHolder<rgpot::LJPot>>(m, "LJPot");
-  lj.def(
-      "__init__",
-      [](PotHolder<rgpot::LJPot> *self, double u0, double cutoff, double psi,
-         double switch_width) {
-        new (self) PotHolder<rgpot::LJPot>([=] {
-          rgpot::LJConfig cfg;
-          cfg.u0 = u0;
-          cfg.cutoff = cutoff;
-          cfg.psi = psi;
-          cfg.switch_width = switch_width;
-          return std::make_unique<rgpot::LJPot>(cfg);
-        });
-      },
-      nb::arg("u0") = 1.0, nb::arg("cutoff") = 15.0, nb::arg("psi") = 1.0,
-      nb::arg("switch_width") = 0.0,
+  auto lj = bind_lj_like<rgpot::LJPot, rgpot::LJConfig>(
+      m, "LJPot",
       "Shifted 12-6 Lennard-Jones. u0 is the well depth (eV), cutoff "
       "and psi are Angstrom. A positive switch_width (Angstrom) "
       "replaces the shift with the C^2 quintic switch over "
       "[cutoff - switch_width, cutoff]; it must not exceed cutoff.");
-  lj.def("config", [](const PotHolder<rgpot::LJPot> &self) {
-    const rgpot::LJConfig &cfg = self.primary().config();
-    nb::dict out;
-    out["u0"] = cfg.u0;
-    out["cutoff"] = cfg.cutoff;
-    out["psi"] = cfg.psi;
-    out["switch_width"] = cfg.switch_width;
-    return out;
-  });
 #ifdef RGPOT_HAS_CACHE
   lj.def(
       "set_cache",
@@ -643,36 +844,13 @@ NB_MODULE(_core, m) {
 
   // Same call surface as LJPot. Both classes are already in librgpot;
   // this is the binding a caller of the wheel uses.
-  auto cluster = nb::class_<PotHolder<rgpot::LJClusterPot>>(m, "LJClusterPot");
-  cluster.def(
-      "__init__",
-      [](PotHolder<rgpot::LJClusterPot> *self, double u0, double cutoff,
-         double psi, double switch_width) {
-        new (self) PotHolder<rgpot::LJClusterPot>([=] {
-          rgpot::LJClusterConfig cfg;
-          cfg.u0 = u0;
-          cfg.cutoff = cutoff;
-          cfg.psi = psi;
-          cfg.switch_width = switch_width;
-          return std::make_unique<rgpot::LJClusterPot>(cfg);
-        });
-      },
-      nb::arg("u0") = 1.0, nb::arg("cutoff") = 15.0, nb::arg("psi") = 1.0,
-      nb::arg("switch_width") = 0.0,
+  auto cluster = bind_lj_like<rgpot::LJClusterPot, rgpot::LJClusterConfig>(
+      m, "LJClusterPot",
       "Free-boundary shifted 12-6 Lennard-Jones. u0 is the well depth "
       "(eV), cutoff and psi are Angstrom. An input cell does not fold "
       "pair vectors. A positive switch_width (Angstrom) replaces the "
       "shift with the C^2 quintic switch over "
       "[cutoff - switch_width, cutoff]; it must not exceed cutoff.");
-  cluster.def("config", [](const PotHolder<rgpot::LJClusterPot> &self) {
-    const rgpot::LJClusterConfig &cfg = self.primary().config();
-    nb::dict out;
-    out["u0"] = cfg.u0;
-    out["cutoff"] = cfg.cutoff;
-    out["psi"] = cfg.psi;
-    out["switch_width"] = cfg.switch_width;
-    return out;
-  });
   rgpot::pybind::bind_calls(cluster);
 
   auto morse_cls = nb::class_<PotHolder<rgpot::MorsePot>>(m, "MorsePot");
@@ -708,6 +886,162 @@ NB_MODULE(_core, m) {
     return out;
   });
   rgpot::pybind::bind_calls(morse_cls);
+
+  auto d2_cls = nb::class_<PotHolder<rgpot::D2Pot>>(m, "D2Pot");
+  d2_cls.def(
+      "__init__",
+      [](PotHolder<rgpot::D2Pot> *self, double s6, double d, double sr, double cutoff,
+         std::optional<std::string> functional) {
+        rgpot::D2Config cfg =
+            functional ? rgpot::d2_config_for(*functional) : rgpot::D2Config{};
+        if (!functional) {
+          cfg.s6 = s6;
+          cfg.d = d;
+        }
+        cfg.sr = sr;
+        cfg.cutoff = cutoff;
+        new (self) PotHolder<rgpot::D2Pot>(
+            [cfg] { return std::make_unique<rgpot::D2Pot>(cfg); });
+      },
+      nb::arg("s6") = 1.2, nb::arg("d") = 20.0, nb::arg("sr") = 1.1,
+      nb::arg("cutoff") = rgpot::D2Config{}.cutoff, nb::arg("functional") = nb::none(),
+      "Grimme's DFT-D2 (J. Comput. Chem. 27, 1787 (2006)) as a lattice sum "
+      "over every periodic image within cutoff (Angstrom), in eV. The "
+      "defaults are BLYP. A functional takes s6 and d from dftd3's D2 table "
+      "in place of the arguments.");
+  d2_cls.def("config", [](const PotHolder<rgpot::D2Pot> &self) {
+    const rgpot::D2Config &cfg = self.primary().config();
+    nb::dict out;
+    out["s6"] = cfg.s6;
+    out["d"] = cfg.d;
+    out["sr"] = cfg.sr;
+    out["cutoff"] = cfg.cutoff;
+    return out;
+  });
+  rgpot::pybind::bind_calls(d2_cls);
+
+  auto d2cpmd_cls = nb::class_<PotHolder<rgpot::D2CpmdPot>>(m, "D2CpmdPot");
+  d2cpmd_cls.def(
+      "__init__",
+      [](PotHolder<rgpot::D2CpmdPot> *self, double s6, double alpha, double vdweps,
+         std::optional<std::string> functional, int symmetry) {
+        rgpot::D2CpmdConfig cfg =
+            functional ? rgpot::d2_cpmd_config_for(*functional) : rgpot::D2CpmdConfig{};
+        if (!functional) {
+          cfg.s6 = s6;
+        }
+        cfg.alpha = alpha;
+        cfg.vdweps = vdweps;
+        cfg.symmetry = symmetry;
+        new (self) PotHolder<rgpot::D2CpmdPot>(
+            [cfg] { return std::make_unique<rgpot::D2CpmdPot>(cfg); });
+      },
+      nb::arg("s6") = rgpot::D2CpmdConfig{}.s6, nb::arg("alpha") = rgpot::D2CpmdConfig{}.alpha,
+      nb::arg("vdweps") = rgpot::D2CpmdConfig{}.vdweps, nb::arg("functional") = nb::none(),
+      nb::arg("symmetry") = rgpot::D2CpmdConfig{}.symmetry,
+      "OpenCPMD's built-in empirical D2 (EMPIRICAL CORRECTION, ALL DFT-D2) "
+      "with its tables, damping, truncation and minimum image, in eV, to "
+      "subtract from a CPMD run that had it on. The defaults are CPMD's for "
+      "BLYP; a functional takes s6 from CPMD's set_s6. symmetry is the "
+      "run's SYMMETRY code, which picks the branch of CPMD's pbc3 (-1 reads "
+      "it from the box, which cannot name 12).");
+  d2cpmd_cls.def("config", [](const PotHolder<rgpot::D2CpmdPot> &self) {
+    const rgpot::D2CpmdConfig &cfg = self.primary().config();
+    nb::dict out;
+    out["s6"] = cfg.s6;
+    out["alpha"] = cfg.alpha;
+    out["vdweps"] = cfg.vdweps;
+    out["symmetry"] = cfg.symmetry;
+    return out;
+  });
+  rgpot::pybind::bind_calls(d2cpmd_cls);
+
+#ifdef RGPOT_HAS_EAM_TABLE
+  auto eam_table =
+      nb::class_<PotHolder<rgpot::EAMTablePot>>(m, "EAMTablePot");
+  eam_table.def(
+      "__init__",
+      [](PotHolder<rgpot::EAMTablePot> *self, const std::string &file,
+         const std::string &format, bool periodic, bool stress, double skin) {
+        const rgpot::EAMTableFormat table_format = eam_table_format(format);
+        new (self) PotHolder<rgpot::EAMTablePot>([=] {
+          rgpot::EAMTableConfig cfg;
+          cfg.path = file;
+          cfg.format = table_format;
+          cfg.periodic = periodic;
+          cfg.stress = stress;
+          cfg.skin = skin;
+          return std::make_unique<rgpot::EAMTablePot>(cfg);
+        });
+      },
+      nb::arg("file"), nb::arg("format"), nb::arg("periodic") = true,
+      nb::arg("stress") = false, nb::arg("skin") = 1.0,
+      "Tabulated EAM or Finnis-Sinclair potential. format is funcfl, "
+      "setfl, or fs. Energies and lengths use the table's units.");
+  eam_table.def_prop_ro(
+      "cutoff",
+      [](const PotHolder<rgpot::EAMTablePot> &self) {
+        return self.primary().cutoff();
+      },
+      "Radial cutoff read from the table.");
+  rgpot::pybind::bind_calls(eam_table);
+#endif
+
+  auto muller =
+      nb::class_<PotHolder<rgpot::MullerBrownPot>>(m, "MullerBrownPot");
+  muller.def(
+      "__init__",
+      [](PotHolder<rgpot::MullerBrownPot> *self,
+         const std::vector<double> &amplitude, const std::vector<double> &a,
+         const std::vector<double> &b, const std::vector<double> &c,
+         const std::vector<double> &x0, const std::vector<double> &y0) {
+        const auto config =
+            rgpot::mullerBrownConfigFromLists(amplitude, a, b, c, x0, y0);
+        new (self) PotHolder<rgpot::MullerBrownPot>([config] {
+          return std::make_unique<rgpot::MullerBrownPot>(config);
+        });
+      },
+      nb::arg("amplitude") = std::vector<double>{-200, -100, -170, 15},
+      nb::arg("a") = std::vector<double>{-1, -1, -6.5, 0.7},
+      nb::arg("b") = std::vector<double>{0, 0, 11, 0.6},
+      nb::arg("c") = std::vector<double>{-10, -10, -6.5, 0.7},
+      nb::arg("x0") = std::vector<double>{1, 0, -0.5, -1},
+      nb::arg("y0") = std::vector<double>{0, 0.5, 1.5, 1},
+      "The Muller-Brown two-dimensional model surface. The first atom's x "
+      "and y coordinates are active; every other coordinate has zero force.");
+  muller.def("config", [](const PotHolder<rgpot::MullerBrownPot> &self) {
+    const auto &config = self.primary().config();
+    nb::dict out;
+    out["amplitude"] =
+        std::vector<double>(config.amplitude.begin(), config.amplitude.end());
+    out["a"] = std::vector<double>(config.a.begin(), config.a.end());
+    out["b"] = std::vector<double>(config.b.begin(), config.b.end());
+    out["c"] = std::vector<double>(config.c.begin(), config.c.end());
+    out["x0"] = std::vector<double>(config.x0.begin(), config.x0.end());
+    out["y0"] = std::vector<double>(config.y0.begin(), config.y0.end());
+    return out;
+  });
+  rgpot::pybind::bind_calls(muller);
+
+  auto emt_cls = nb::class_<PotHolder<rgpot::EMTPot>>(m, "EMTPot");
+  emt_cls.def(
+      "__init__",
+      [](PotHolder<rgpot::EMTPot> *self, bool rasmussen) {
+        new (self) PotHolder<rgpot::EMTPot>([=] {
+          rgpot::EMTConfig cfg;
+          cfg.rasmussen = rasmussen;
+          return std::make_unique<rgpot::EMTPot>(cfg);
+        });
+      },
+      nb::arg("rasmussen") = false,
+      "Asap effective-medium potential for H, Mg, Al, Ni, Cu, Pd, Ag, Pt "
+      "and Au. rasmussen selects the Al, Cu, Ag and Au parameter provider.");
+  emt_cls.def("config", [](const PotHolder<rgpot::EMTPot> &self) {
+    nb::dict out;
+    out["rasmussen"] = self.primary().config().rasmussen;
+    return out;
+  });
+  rgpot::pybind::bind_calls(emt_cls);
 
 #ifdef RGPOT_HAS_FORTRAN_POTS
   bind_default_pot<rgpot::fortranpots::SWPot>(m, "SWPot");
@@ -746,18 +1080,15 @@ NB_MODULE(_core, m) {
           [](rgpot::StillingerWeberSi &self, const F64 &positions,
              nb::handle atom_types, const F64 &box) {
             auto geom = rgpot::pybind::read_geom(positions, atom_types, box);
-            rgpot::pybind::FullResult result;
-            {
-              nb::gil_scoped_release release;
-              result = rgpot::pybind::run_force(self, geom);
-            }
+            rgpot::pybind::FullResult result = rgpot::pybind::run_detached(
+                [&] { return rgpot::pybind::run_force(self, geom); });
             return rgpot::pybind::result_dict(result);
           },
           nb::arg("positions").noconvert(), nb::arg("atom_types"),
           nb::arg("box").noconvert(),
           "Energy, forces, variance, and the Cauchy stress, shape (3, 3), "
           "in eV/Angstrom^3. The kernel runs detached.")
-      .def("energy_gradient", &stillinger_weber_energy_gradient,
+      .def("energy_gradient", &energy_gradient_call<rgpot::StillingerWeberSi>,
            nb::arg("positions").noconvert(), nb::arg("atom_types"),
            nb::arg("box").noconvert(),
            "Energy and dE/dx. positions is (n_atoms, 3) or "
@@ -784,7 +1115,27 @@ NB_MODULE(_core, m) {
           nb::arg("box").noconvert(),
           "Return (energy, forces, variance) for one configuration. "
           "Forces are -dE/dx.")
-      .def("energy_gradient", &tersoff_sic_energy_gradient,
+      .def("caps",
+           [](const rgpot::TersoffSiC &self) {
+             return rgpot::pybind::caps_dict(self.caps());
+           })
+      .def(
+          "evaluate",
+          [](rgpot::TersoffSiC &self, const F64 &positions,
+             nb::handle atom_types, const F64 &box) {
+            auto geom = rgpot::pybind::read_geom(positions, atom_types, box);
+            rgpot::pybind::FullResult result;
+            {
+              nb::gil_scoped_release release;
+              result = rgpot::pybind::run_force(self, geom);
+            }
+            return rgpot::pybind::result_dict(result);
+          },
+          nb::arg("positions").noconvert(), nb::arg("atom_types"),
+          nb::arg("box").noconvert(),
+          "Energy, forces, variance, and the Cauchy stress, shape (3, 3), "
+          "in eV/Angstrom^3. The kernel runs detached.")
+      .def("energy_gradient", &energy_gradient_call<rgpot::TersoffSiC>,
            nb::arg("positions").noconvert(), nb::arg("atom_types"),
            nb::arg("box").noconvert(),
            "Energy and dE/dx. positions is (n_atoms, 3) or "
@@ -816,19 +1167,61 @@ NB_MODULE(_core, m) {
   d4.def(
       "__init__",
       [](PotHolder<rgpot::D4Pot> *self, const std::string &functional,
-         double charge, bool atm) {
+         double charge, bool atm, bool periodic) {
         new (self) PotHolder<rgpot::D4Pot>([=] {
           rgpot::D4Config cfg;
           cfg.functional = functional;
           cfg.charge = charge;
           cfg.atm = atm;
+          cfg.periodic = periodic;
           return std::make_unique<rgpot::D4Pot>(cfg);
         });
       },
       nb::arg("functional") = "pbe", nb::arg("charge") = 0.0,
-      nb::arg("atm") = true);
+      nb::arg("atm") = true, nb::arg("periodic") = false,
+      "Grimme D4 through dftd4, in eV. functional is a dftd4 method key "
+      "whose rational damping parameters dftd4 supplies. periodic passes "
+      "the box as a 3D lattice and returns the stress; off, the box is "
+      "ignored.");
+  d4.def("config", [](const PotHolder<rgpot::D4Pot> &self) {
+    const rgpot::D4Config &cfg = self.primary().config();
+    nb::dict out;
+    out["functional"] = cfg.functional;
+    out["charge"] = cfg.charge;
+    out["atm"] = cfg.atm;
+    out["periodic"] = cfg.periodic;
+    return out;
+  });
   rgpot::pybind::bind_calls(d4);
 #endif
+
+  auto sum = nb::class_<PotHolder<rgpot::SumPot>>(m, "SumPot");
+  sum.def(
+      "__init__",
+      [](PotHolder<rgpot::SumPot> *self, const nb::list &terms) {
+        const std::vector<SumSpec> specs = sum_specs_from(terms);
+        const double cutoff = sum_cutoff(specs);
+        new (self) PotHolder<rgpot::SumPot>([=] { return sum_from_specs(specs); });
+        self->set_cutoff(cutoff);
+      },
+      nb::arg("terms"),
+      "Weighted sum of child potentials. terms is a list of kind strings or "
+      "dicts with kind, name (term<i>), weight (1.0, sign allowed), enabled "
+      "(True) and the kind's fields as for ExprPot. A disabled term is "
+      "never built or evaluated.");
+  sum.def_prop_ro(
+      "cutoff",
+      [](const PotHolder<rgpot::SumPot> &self) { return self.cutoff(); },
+      "Largest minimum-image cutoff of the enabled terms, in Angstrom: the "
+      "periodic cell width the sum needs to exceed twice. A term with no such "
+      "radius (d2, d2cpmd, d3, d4) counts 0, and a sum of only those is 0.");
+  sum.def(
+      "components",
+      [](PotHolder<rgpot::SumPot> &self) { return sum_components(self.slot()); },
+      "Per-term record of this thread's last call: name, weight, enabled, "
+      "evaluated, energy (eV, before the weight), forces (N, 3), variance and "
+      "stress (3, 3, or None).");
+  rgpot::pybind::bind_calls(sum);
 
 #ifdef RGPOT_HAS_EXPR
   auto expr = nb::class_<PotHolder<rgpot::ExprPot>>(m, "ExprPot");
@@ -838,12 +1231,15 @@ NB_MODULE(_core, m) {
          const nb::dict &terms) {
         std::vector<ChildSpec> specs;
         specs.reserve(terms.size());
+        double cutoff = 0.0;
         for (auto item : terms) {
           auto name = nb::cast<std::string>(item.first);
           specs.push_back(child_spec_from(name, item.second));
+          cutoff = std::max(cutoff, child_cutoff(specs.back()));
         }
         new (self) PotHolder<rgpot::ExprPot>(
             [=] { return expr_from_specs(expression, specs); });
+        self->set_cutoff(cutoff);
       },
       nb::arg("expression"), nb::arg("terms"),
       "expression is a Lepton string; terms maps names to 'lj'/'morse'/"
@@ -853,6 +1249,13 @@ NB_MODULE(_core, m) {
   expr.def_prop_ro("expression", [](const PotHolder<rgpot::ExprPot> &self) {
     return self.primary().expression();
   });
+  expr.def_prop_ro(
+      "cutoff",
+      [](const PotHolder<rgpot::ExprPot> &self) { return self.cutoff(); },
+      "Largest minimum-image cutoff of the terms, in Angstrom: the periodic "
+      "cell width the expression needs to exceed twice. A term with no such "
+      "radius (d2, d2cpmd, d3, d4) counts 0, and an expression of only those "
+      "is 0.");
   expr.def(
       "d_energy_d_term",
       [](PotHolder<rgpot::ExprPot> &self, const std::string &name) {
@@ -1126,81 +1529,13 @@ NB_MODULE(_core, m) {
       [](rgpot::LammpsPot &self, const F64 &positions, nb::handle atom_types,
          const F64 &box) {
         auto geom = rgpot::pybind::read_geom(positions, atom_types, box);
-        double energy = 0.0;
-        rgpot::types::AtomMatrix forces;
-        double variance = 0.0;
-        {
-          nb::gil_scoped_release release;
-          std::tie(energy, forces, variance) =
-              self(geom.pos, geom.types, geom.box);
-        }
-        if (!std::isfinite(energy)) {
-          throw rgbind::NumericalError("energy is not finite");
-        }
-        return nb::make_tuple(energy, rgpot::pybind::matrix_to_numpy(forces),
-                              variance);
+        return rgpot::pybind::call_detached(self, geom);
       },
       nb::arg("positions").noconvert(), nb::arg("atom_types"),
       nb::arg("box").noconvert(),
       "Energy, forces and variance. Positions are Angstrom, energy is eV.");
-  auto gromacs = nb::class_<rgpot::GromacsPot>(m, "GromacsPot");
-  gromacs.def(
-      "__call__",
-      [](rgpot::GromacsPot &self, const F64 &positions, nb::handle atom_types,
-         const F64 &box) {
-        auto geom = rgpot::pybind::read_geom(positions, atom_types, box);
-        double energy = 0.0;
-        rgpot::types::AtomMatrix forces;
-        double variance = 0.0;
-        {
-          nb::gil_scoped_release release;
-          std::tie(energy, forces, variance) =
-              self(geom.pos, geom.types, geom.box);
-        }
-        if (!std::isfinite(energy)) {
-          throw rgbind::NumericalError("energy is not finite");
-        }
-        return nb::make_tuple(energy, rgpot::pybind::matrix_to_numpy(forces),
-                              variance);
-      },
-      nb::arg("positions").noconvert(), nb::arg("atom_types"),
-      nb::arg("box").noconvert(),
-      "Energy, forces and variance. Positions are Angstrom, energy is eV.");
-  gromacs.def("native_u0", &rgpot::GromacsPot::nativeU0,
-              "Well depth stored for GROMACS, kJ/mol.");
-  gromacs.def("native_cutoff", &rgpot::GromacsPot::nativeCutoff,
-              "Cutoff stored for GROMACS, nanometres.");
-  gromacs.def("native_psi", &rgpot::GromacsPot::nativePsi,
-              "Zero crossing stored for GROMACS, nanometres.");
-  auto openmm = nb::class_<rgpot::OpenMMPot>(m, "OpenMMPot");
-  openmm.def(
-      "__call__",
-      [](rgpot::OpenMMPot &self, const F64 &positions, nb::handle atom_types,
-         const F64 &box) {
-        auto geom = rgpot::pybind::read_geom(positions, atom_types, box);
-        double energy = 0.0;
-        rgpot::types::AtomMatrix forces;
-        double variance = 0.0;
-        {
-          nb::gil_scoped_release release;
-          std::tie(energy, forces, variance) =
-              self(geom.pos, geom.types, geom.box);
-        }
-        if (!std::isfinite(energy)) {
-          throw rgbind::NumericalError("energy is not finite");
-        }
-        return nb::make_tuple(energy, rgpot::pybind::matrix_to_numpy(forces),
-                              variance);
-      },
-      nb::arg("positions").noconvert(), nb::arg("atom_types"),
-      nb::arg("box").noconvert(),
-      "Energy, forces and variance. Positions are Angstrom, energy is eV.");
-  openmm.def("native_u0", &rgpot::OpenMMPot::nativeU0,
-             "Well depth stored for OpenMM, kJ/mol.");
-  openmm.def("native_cutoff", &rgpot::OpenMMPot::nativeCutoff,
-             "Cutoff stored for OpenMM, nanometres.");
-  openmm.def("native_psi", &rgpot::OpenMMPot::nativePsi,
-             "Zero crossing stored for OpenMM, nanometres.");
+  bind_md_native_pot<rgpot::GromacsPot>(m, "GromacsPot", "GROMACS");
+  bind_md_native_pot<rgpot::OpenMMPot>(m, "OpenMMPot", "OpenMM");
 
   auto make_cfg = [](double u0, double cutoff, double psi,
                      const std::string &engine_path) {
@@ -1226,6 +1561,21 @@ NB_MODULE(_core, m) {
       "plugin, which stays the backend. engine_path empty searches "
       "RGPOT_LAMMPS_ENGINE, LAMMPS_ENGINE, liblammps_engine.so, then "
       "liblj_engine.so. u0 is eV; cutoff and psi are Angstrom.");
+  m.def(
+      "rgpot_lammps_potential",
+      [&](nb::bytes config_bytes, const std::string &engine_path) {
+        const std::string blob(config_bytes.c_str(), config_bytes.size());
+        return rgpot::rgpot_lammpc_potential(blob.data(), blob.size(),
+                                             engine_path)
+            .release();
+      },
+      nb::rv_policy::take_ownership, nb::arg("config_bytes"),
+      nb::arg("engine_path") = "",
+      "Lammpc-backed LAMMPS backend. config_bytes is a flat "
+      "PotentialConfig message with the lammps arm. engine_path empty "
+      "tries LAMMPC_LIBRARY and RGPOT_LAMMPC_ENGINE when either is set, "
+      "else liblammpc.so; any other engine_path is the only library "
+      "tried.");
   m.def(
       "rgpot_gromacs_potential",
       [&](double u0, double cutoff, double psi,

@@ -9,10 +9,10 @@
 //!
 //! 1. **Return [`rgpot_status_t`](crate::status::rgpot_status_t)** (or a
 //!    pointer / void for constructors and destructors).
-//! 2. **Wrap the body in [`catch_unwind`](crate::status::catch_unwind)** to
+//! 2. **Wrap the body in `crate::status::catch_unwind`** to
 //!    prevent panics from crossing the FFI boundary.
 //! 3. **Validate pointer arguments** and call
-//!    [`set_last_error`](crate::status::set_last_error) before returning a
+//!    `crate::status::set_last_error` before returning a
 //!    non-success status.
 //!
 //! ## Submodules
@@ -23,22 +23,35 @@
 //! - [`potential`] — Lifecycle functions for
 //!   [`rgpot_potential_t`](crate::potential::rgpot_potential_t): create,
 //!   calculate, free.
+//! - [`eam_table`] — Constructor of the tabulated EAM potential handle.
 //! - [`hvp`] — Hessian-vector products of a potential handle: the product,
-//!   the cached centre, the analytic callback and the counters.
-//! - [`rpc`] — RPC client functions (feature-gated on `rpc`): connect,
+//!   the cached centre, the analytic and dual-number callbacks and the
+//!   counters.
+//! - [`hessian`] — Dense Hessians of a potential handle, their callbacks,
+//!   and the derivative capabilities and counts of the handle.
+//! - [`jet`] — Validated Taylor jets of a potential handle and their callback.
+//! - `rpc` — RPC client functions (feature-gated on `rpc`): connect,
 //!   calculate, disconnect.
 
-pub mod types;
-pub mod potential;
+pub mod eam_table;
+pub mod hessian;
 pub mod hvp;
+pub mod jet;
+pub mod potential;
+pub mod types;
 
 #[cfg(feature = "rpc")]
 pub mod rpc;
+
+pub mod mdi;
 
 // Re-export eindir lifecycle functions at the c_api level so cbindgen picks them up.
 #[cfg(feature = "schema")]
 pub use crate::eindir::rgpot_potential_set_peer_capabilities;
 pub use crate::eindir::{
-    rgpot_eval_counts_t, rgpot_potential_eval_counts, rgpot_potential_free_eindir,
+    rgpot_eval_counts_t, rgpot_fused_settings_default, rgpot_fused_settings_t,
+    rgpot_potential_eval_counts, rgpot_potential_free_eindir, rgpot_potential_fused_error_kind,
     rgpot_potential_new_eindir, rgpot_potential_reset_eval_counts,
+    rgpot_potential_set_fused_settings,
 };
+pub use crate::fused::rgpot_fused_error_kind_t;

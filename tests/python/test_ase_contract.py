@@ -24,12 +24,23 @@ from rgpot.ase import AnnealOptimizer, AnnealRunner, RgpotCalculator
 from support import lj_crystal, lj_dimer, pt7, raw_bytes, si_crystal
 
 
+def _without_source_tree(env: dict[str, str]) -> None:
+    """Drop the checkout's python/ directory so the installed wheel is imported."""
+    source = str(Path(__file__).resolve().parents[2] / "python")
+    parts = [
+        part
+        for part in env.get("PYTHONPATH", "").split(os.pathsep)
+        if part and part != source
+    ]
+    if parts:
+        env["PYTHONPATH"] = os.pathsep.join(parts)
+    else:
+        env.pop("PYTHONPATH", None)
+
+
 def test_import_rgpot_does_not_import_ase() -> None:
     env = os.environ.copy()
-    root = Path(__file__).resolve().parents[2]
-    pythonpath = env.get("PYTHONPATH", "")
-    extra = str(root / "python")
-    env["PYTHONPATH"] = extra if not pythonpath else extra + os.pathsep + pythonpath
+    _without_source_tree(env)
     script = (
         "import sys, rgpot; "
         "assert 'ase' not in sys.modules, sorted(sys.modules); "
@@ -281,10 +292,8 @@ def test_nonperiodic_pt7_ignores_cell() -> None:
     np.testing.assert_allclose(mixed.get_forces(), bare.get_forces(), atol=1e-12)
 
 
-def test_rpc_bfgs_when_potserv_exists(tmp_path: Path) -> None:
-    binary = os.environ.get("RGPOT_POTSERV_BIN")
-    if not binary or not Path(binary).is_file():
-        pytest.skip("RGPOT_POTSERV_BIN is not set")
+@pytest.mark.rpc
+def test_rpc_bfgs_when_potserv_exists(tmp_path: Path, potserv_factory) -> None:
     if not rgpot.has_fortran_pots:
         pytest.skip("this build has no Fortran potentials")
     from rgpot.ase import RgpotRpcCalculator
@@ -294,8 +303,9 @@ def test_rpc_bfgs_when_potserv_exists(tmp_path: Path) -> None:
     BFGS(atoms, logfile=None, trajectory=None).run(fmax=0.05, steps=200)
     in_process = float(atoms.get_potential_energy())
 
+    srv = potserv_factory("EAMAl")
     rpc_atoms = pt7()
-    rpc = RgpotRpcCalculator.spawn(binary, potential="EAMAl")
+    rpc = RgpotRpcCalculator(host=srv.host, port=srv.port)
     try:
         rpc_atoms.calc = rpc
         BFGS(rpc_atoms, logfile=None, trajectory=None).run(fmax=0.05, steps=200)
@@ -331,11 +341,9 @@ def test_deprecated_rpc_import_path() -> None:
         pytest.skip("RPC shim is not in this tree")
     env = os.environ.copy()
     root = str(shim.parents[0])
+    _without_source_tree(env)
     pythonpath = env.get("PYTHONPATH", "")
-    src = str(Path(__file__).resolve().parents[2] / "python")
-    env["PYTHONPATH"] = os.pathsep.join(
-        part for part in (root, src, pythonpath) if part
-    )
+    env["PYTHONPATH"] = os.pathsep.join(part for part in (root, pythonpath) if part)
     script = """
 import warnings
 warnings.simplefilter("always", DeprecationWarning)

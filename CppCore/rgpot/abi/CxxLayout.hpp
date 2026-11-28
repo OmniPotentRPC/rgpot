@@ -39,7 +39,15 @@
 #include "rgpot/Morse/MorsePot.hpp"
 #include "rgpot/CalculatorGroup.hpp"
 #include "rgpot/Potential.hpp"
+#include "rgpot/SuttonChen/SuttonChenPot.hpp"
 #include "rgpot/ZBL/ZBLPot.hpp"
+#include "rgpot/D2Pot/D2Pot.hpp"
+#include "rgpot/D2Pot/D2CpmdPot.hpp"
+#include "rgpot/D4Pot/D4Config.hpp"
+#include "rgpot/Models/ModelPots.hpp"
+#include "rgpot/LongRange/SumPot.hpp"
+#include "rgpot/SumPot/SumPot.hpp"
+#include "rgpot/nlist/NeighbourList.hpp"
 #include "rgpot/pot_caps.hpp"
 #include "rgpot/pot_types.hpp"
 
@@ -49,6 +57,8 @@
 
 #if defined(_WIN32) && defined(RGPOT_CXX_LAYOUT_BUILDING)
 #define RGPOT_CXX_LAYOUT_API __declspec(dllexport)
+#elif !defined(_WIN32)
+#define RGPOT_CXX_LAYOUT_API __attribute__((visibility("default")))
 #else
 #define RGPOT_CXX_LAYOUT_API
 #endif
@@ -152,7 +162,7 @@ namespace rgpot::abi {
 /// C++ ABI: reordering virtuals without changing their count, changing the
 /// meaning of a field, changing a base class of a covered type. Any change to
 /// size, alignment or a field offset moves the hash by itself.
-inline constexpr std::uint32_t kCxxLayoutRevision = 1;
+inline constexpr std::uint32_t kCxxLayoutRevision = 2;
 
 /// ELF soversion of librgpot (`librgpot.so.N`, `librgpot.N.dylib`).
 /// Meson and CMake read this constant. The SONAME is not the layout hash.
@@ -164,9 +174,21 @@ inline constexpr std::uint32_t kCxxLayoutRevision = 1;
 /// did not increase.
 ///
 /// This is not `RGPOT_ABI_LAYOUT_REVISION`. The C ABI stamp in `rgpot.h`
-/// is major 1, minor 2, layout revision 1. Minor 1 added
-/// `rgpot_eindir_abi_compatible`. No exported C struct of that header
-/// changed layout. The neighbour query is `RGPOT_NLIST_ABI` 4.
+/// is major 1, minor 10, layout revision 1. Minor 1 added
+/// `rgpot_eindir_abi_compatible`, minor 2 the Hessian-vector functions,
+/// minor 3 the fused-cache settings and error kind, minor 4 the Taylor
+/// jet functions, minor 5 the engine and RPC Hessian-vector exports,
+/// minor 6 `rgpot_potential_new_eam_table` and minor 8 the dense Hessian,
+/// the dual-number callbacks and the derivative capabilities and counts.
+/// Minor 9 added `rgpot_mdi_server_start` and minor 10
+/// `rgpot_rpc_client_select_orbitals`.
+/// The molecular-dynamics session, including its optional
+/// neighbour-exchange callbacks, is a C++ session vtable on librgpot.
+/// Those symbols are not exports of librgpot_core, so this C minor
+/// stays 10. `kCxxSoversion` stays 9: the session vtable is not a
+/// covered potential type, and `kCxxLayoutRevision` stays 2.
+/// No exported C struct of that header changed layout. The neighbour query
+/// is `RGPOT_NLIST_ABI` 4.
 /// The C API is exported from librgpot, so it has no shared library of
 /// its own and rides this SONAME. `librgpot_mpi` stays at soversion 3
 /// (`RGPOT_MPI_ABI_VERSION` 1, unchanged).
@@ -178,7 +200,25 @@ inline constexpr std::uint32_t kCxxLayoutRevision = 1;
 /// 6 drops the copied half-list from LJ and Morse, and gives ZBL and the
 /// open Lennard-Jones cluster a neighbour member. The pair term runs on
 /// the shared walk, so CachedPairs is no longer part of those objects.
-inline constexpr std::uint32_t kCxxSoversion = 6;
+/// 8 stamps SuttonChenConfig, PotType::SuttonChen and SuttonChenPot.
+/// 9 stamps `SumPot`, `lr::SumPot` and `PotType::LrSum`. `lr::SumPot`
+/// derives from `SumPot` now: it is 120 bytes where it was 56, and its
+/// old constructor and `add` symbols are gone.
+/// It also stamps `D2Config`, `D2Pot` and `PotType::D2`.
+/// It also stamps `D2CpmdConfig`, `D2CpmdPot` and `PotType::D2Cpmd`.
+/// `D4Config` is stamped too, from a header of its own. Its new `periodic`
+/// field fits the padding after `atm`, so only the field offsets show it.
+/// `D2CpmdConfig` gains `symmetry`.
+/// `PotCaps` gains `analyticHessian`, `adHessian` and `adHvp`, and
+/// `PotentialBase` the virtuals `hessianImpl`, `hessianAdImpl` and
+/// `hessianVectorAdImpl` after `hessianVectorImpl`, so `kCxxLayoutRevision`
+/// is 2.
+/// It also stamps `MullerBrownConfig` and `MullerBrownPot`. The
+/// zero-argument `MullerBrownPot` constructor remains its own symbol.
+/// It also stamps `nlist::Builder` and `nlist::Walk`. Each holds only a
+/// pointer to its state, so a change to that state is not a layout change.
+/// It also adds a process-unique generation id to `Neighbours`.
+inline constexpr std::uint32_t kCxxSoversion = 9;
 
 /// One recorded no-cache layout hash. `tag` is `kCxxPlatformTag`.
 struct CxxSoversionEntry {
@@ -191,7 +231,7 @@ struct CxxSoversionEntry {
 /// platform still compiles. How to update the table:
 /// docs/orgmode/contributing/developer/abi-bump.org.
 inline constexpr std::array<CxxSoversionEntry, 1> kCxxSoversionTable{{
-    {"linux-x86_64-libstdc++-lp64", 0x0bba2f6c8fb3f542ull},
+    {"linux-x86_64-libstdc++-lp64", 0xae154cf52b093341ull},
 }};
 
 /// This translation unit's platform tag (`os-arch-stdlib-datamodel`).
@@ -234,7 +274,7 @@ static_assert(soversion_tags_unique(), "kCxxSoversionTable tags must be unique")
 /// The cache hook @c setCache adds one when @c RGPOT_HAS_CACHE is defined.
 /// A test counts the @c virtual declarations in Potential.hpp and fails when
 /// this and the header disagree.
-inline constexpr std::uint32_t kPotentialBaseVirtuals = 5;
+inline constexpr std::uint32_t kPotentialBaseVirtuals = 9;
 inline constexpr std::uint32_t kPotentialBaseCacheVirtuals = 1;
 /// Virtual functions @c Potential<Derived> declares itself (@c forceImpl and
 /// @c forceBatchImpl).
@@ -302,6 +342,10 @@ constexpr std::uint64_t compute_hash() {
   f.add(offsetof(PotCaps, periodic));
   f.add(offsetof(PotCaps, groupCollective));
   f.add(offsetof(PotCaps, stress));
+  f.add(offsetof(PotCaps, analyticHvp));
+  f.add(offsetof(PotCaps, analyticHessian));
+  f.add(offsetof(PotCaps, adHessian));
+  f.add(offsetof(PotCaps, adHvp));
   f.type<CalculatorGroup>();
   f.add(offsetof(CalculatorGroup, index));
   f.add(offsetof(CalculatorGroup, ranks));
@@ -326,6 +370,37 @@ constexpr std::uint64_t compute_hash() {
   f.type<ZBLConfig>();
   f.add(offsetof(ZBLConfig, cut_inner));
   f.add(offsetof(ZBLConfig, cut_global));
+  f.type<SuttonChenConfig>();
+  f.add(offsetof(SuttonChenConfig, epsilon));
+  f.add(offsetof(SuttonChenConfig, c));
+  f.add(offsetof(SuttonChenConfig, a));
+  f.add(offsetof(SuttonChenConfig, n));
+  f.add(offsetof(SuttonChenConfig, m));
+  f.add(offsetof(SuttonChenConfig, cutoff));
+  f.add(offsetof(SuttonChenConfig, periodic));
+  f.add(offsetof(SuttonChenConfig, stress));
+  f.type<D2Config>();
+  f.add(offsetof(D2Config, s6));
+  f.add(offsetof(D2Config, d));
+  f.add(offsetof(D2Config, sr));
+  f.add(offsetof(D2Config, cutoff));
+  f.type<D2CpmdConfig>();
+  f.add(offsetof(D2CpmdConfig, s6));
+  f.add(offsetof(D2CpmdConfig, alpha));
+  f.add(offsetof(D2CpmdConfig, vdweps));
+  f.add(offsetof(D2CpmdConfig, symmetry));
+  f.type<D4Config>();
+  f.add(offsetof(D4Config, functional));
+  f.add(offsetof(D4Config, charge));
+  f.add(offsetof(D4Config, atm));
+  f.add(offsetof(D4Config, periodic));
+  f.type<MullerBrownConfig>();
+  f.add(offsetof(MullerBrownConfig, amplitude));
+  f.add(offsetof(MullerBrownConfig, a));
+  f.add(offsetof(MullerBrownConfig, b));
+  f.add(offsetof(MullerBrownConfig, c));
+  f.add(offsetof(MullerBrownConfig, x0));
+  f.add(offsetof(MullerBrownConfig, y0));
 
   // Enumerations: underlying width and the values consumers switch on.
   f.type<Reentrancy>();
@@ -339,6 +414,19 @@ constexpr std::uint64_t compute_hash() {
   f.add(static_cast<std::uint64_t>(PotType::Morse));
   f.add(static_cast<std::uint64_t>(PotType::LJCluster));
   f.add(static_cast<std::uint64_t>(PotType::ZBL));
+  f.add(static_cast<std::uint64_t>(PotType::SuttonChen));
+  f.add(static_cast<std::uint64_t>(PotType::LrSum));
+  f.add(static_cast<std::uint64_t>(PotType::Eckart));
+  f.add(static_cast<std::uint64_t>(PotType::MullerBrown));
+  f.add(static_cast<std::uint64_t>(PotType::ModifiedMullerBrown));
+  f.add(static_cast<std::uint64_t>(PotType::LepsHH2));
+  f.add(static_cast<std::uint64_t>(PotType::LepsHCl2));
+  f.add(static_cast<std::uint64_t>(PotType::LepsFH2));
+  f.add(static_cast<std::uint64_t>(PotType::DoubleWell));
+  f.add(static_cast<std::uint64_t>(PotType::CoupledProtonWell));
+  f.add(static_cast<std::uint64_t>(PotType::CBE));
+  f.add(static_cast<std::uint64_t>(PotType::D2));
+  f.add(static_cast<std::uint64_t>(PotType::D2Cpmd));
 
   // Polymorphic classes: size, alignment and the virtual-function counts.
   // offsetof is not defined for them.
@@ -351,6 +439,14 @@ constexpr std::uint64_t compute_hash() {
   f.type<LJClusterPot>();
   f.type<MorsePot>();
   f.type<ZBLPot>();
+  f.type<SuttonChenPot>();
+  f.type<SumPot>();
+  f.type<lr::SumPot>();
+  f.type<D2Pot>();
+  f.type<D2CpmdPot>();
+  f.type<MullerBrownPot>();
+  f.type<nlist::Builder>();
+  f.type<nlist::Walk>();
 #ifdef RGPOT_HAS_CACHE
   f.type<cache::EvalCounts>();
   f.add(offsetof(cache::EvalCounts, computed));

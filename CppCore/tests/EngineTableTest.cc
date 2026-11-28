@@ -10,12 +10,16 @@
 // models in MTA_<NAME>_PT, which scripts/export_tiny_metatomic_model.py
 // writes.
 
+#include <algorithm>
 #include <array>
 #include <atomic>
 #include <cmath>
 #include <cstdlib>
 #include <cstring>
 #include <dlfcn.h>
+#include <filesystem>
+#include <limits>
+#include <memory>
 #include <sstream>
 #include <string>
 #include <thread>
@@ -28,10 +32,16 @@
 #include <catch2/catch_all.hpp>
 
 #include "rgpot/LennardJones/LJPot.hpp"
+#include "rgpot/Models/ModelPots.hpp"
+#include "rgpot/ZBL/ZBLPot.hpp"
 #ifdef RGPOT_HAS_WATER
 #include "rgpot/Water/WaterPots.hpp"
 #endif
 #include "rgpot/engine_c_abi.h"
+#include "TestTempDir.hpp"
+#ifdef RGPOT_HAS_CBE
+#include "fixtures/cbe_engine_goldens.hpp"
+#endif
 #include "rgpot/rpc/Potentials.capnp.h"
 #include "rgpot/types/AtomMatrix.hpp"
 
@@ -47,15 +57,26 @@ struct Engine {
   int (*force)(RgpotEnginePot *, long, const double *, const int *, double *,
                double *, double *, const double *,
                rgpot_engine_coord_transform, void *) = nullptr;
+  int (*hvp)(RgpotEnginePot *, long, const double *, const int *,
+             const double *, double *, const double *) = nullptr;
   int (*force_batch)(RgpotEnginePot *, long, long, const double *, const int *,
                      double *, double *, double *, const double *,
                      rgpot_engine_coord_transform, void *) = nullptr;
   RgpotEngineAbiStamp (*stamp)() = nullptr;
   int (*caps)(const RgpotEnginePot *, RgpotEngineCaps *) = nullptr;
+  int (*taylor_jet)(RgpotEnginePot *, long, long, const double *, const int *,
+                    const double *, long, double *,
+                    RgpotEngineDerivativeReport *, const double *) = nullptr;
   size_t (*last_error)(const RgpotEnginePot *, char *, size_t) = nullptr;
   size_t (*digest)(const RgpotEnginePot *, char *, size_t) = nullptr;
   int (*set_num_threads)(RgpotEnginePot *, int, int) = nullptr;
   int (*set_charge_spin)(RgpotEnginePot *, int, int) = nullptr;
+  int (*select_orbitals)(RgpotEnginePot *, long long) = nullptr;
+  int (*copy_orbitals)(RgpotEnginePot *, long long, long long) = nullptr;
+  long (*last_components)(const RgpotEnginePot *, RgpotEngineComponent *,
+                          double *, long) = nullptr;
+  size_t (*component_name)(const RgpotEnginePot *, long, char *,
+                           size_t) = nullptr;
 };
 
 template <typename Fn> Fn sym(void *h, const char *name) {
@@ -91,6 +112,8 @@ bool open_engine(const std::string &key, Engine &out) {
   out.create = sym<decltype(out.create)>(h, "rgpot_engine_create");
   out.destroy = sym<decltype(out.destroy)>(h, "rgpot_engine_destroy");
   out.force = sym<decltype(out.force)>(h, "rgpot_engine_force");
+  out.hvp = sym<decltype(out.hvp)>(h, "rgpot_engine_hvp");
+  out.taylor_jet = sym<decltype(out.taylor_jet)>(h, "rgpot_engine_taylor_jet");
   out.force_batch = sym<decltype(out.force_batch)>(h, "rgpot_engine_force_batch");
   out.stamp = sym<decltype(out.stamp)>(h, "rgpot_engine_abi_stamp");
   out.caps = sym<decltype(out.caps)>(h, "rgpot_engine_caps");
@@ -100,6 +123,15 @@ bool open_engine(const std::string &key, Engine &out) {
       sym<decltype(out.set_num_threads)>(h, "rgpot_engine_set_num_threads");
   out.set_charge_spin =
       sym<decltype(out.set_charge_spin)>(h, "rgpot_engine_set_charge_spin");
+  out.select_orbitals =
+      sym<decltype(out.select_orbitals)>(h, "rgpot_engine_select_orbitals");
+  out.copy_orbitals =
+      sym<decltype(out.copy_orbitals)>(h, "rgpot_engine_copy_orbitals");
+  // Minor 5 symbols are optional: a host finds them with dlsym.
+  out.last_components = reinterpret_cast<decltype(out.last_components)>(
+      dlsym(h, "rgpot_engine_last_components"));
+  out.component_name = reinterpret_cast<decltype(out.component_name)>(
+      dlsym(h, "rgpot_engine_component_name"));
   return true;
 }
 
@@ -107,6 +139,44 @@ kj::Array<capnp::word> builtin_params(const std::string &name) {
   capnp::MallocMessageBuilder msg;
   auto p = msg.initRoot<::BuiltinParams>();
   p.setName(name);
+  return capnp::messageToFlatArray(msg);
+}
+
+kj::Array<capnp::word> xtb_params(const std::string &method) {
+  capnp::MallocMessageBuilder msg;
+  auto p = msg.initRoot<::BuiltinParams>();
+  p.setName("xtb");
+  auto x = p.initConfig().initXtb();
+  x.setMethod(method);
+  x.setAccuracy(0.1);
+  x.setElectronicTemperature(100.0);
+  x.setMaxIterations(300);
+  return capnp::messageToFlatArray(msg);
+}
+
+kj::Array<capnp::word> muller_brown_params(double first_amplitude) {
+  capnp::MallocMessageBuilder msg;
+  auto params = msg.initRoot<::BuiltinParams>();
+  params.setName("muller_brown");
+  auto config = params.initConfig().initMullerBrown();
+  const rgpot::MullerBrownConfig defaults;
+  auto amplitude = config.initAmplitude(4);
+  for (std::size_t i = 0; i < defaults.amplitude.size(); ++i)
+    amplitude.set(i, i == 0 ? first_amplitude : defaults.amplitude[i]);
+  return capnp::messageToFlatArray(msg);
+}
+
+kj::Array<capnp::word> muller_brown_empty_lists_params() {
+  capnp::MallocMessageBuilder msg;
+  auto params = msg.initRoot<::BuiltinParams>();
+  params.setName("muller_brown");
+  auto config = params.initConfig().initMullerBrown();
+  config.initAmplitude(0);
+  config.initA(0);
+  config.initB(0);
+  config.initC(0);
+  config.initX0(0);
+  config.initY0(0);
   return capnp::messageToFlatArray(msg);
 }
 
@@ -135,6 +205,7 @@ void check_identity(const Engine &e, const std::string &name) {
   REQUIRE(std::string(e.version()).rfind(name + "/", 0) == 0);
   const RgpotEngineAbiStamp stamp = e.stamp();
   REQUIRE(stamp.abi_minor == RGPOT_ENGINE_ABI_MINOR);
+  REQUIRE(stamp.layout_revision == RGPOT_ENGINE_ABI_LAYOUT_REVISION);
 }
 
 // Five LJ atoms, Angstrom, reduced units.
@@ -160,9 +231,8 @@ TEST_CASE("classical engine matches the directly compiled LJPot",
   RgpotEngineCaps caps;
   caps.size = sizeof(caps);
   REQUIRE(e.caps(pot, &caps) == 0);
-  // Neighbour scratch is per instance. The engine serializes this handle;
-  // the following test calls it from several threads.
-  REQUIRE(caps.reentrancy == 1);
+  // Neighbour scratch is kept per thread, so one LJPot instance is shared.
+  REQUIRE(caps.reentrancy == 0);
 
   const long n = 5;
   std::vector<double> forces(3 * n, 0.0);
@@ -206,7 +276,573 @@ TEST_CASE("classical engine matches the directly compiled LJPot",
   REQUIRE(buf[0] == '\0');
   REQUIRE(e.set_charge_spin(pot, 0, 1) == 3);
   REQUIRE(e.set_num_threads(pot, 1, 1) == 3);
+  REQUIRE(e.select_orbitals(pot, 1) == 3);
+  REQUIRE(e.copy_orbitals(pot, 1, 2) == 3);
   e.destroy(pot);
+}
+
+TEST_CASE("classical engine reproduces Muller-Brown stationary energies",
+          "[engine][classical][muller-brown]") {
+  Engine e;
+  if (!open_engine("CLASSICAL", e)) {
+    SKIP("no classical engine in this build");
+  }
+  RgpotEnginePot *pot = create(e, builtin_params("muller_brown"));
+  REQUIRE(pot != nullptr);
+  struct Point {
+    double x, y, energy;
+  };
+  constexpr std::array<Point, 5> points{{
+      {-0.558, 1.442, -146.70},
+      {0.623, 0.028, -108.17},
+      {-0.050, 0.467, -80.77},
+      {-0.822, 0.624, -40.66},
+      {0.212, 0.293, -72.25},
+  }};
+  const std::array<int, 1> atomicNumbers{1};
+  for (const Point &point : points) {
+    const std::array<double, 3> position{point.x, point.y, 4.0};
+    std::array<double, 3> force{};
+    double energy = 0.0;
+    REQUIRE(e.force(pot, 1, position.data(), atomicNumbers.data(), force.data(),
+                    &energy, nullptr, kBox.data(), nullptr, nullptr) == 0);
+    REQUIRE(energy == Catch::Approx(point.energy).margin(0.01));
+    REQUIRE(force[2] == 0.0);
+  }
+  e.destroy(pot);
+}
+
+TEST_CASE("classical engine applies Muller-Brown constructor config",
+          "[engine][classical][muller-brown]") {
+  Engine e;
+  if (!open_engine("CLASSICAL", e)) {
+    SKIP("no classical engine in this build");
+  }
+  RgpotEnginePot *pot = create(e, muller_brown_params(-123.0));
+  REQUIRE(pot != nullptr);
+  const std::array<double, 3> position{0.23, -0.17, 4.0};
+  const std::vector<int> atomicNumbers{1};
+  std::array<double, 3> force{};
+  double energy = 0.0;
+  REQUIRE(e.force(pot, 1, position.data(), atomicNumbers.data(), force.data(),
+                  &energy, nullptr, kBox.data(), nullptr, nullptr) == 0);
+  rgpot::MullerBrownConfig config;
+  config.amplitude[0] = -123.0;
+  rgpot::MullerBrownPot direct(config);
+  rgpot::types::AtomMatrix positions{{position[0], position[1], position[2]}};
+  const std::array<std::array<double, 3>, 3> box = {
+      {{40, 0, 0}, {0, 40, 0}, {0, 0, 40}}};
+  auto [expectedEnergy, expectedForce, variance] =
+      direct(positions, atomicNumbers, box);
+  (void)variance;
+  REQUIRE(energy == expectedEnergy);
+  REQUIRE(force[0] == expectedForce(0, 0));
+  REQUIRE(force[1] == expectedForce(0, 1));
+  REQUIRE(force[2] == 0.0);
+  e.destroy(pot);
+}
+
+TEST_CASE("classical engine reads empty Muller-Brown lists as the defaults",
+          "[engine][classical][muller-brown]") {
+  Engine e;
+  if (!open_engine("CLASSICAL", e)) {
+    SKIP("no classical engine in this build");
+  }
+  RgpotEnginePot *plain = create(e, builtin_params("muller_brown"));
+  RgpotEnginePot *empty = create(e, muller_brown_empty_lists_params());
+  REQUIRE(plain != nullptr);
+  REQUIRE(empty != nullptr);
+  const std::array<double, 3> position{0.23, -0.17, 4.0};
+  const std::array<int, 1> atomicNumbers{1};
+  std::array<double, 3> plainForce{};
+  std::array<double, 3> emptyForce{};
+  double plainEnergy = 0.0;
+  double emptyEnergy = 0.0;
+  REQUIRE(e.force(plain, 1, position.data(), atomicNumbers.data(),
+                  plainForce.data(), &plainEnergy, nullptr, kBox.data(),
+                  nullptr, nullptr) == 0);
+  REQUIRE(e.force(empty, 1, position.data(), atomicNumbers.data(),
+                  emptyForce.data(), &emptyEnergy, nullptr, kBox.data(),
+                  nullptr, nullptr) == 0);
+  REQUIRE(emptyEnergy == plainEnergy);
+  REQUIRE(emptyForce == plainForce);
+  e.destroy(plain);
+  e.destroy(empty);
+}
+
+TEST_CASE("classical engine rejects a PotentialConfig arm that does not match",
+          "[engine][classical][muller-brown]") {
+  Engine e;
+  if (!open_engine("CLASSICAL", e)) {
+    SKIP("no classical engine in this build");
+  }
+  capnp::MallocMessageBuilder morseOnMuller;
+  auto morse = morseOnMuller.initRoot<::BuiltinParams>();
+  morse.setName("muller_brown");
+  morse.initConfig().initMorse();
+  std::string error;
+  REQUIRE(create(e, capnp::messageToFlatArray(morseOnMuller), &error) ==
+          nullptr);
+  REQUIRE(error.find("morse") != std::string::npos);
+  REQUIRE(error.find("does not match") != std::string::npos);
+
+  capnp::MallocMessageBuilder mullerOnLj;
+  auto lj = mullerOnLj.initRoot<::BuiltinParams>();
+  lj.setName("lj");
+  lj.initConfig().initMullerBrown();
+  error.clear();
+  REQUIRE(create(e, capnp::messageToFlatArray(mullerOnLj), &error) == nullptr);
+  REQUIRE(error.find("mullerBrown") != std::string::npos);
+  REQUIRE(error.find("lj") != std::string::npos);
+}
+
+TEST_CASE("classical engine LJPot analytic HVP rejects in-place aliasing",
+          "[engine][classical][hvp]") {
+  Engine e;
+  if (!open_engine("CLASSICAL", e)) {
+    SKIP("no classical engine in this build");
+  }
+  RgpotEnginePot *pot = create(e, builtin_params("lj"));
+  REQUIRE(pot != nullptr);
+
+  const long n = 5;
+  const std::vector<double> direction = {
+      0.2, -0.3, 0.4, -0.1, 0.5, -0.2, 0.3, 0.1,
+      -0.4, 0.6, -0.5, 0.2, -0.3, 0.4, -0.1};
+  std::vector<double> product(direction.size(), 0.0);
+  REQUIRE(e.hvp(pot, n, kCluster.data(), kZ.data(), direction.data(),
+                product.data(), kBox.data()) == RGPOT_ENGINE_OK);
+
+  rgpot::LJPot direct;
+  std::vector<double> ref_product(direction.size(), 0.0);
+  const rgpot::ForceInput fi{.nAtoms = static_cast<size_t>(n),
+                             .pos = kCluster.data(),
+                             .atmnrs = kZ.data(),
+                             .box = kBox.data()};
+  direct.hessianVectorImpl(fi, direction.data(), ref_product.data());
+  const double tol =
+      64.0 * std::numeric_limits<double>::epsilon();
+  for (std::size_t k = 0; k < direction.size(); ++k) {
+    REQUIRE(product[k] == Catch::Approx(ref_product[k]).margin(tol));
+  }
+
+  std::vector<double> aliased = direction;
+  REQUIRE(e.hvp(pot, n, kCluster.data(), kZ.data(), aliased.data(),
+                aliased.data(), kBox.data()) == RGPOT_ENGINE_ERR_INVALID);
+  REQUIRE(error_of(e, pot).find("overlap") != std::string::npos);
+  REQUIRE(aliased == direction);
+  e.destroy(pot);
+}
+
+TEST_CASE("an engine without a gradient jet reports a typed absence",
+          "[engine][classical][jet]") {
+  Engine e;
+  if (!open_engine("CLASSICAL", e)) {
+    SKIP("no classical engine in this build");
+  }
+  RgpotEnginePot *pot = create(e, builtin_params("lj"));
+  REQUIRE(pot != nullptr);
+
+  RgpotEngineCaps caps;
+  std::memset(&caps, 0xff, sizeof(caps));
+  caps.size = sizeof(caps);
+  REQUIRE(e.caps(pot, &caps) == 0);
+  REQUIRE(caps.size == sizeof(caps));
+  REQUIRE(caps.analytic_hvp == 1);
+  REQUIRE(caps.jet_order == 0);
+
+  const std::vector<double> direction(kCluster.size(), 0.25);
+  std::vector<double> jet(kCluster.size(), -1.0);
+  RgpotEngineDerivativeReport report{1, 7, 9.0};
+  REQUIRE(e.taylor_jet(pot, 1, 5, kCluster.data(), kZ.data(), direction.data(), 1,
+                       jet.data(), &report,
+                       kBox.data()) == RGPOT_ENGINE_ERR_UNSUPPORTED);
+  REQUIRE(error_of(e, pot).find("no gradient jet") != std::string::npos);
+  REQUIRE(jet == std::vector<double>(kCluster.size(), -1.0));
+  REQUIRE(report.tracked == 1);
+  REQUIRE(report.operations == 7);
+
+  std::vector<double> product(kCluster.size(), 0.0);
+  REQUIRE(e.hvp(pot, 5, kCluster.data(), kZ.data(), direction.data(),
+                product.data(), kBox.data()) == RGPOT_ENGINE_OK);
+  e.destroy(pot);
+}
+
+#ifdef RGPOT_HAS_CBE
+namespace {
+
+bool same_bits(const double *a, const double *b, std::size_t n) {
+  return std::memcmp(a, b, n * sizeof(double)) == 0;
+}
+
+/// Tolerance check of a pinned value. Bit identity is additionally required
+/// on x86-64 with glibc, where the committed goldens were recorded.
+void require_pinned(const double *got, const double *want, std::size_t n) {
+  for (std::size_t i = 0; i < n; ++i) {
+    INFO(i);
+    const double scale = 1.0 + std::abs(want[i]);
+    REQUIRE(std::isfinite(got[i]));
+    REQUIRE(std::abs(got[i] - want[i]) <= 1e-6 * scale);
+  }
+#ifdef RGPOT_CBE_BIT_EXACT_HOST
+  REQUIRE(same_bits(got, want, n));
+#endif
+}
+
+struct CbeCase {
+  const char *name;
+  const std::array<double, 18> &positions;
+  const std::array<double, 18> &direction;
+  double energy;
+  const std::array<double, 18> &force;
+  const std::array<double, 18> &hvp;
+  const std::array<double, 54> &jet;
+  long long operations;
+  double scale;
+  double order_one_scale;
+};
+
+} // namespace
+
+TEST_CASE("CBE engine energy, force, Hessian product and jet keep their bits",
+          "[engine][classical][cbe][jet]") {
+  Engine e;
+  if (!open_engine("CLASSICAL", e)) {
+    SKIP("no classical engine in this build");
+  }
+  RgpotEnginePot *pot = create(e, builtin_params("cbe"));
+  REQUIRE(pot != nullptr);
+
+  RgpotEngineCaps caps;
+  std::memset(&caps, 0, sizeof(caps));
+  caps.size = sizeof(caps);
+  REQUIRE(e.caps(pot, &caps) == 0);
+  REQUIRE(caps.analytic_hvp == 1);
+  REQUIRE(caps.jet_order == 3);
+  REQUIRE(caps.reentrancy == 1);
+
+  using namespace cbe_goldens;
+  const std::array<int, 6> z{1, 6, 1, 1, 1, 1};
+  const CbeCase cases[] = {
+      {"saddle", kSaddlePositions, kSaddleDirection, kSaddleEnergy,
+       kSaddleForce, kSaddleHvp, kSaddleJet, kSaddleOperations, kSaddleScale,
+       kSaddleOrderOneScale},
+      {"displaced", kDisplacedPositions, kDisplacedDirection,
+       kDisplacedEnergy, kDisplacedForce, kDisplacedHvp, kDisplacedJet,
+       kDisplacedOperations, kDisplacedScale, kDisplacedOrderOneScale},
+  };
+  for (const CbeCase &c : cases) {
+    INFO(c.name);
+    std::array<double, 18> force{};
+    double energy = 0.0;
+    REQUIRE(e.force(pot, 6, c.positions.data(), z.data(), force.data(),
+                    &energy, nullptr, kBox.data(), nullptr,
+                    nullptr) == RGPOT_ENGINE_OK);
+    require_pinned(&energy, &c.energy, 1);
+    require_pinned(force.data(), c.force.data(), 18);
+
+    std::array<double, 18> product{};
+    REQUIRE(e.hvp(pot, 6, c.positions.data(), z.data(), c.direction.data(),
+                  product.data(), kBox.data()) == RGPOT_ENGINE_OK);
+    require_pinned(product.data(), c.hvp.data(), 18);
+
+    std::array<double, 54> jet{};
+    RgpotEngineDerivativeReport report{};
+    REQUIRE(e.taylor_jet(pot, 1, 6, c.positions.data(), z.data(),
+                         c.direction.data(), 3, jet.data(), &report,
+                         kBox.data()) == RGPOT_ENGINE_OK);
+    require_pinned(jet.data(), c.jet.data(), 54);
+    REQUIRE(same_bits(jet.data(), product.data(), 18));
+    REQUIRE(report.tracked == 1);
+    REQUIRE(report.operations == c.operations);
+    require_pinned(&report.scale, &c.scale, 1);
+
+    std::array<double, 54> order_one{};
+    RgpotEngineDerivativeReport one{};
+    REQUIRE(e.taylor_jet(pot, 1, 6, c.positions.data(), z.data(),
+                         c.direction.data(), 1, order_one.data(), &one,
+                         kBox.data()) == RGPOT_ENGINE_OK);
+    require_pinned(order_one.data(), c.hvp.data(), 18);
+    REQUIRE(one.operations == c.operations);
+    require_pinned(&one.scale, &c.order_one_scale, 1);
+
+    REQUIRE(e.taylor_jet(pot, 1, 6, c.positions.data(), z.data(),
+                         c.direction.data(), 2, order_one.data(), nullptr,
+                         kBox.data()) == RGPOT_ENGINE_OK);
+    require_pinned(order_one.data(), c.jet.data(), 36);
+  }
+
+  {
+    std::array<double, 36> positions{}, directions{};
+    std::copy(kSaddlePositions.begin(), kSaddlePositions.end(),
+              positions.begin());
+    std::copy(kDisplacedPositions.begin(), kDisplacedPositions.end(),
+              positions.begin() + 18);
+    std::copy(kSaddleDirection.begin(), kSaddleDirection.end(),
+              directions.begin());
+    std::copy(kDisplacedDirection.begin(), kDisplacedDirection.end(),
+              directions.begin() + 18);
+    std::array<double, 18> boxes{};
+    std::copy(kBox.begin(), kBox.end(), boxes.begin());
+    std::copy(kBox.begin(), kBox.end(), boxes.begin() + 9);
+    std::array<double, 108> batch{};
+    RgpotEngineDerivativeReport total{};
+    REQUIRE(e.taylor_jet(pot, 2, 6, positions.data(), z.data(),
+                         directions.data(), 3, batch.data(), &total,
+                         boxes.data()) == RGPOT_ENGINE_OK);
+    // [order][system][18]
+    for (std::size_t k = 0; k < 3; ++k) {
+      require_pinned(batch.data() + k * 36, kSaddleJet.data() + k * 18, 18);
+      require_pinned(batch.data() + k * 36 + 18, kDisplacedJet.data() + k * 18,
+                     18);
+    }
+    REQUIRE(total.tracked == 1);
+    REQUIRE(total.operations == kSaddleOperations + kDisplacedOperations);
+    const double larger = std::max(kSaddleScale, kDisplacedScale);
+    require_pinned(&total.scale, &larger, 1);
+
+    std::array<double, 36> forces{};
+    std::array<double, 2> energies{};
+    REQUIRE(e.force_batch(pot, 2, 6, positions.data(), z.data(),
+                          forces.data(), energies.data(), nullptr,
+                          boxes.data(), nullptr, nullptr) == RGPOT_ENGINE_OK);
+    require_pinned(forces.data(), kSaddleForce.data(), 18);
+    require_pinned(forces.data() + 18, kDisplacedForce.data(), 18);
+    require_pinned(&energies[0], &kSaddleEnergy, 1);
+    require_pinned(&energies[1], &kDisplacedEnergy, 1);
+    RgpotEngineCaps batched{};
+    batched.size = sizeof(batched);
+    REQUIRE(e.caps(pot, &batched) == 0);
+    REQUIRE(batched.batched == 1);
+  }
+
+  std::array<double, 54> jet{};
+  std::memset(jet.data(), 0x5A, sizeof(jet));
+  std::array<unsigned char, sizeof(jet)> jet_before{};
+  std::memcpy(jet_before.data(), jet.data(), sizeof(jet));
+  RgpotEngineDerivativeReport untouched{};
+  untouched.tracked = 3;
+  untouched.operations = 17;
+  untouched.scale = -4.0;
+  std::array<unsigned char, sizeof(untouched)> report_before{};
+  std::memcpy(report_before.data(), &untouched, sizeof(untouched));
+  const auto &p = kSaddlePositions;
+  const auto &d = kSaddleDirection;
+  REQUIRE(e.taylor_jet(pot, 1, 6, p.data(), z.data(), d.data(), 4, jet.data(),
+                       &untouched, kBox.data()) == RGPOT_ENGINE_ERR_UNSUPPORTED);
+  REQUIRE(error_of(e, pot).find("exceeds") != std::string::npos);
+  REQUIRE(std::memcmp(jet.data(), jet_before.data(), sizeof(jet)) == 0);
+  REQUIRE(std::memcmp(&untouched, report_before.data(), sizeof(untouched)) == 0);
+  REQUIRE(e.taylor_jet(pot, 1, 6, p.data(), z.data(), d.data(), 0, jet.data(),
+                       &untouched, kBox.data()) == RGPOT_ENGINE_ERR_INVALID);
+  REQUIRE(std::memcmp(jet.data(), jet_before.data(), sizeof(jet)) == 0);
+  REQUIRE(std::memcmp(&untouched, report_before.data(), sizeof(untouched)) == 0);
+  REQUIRE(e.taylor_jet(pot, 1, 5, p.data(), z.data(), d.data(), 1, jet.data(),
+                       &untouched, kBox.data()) == RGPOT_ENGINE_ERR_EVAL);
+  REQUIRE(error_of(e, pot).find("six atoms") != std::string::npos);
+  REQUIRE(std::memcmp(jet.data(), jet_before.data(), sizeof(jet)) == 0);
+  REQUIRE(std::memcmp(&untouched, report_before.data(), sizeof(untouched)) == 0);
+  REQUIRE(e.taylor_jet(pot, 1, 6, p.data(), z.data(), jet.data(), 1, jet.data(),
+                       nullptr, kBox.data()) == RGPOT_ENGINE_ERR_INVALID);
+  REQUIRE(error_of(e, pot).find("overlap") != std::string::npos);
+  e.destroy(pot);
+}
+
+TEST_CASE("CBE bit-exact goldens run only on x86-64 with glibc",
+          "[engine][classical][cbe][jet][golden]") {
+#ifdef RGPOT_CBE_BIT_EXACT_HOST
+  SUCCEED("this host compares the CBE engine to the committed bit goldens");
+#else
+  SKIP("bit-exact CBE goldens run only on x86-64 with glibc");
+#endif
+}
+
+TEST_CASE("two CBE handles match their serial results",
+          "[engine][classical][cbe][threads]") {
+  Engine e;
+  if (!open_engine("CLASSICAL", e)) {
+    SKIP("no classical engine in this build");
+  }
+  RgpotEnginePot *first = create(e, builtin_params("cbe"));
+  RgpotEnginePot *second = create(e, builtin_params("cbe"));
+  REQUIRE(first != nullptr);
+  REQUIRE(second != nullptr);
+  RgpotEngineCaps caps{};
+  caps.size = sizeof(caps);
+  REQUIRE(e.caps(first, &caps) == 0);
+  REQUIRE(caps.reentrancy == 1);
+  REQUIRE(e.caps(second, &caps) == 0);
+  REQUIRE(caps.reentrancy == 1);
+
+  using namespace cbe_goldens;
+  const std::array<int, 6> z{1, 6, 1, 1, 1, 1};
+  struct Answer {
+    int rc = 1;
+    double energy = 0.0;
+    std::array<double, 18> force{};
+    std::array<double, 18> hvp{};
+    std::array<double, 54> jet{};
+    RgpotEngineDerivativeReport report{};
+  };
+  auto evaluate = [&](RgpotEnginePot *pot, const std::array<double, 18> &pos,
+                      const std::array<double, 18> &dir) {
+    Answer answer;
+    answer.rc = e.force(pot, 6, pos.data(), z.data(), answer.force.data(),
+                        &answer.energy, nullptr, kBox.data(), nullptr, nullptr);
+    if (answer.rc != RGPOT_ENGINE_OK) {
+      return answer;
+    }
+    answer.rc = e.hvp(pot, 6, pos.data(), z.data(), dir.data(),
+                      answer.hvp.data(), kBox.data());
+    if (answer.rc != RGPOT_ENGINE_OK) {
+      return answer;
+    }
+    answer.rc = e.taylor_jet(pot, 1, 6, pos.data(), z.data(), dir.data(), 3,
+                             answer.jet.data(), &answer.report, kBox.data());
+    return answer;
+  };
+  const Answer serial_first =
+      evaluate(first, kSaddlePositions, kSaddleDirection);
+  const Answer serial_second =
+      evaluate(second, kDisplacedPositions, kDisplacedDirection);
+  REQUIRE(serial_first.rc == RGPOT_ENGINE_OK);
+  REQUIRE(serial_second.rc == RGPOT_ENGINE_OK);
+
+  Answer concurrent_first;
+  Answer concurrent_second;
+  std::thread left([&] {
+    concurrent_first = evaluate(first, kSaddlePositions, kSaddleDirection);
+  });
+  std::thread right([&] {
+    concurrent_second =
+        evaluate(second, kDisplacedPositions, kDisplacedDirection);
+  });
+  left.join();
+  right.join();
+  REQUIRE(concurrent_first.rc == RGPOT_ENGINE_OK);
+  REQUIRE(concurrent_second.rc == RGPOT_ENGINE_OK);
+  REQUIRE(same_bits(&concurrent_first.energy, &serial_first.energy, 1));
+  REQUIRE(same_bits(concurrent_first.force.data(), serial_first.force.data(),
+                    18));
+  REQUIRE(same_bits(concurrent_first.hvp.data(), serial_first.hvp.data(), 18));
+  REQUIRE(same_bits(concurrent_first.jet.data(), serial_first.jet.data(), 54));
+  REQUIRE(concurrent_first.report.tracked == serial_first.report.tracked);
+  REQUIRE(concurrent_first.report.operations ==
+          serial_first.report.operations);
+  REQUIRE(same_bits(&concurrent_first.report.scale, &serial_first.report.scale,
+                    1));
+  REQUIRE(same_bits(&concurrent_second.energy, &serial_second.energy, 1));
+  REQUIRE(same_bits(concurrent_second.force.data(),
+                    serial_second.force.data(), 18));
+  REQUIRE(same_bits(concurrent_second.hvp.data(), serial_second.hvp.data(),
+                    18));
+  REQUIRE(same_bits(concurrent_second.jet.data(), serial_second.jet.data(),
+                    54));
+  REQUIRE(concurrent_second.report.operations ==
+          serial_second.report.operations);
+  REQUIRE(same_bits(&concurrent_second.report.scale,
+                    &serial_second.report.scale, 1));
+  e.destroy(first);
+  e.destroy(second);
+}
+#endif
+
+TEST_CASE("classical engine LJPot reports coincident atoms as evaluation errors",
+          "[engine][classical][lj]") {
+  Engine e;
+  if (!open_engine("CLASSICAL", e)) {
+    SKIP("no classical engine in this build");
+  }
+  RgpotEnginePot *pot = create(e, builtin_params("lj"));
+  REQUIRE(pot != nullptr);
+
+  const std::array<double, 6> coincident{};
+  const std::array<int, 2> z{1, 1};
+  const std::array<double, 6> direction{0.2, -0.3, 0.4, -0.1, 0.5, -0.2};
+  std::array<double, 6> forces{};
+  std::array<double, 6> product{};
+  double energy = 0.0;
+
+  REQUIRE(e.force(pot, 2, coincident.data(), z.data(), forces.data(), &energy,
+                  nullptr, kBox.data(), nullptr, nullptr) ==
+          RGPOT_ENGINE_ERR_EVAL);
+  REQUIRE(error_of(e, pot).find("coincident atoms") != std::string::npos);
+
+  REQUIRE(e.force_batch(pot, 1, 2, coincident.data(), z.data(), forces.data(),
+                        &energy, nullptr, kBox.data(), nullptr, nullptr) ==
+          RGPOT_ENGINE_ERR_EVAL);
+  REQUIRE(error_of(e, pot).find("coincident atoms") != std::string::npos);
+
+  REQUIRE(e.hvp(pot, 2, coincident.data(), z.data(), direction.data(),
+                product.data(), kBox.data()) == RGPOT_ENGINE_ERR_EVAL);
+  REQUIRE(error_of(e, pot).find("coincident atoms") != std::string::npos);
+
+  const std::array<double, 6> separated{0.0, 0.0, 0.0, 1.5, 0.0, 0.0};
+  REQUIRE(e.force(pot, 2, separated.data(), z.data(), forces.data(), &energy,
+                  nullptr, kBox.data(), nullptr, nullptr) == RGPOT_ENGINE_OK);
+  REQUIRE(error_of(e, pot).empty());
+  e.destroy(pot);
+}
+
+TEST_CASE("classical engine reports the origin of geometry results",
+          "[engine][classical][cache]") {
+  Engine e;
+  REQUIRE(open_engine("CLASSICAL", e));
+  auto set = sym<decltype(&rgpot_engine_set_cache)>(e.handle,
+                                                    "rgpot_engine_set_cache");
+  auto counts = sym<decltype(&rgpot_engine_cache_counts)>(
+      e.handle, "rgpot_engine_cache_counts");
+  auto make = [&] {
+    return std::unique_ptr<RgpotEnginePot, decltype(e.destroy)>(
+        create(e, builtin_params("lj")), e.destroy);
+  };
+  {
+    auto pot = make();
+    REQUIRE(pot);
+    uint64_t computed = 0, served = 0;
+    REQUIRE(counts(pot.get(), &computed, &served) == 3);
+#ifdef RGPOT_HAS_CACHE
+    auto dir = (std::filesystem::temp_directory_path() /
+                "rgpot-engine-cache-XXXXXX").string();
+    REQUIRE(mkdtemp(dir.data()));
+    const auto db = dir + "/results";
+    REQUIRE(set(pot.get(), db.c_str()) == 0);
+    auto eval = [&](const std::vector<double> &positions) {
+      std::vector<double> forces(positions.size());
+      double energy = 0.;
+      REQUIRE(e.force(pot.get(), kZ.size(), positions.data(), kZ.data(),
+                      forces.data(), &energy, nullptr, kBox.data(), nullptr,
+                      nullptr) == 0);
+      return std::make_pair(energy, forces);
+    };
+    const auto reference = eval(kCluster);
+    const auto locked = make();
+    REQUIRE(locked);
+    REQUIRE(set(locked.get(), db.c_str()) == 2);
+    REQUIRE(set(pot.get(), db.c_str()) == 2);
+    REQUIRE(eval(kCluster) == reference);
+    auto moved = kCluster;
+    moved[0] += 0.05;
+    REQUIRE(eval(moved) != reference);
+    REQUIRE(counts(pot.get(), &computed, &served) == 0);
+    REQUIRE(computed == 2);
+    REQUIRE(served == 1);
+    pot.reset();
+    pot = make();
+    REQUIRE(pot);
+    REQUIRE(set(pot.get(), db.c_str()) == 0);
+    REQUIRE(eval(kCluster) == reference);
+    REQUIRE(counts(pot.get(), &computed, &served) == 0);
+    REQUIRE(computed == 0);
+    REQUIRE(served == 1);
+    REQUIRE(set(pot.get(), nullptr) == 0);
+    REQUIRE(counts(pot.get(), &computed, &served) == 3);
+    std::filesystem::remove_all(dir);
+#else
+    REQUIRE(set(pot.get(), "result-cache") == 3);
+#endif
+  }
+  dlclose(e.handle);
 }
 
 TEST_CASE("one classical handle serves many threads", "[engine][classical][threads]") {
@@ -373,6 +1009,183 @@ void check_unavailable_engine(const std::string &key, const std::string &name,
 
 } // namespace
 
+namespace {
+
+struct TermSpec {
+  std::string name;
+  std::string builtin;
+  double weight;
+  bool enabled;
+};
+
+kj::Array<capnp::word> composite_params(const std::vector<TermSpec> &specs) {
+  capnp::MallocMessageBuilder msg;
+  auto p = msg.initRoot<::CompositeParams>();
+  auto terms = p.initTerms(static_cast<unsigned>(specs.size()));
+  for (unsigned i = 0; i < specs.size(); ++i) {
+    terms[i].setName(specs[i].name);
+    terms[i].setWeight(specs[i].weight);
+    terms[i].setEnabled(specs[i].enabled);
+    terms[i].initPot().initBuiltin().setName(specs[i].builtin);
+  }
+  return capnp::messageToFlatArray(msg);
+}
+
+} // namespace
+
+TEST_CASE("composite engine sums weighted terms and reports each",
+          "[engine][composite]") {
+  Engine e;
+  if (!open_engine("COMPOSITE", e)) {
+    SKIP("no composite engine in this build");
+  }
+  check_identity(e, "composite");
+  REQUIRE(e.last_components != nullptr);
+  REQUIRE(e.component_name != nullptr);
+  std::string error;
+  RgpotEnginePot *pot = create(e,
+                               composite_params({{"lj", "lj", 2.0, true},
+                                                 {"morse", "morse", 1.0, false},
+                                                 {"zbl", "zbl", -0.5, true}}),
+                               &error);
+  INFO(error);
+  REQUIRE(pot != nullptr);
+  auto set_cache = sym<decltype(&rgpot_engine_set_cache)>(
+      e.handle, "rgpot_engine_set_cache");
+  REQUIRE(set_cache(pot, "composite-cache") == RGPOT_ENGINE_ERR_UNSUPPORTED);
+  RgpotEngineCaps caps;
+  caps.size = sizeof(caps);
+  REQUIRE(e.caps(pot, &caps) == 0);
+  REQUIRE(caps.reentrancy >= 1);
+
+  const long n = 5;
+  REQUIRE(e.last_components(pot, nullptr, nullptr, 0) == 3);
+  std::vector<double> forces(3 * n, 0.0);
+  double energy = 0.0;
+  REQUIRE(e.force(pot, n, kCluster.data(), kZ.data(), forces.data(), &energy,
+                  nullptr, kBox.data(), nullptr, nullptr) == 0);
+
+  rgpot::LJPot lj;
+  rgpot::ZBLPot zbl;
+  rgpot::types::AtomMatrix positions(n, 3);
+  for (long i = 0; i < n; ++i) {
+    for (int d = 0; d < 3; ++d) {
+      positions(i, d) = kCluster[3 * i + d];
+    }
+  }
+  const std::array<std::array<double, 3>, 3> box = {
+      {{40, 0, 0}, {0, 40, 0}, {0, 0, 40}}};
+  auto [lj_e, lj_f, lj_v] = lj(positions, kZ, box);
+  auto [zbl_e, zbl_f, zbl_v] = zbl(positions, kZ, box);
+  (void)lj_v;
+  (void)zbl_v;
+  const double tol = 1e-12 * (std::abs(lj_e) + std::abs(zbl_e) + 1.0);
+  REQUIRE(energy == Catch::Approx(2.0 * lj_e - 0.5 * zbl_e).margin(tol));
+
+  std::vector<RgpotEngineComponent> rec(3);
+  std::vector<double> term_forces(3 * 3 * n, -1.0);
+  REQUIRE(e.last_components(pot, rec.data(), term_forces.data(), 3) == 3);
+  REQUIRE(rec[0].energy == Catch::Approx(lj_e).margin(tol));
+  REQUIRE(rec[0].weight == 2.0);
+  REQUIRE(rec[0].evaluated == 1);
+  REQUIRE(rec[1].enabled == 0);
+  REQUIRE(rec[1].evaluated == 0);
+  REQUIRE(rec[1].energy == 0.0);
+  REQUIRE(rec[2].energy == Catch::Approx(zbl_e).margin(tol));
+  REQUIRE(rec[2].weight == -0.5);
+  for (long i = 0; i < n; ++i) {
+    for (int d = 0; d < 3; ++d) {
+      const std::size_t k = static_cast<std::size_t>(3 * i + d);
+      REQUIRE(term_forces[k] == Catch::Approx(lj_f(i, d)).margin(tol));
+      REQUIRE(term_forces[3 * n + k] == 0.0);
+      REQUIRE(term_forces[6 * n + k] == Catch::Approx(zbl_f(i, d)).margin(tol));
+      REQUIRE(forces[k] ==
+              Catch::Approx(2.0 * lj_f(i, d) - 0.5 * zbl_f(i, d)).margin(tol));
+    }
+  }
+  // A short buffer gets the leading terms and the full count.
+  RgpotEngineComponent first;
+  REQUIRE(e.last_components(pot, &first, nullptr, 1) == 3);
+  REQUIRE(first.energy == rec[0].energy);
+
+  char name[4] = {0};
+  REQUIRE(e.component_name(pot, 1, name, sizeof(name)) == 5);
+  REQUIRE(std::string(name) == "mor");
+  REQUIRE(e.component_name(pot, 3, name, sizeof(name)) == 0);
+  REQUIRE(e.component_name(pot, -1, name, sizeof(name)) == 0);
+  e.destroy(pot);
+
+  REQUIRE(create(e, composite_params({{"x", "nonesuch", 1.0, true}}), &error) ==
+          nullptr);
+  REQUIRE(error.find("'x'") != std::string::npos);
+  REQUIRE(error.find("nonesuch") != std::string::npos);
+  // A disabled term is never built, so its backend need not exist.
+  RgpotEnginePot *off =
+      create(e, composite_params({{"lj", "lj", 1.0, true},
+                                  {"x", "nonesuch", 1.0, false}}),
+             &error);
+  INFO(error);
+  REQUIRE(off != nullptr);
+  e.destroy(off);
+}
+
+TEST_CASE("composite engine takes D2 terms with their stress", "[engine][composite][d2]") {
+  Engine e;
+  if (!open_engine("COMPOSITE", e)) {
+    SKIP("no composite engine in this build");
+  }
+  std::string error;
+  RgpotEnginePot *pot = create(e,
+                               composite_params({{"lj", "lj", 1.0, true},
+                                                 {"d2", "d2", 1.0, true},
+                                                 {"undo", "d2", -1.0, true}}),
+                               &error);
+  INFO(error);
+  REQUIRE(pot != nullptr);
+  const long n = 5;
+  std::vector<double> forces(3 * n, 0.0);
+  double energy = 0.0;
+  REQUIRE(e.force(pot, n, kCluster.data(), kZ.data(), forces.data(), &energy,
+                  nullptr, kBox.data(), nullptr, nullptr) == 0);
+  std::vector<RgpotEngineComponent> rec(3);
+  REQUIRE(e.last_components(pot, rec.data(), nullptr, 3) == 3);
+  REQUIRE(rec[1].energy < 0.0);
+  REQUIRE(rec[1].energy == rec[2].energy);
+  REQUIRE(rec[1].has_stress == 1);
+  REQUIRE(energy == Catch::Approx(rec[0].energy).margin(1e-12));
+  for (int k = 0; k < 9; ++k) {
+    REQUIRE(rec[1].stress[k] == rec[2].stress[k]);
+  }
+  e.destroy(pot);
+}
+
+#ifdef RGPOT_HAS_DFTD4
+TEST_CASE("composite engine takes a D4 term", "[engine][composite][d4]") {
+  Engine e;
+  if (!open_engine("COMPOSITE", e)) {
+    SKIP("no composite engine in this build");
+  }
+  std::string error;
+  RgpotEnginePot *pot =
+      create(e, composite_params({{"d4", "d4", 1.0, true}, {"d2", "d2", 0.0, false}}), &error);
+  INFO(error);
+  REQUIRE(pot != nullptr);
+  const long n = 5;
+  std::vector<double> forces(3 * n, 0.0);
+  double energy = 0.0;
+  REQUIRE(e.force(pot, n, kCluster.data(), kZ.data(), forces.data(), &energy,
+                  nullptr, kBox.data(), nullptr, nullptr) == 0);
+  std::vector<RgpotEngineComponent> rec(2);
+  REQUIRE(e.last_components(pot, rec.data(), nullptr, 2) == 2);
+  REQUIRE(rec[0].evaluated == 1);
+  REQUIRE(rec[0].energy < 0.0);
+  REQUIRE(rec[0].has_stress == 0);
+  REQUIRE(rec[1].evaluated == 0);
+  REQUIRE(energy == rec[0].energy);
+  e.destroy(pot);
+}
+#endif
+
 TEST_CASE("mopac engine", "[engine][mopac]") {
   check_unavailable_engine("MOPAC", "mopac", builtin_params("mopac"), 2);
 }
@@ -381,6 +1194,97 @@ TEST_CASE("nwchem engine", "[engine][nwchem]") {
   capnp::MallocMessageBuilder msg;
   msg.initRoot<::NWChemParams>();
   check_unavailable_engine("NWCHEM", "nwchem", capnp::messageToFlatArray(msg), 2);
+}
+
+TEST_CASE("cpmd engine keeps orbitals separate by caller key",
+          "[engine][cpmd][abi]") {
+  Engine e;
+  REQUIRE(open_engine("CPMD", e));
+  check_identity(e, "cpmd");
+
+  capnp::MallocMessageBuilder msg;
+  auto p = msg.initRoot<::CPMDParams>();
+  p.setFunctional("BLYP");
+  p.setCutOffRy(70.0);
+  RgpotEnginePot *pot = create(e, capnp::messageToFlatArray(msg));
+  REQUIRE(pot != nullptr);
+
+  RgpotEngineCaps caps{};
+  caps.size = sizeof(caps);
+  REQUIRE(e.caps(pot, &caps) == 0);
+  REQUIRE(caps.orbital_selection == 1);
+
+  const char *fake_path = std::getenv("RGPOT_CPMD_ENGINE");
+  REQUIRE(fake_path != nullptr);
+  void *fake = dlopen(fake_path, RTLD_NOW | RTLD_LOCAL);
+  REQUIRE(fake != nullptr);
+  auto last_key =
+      sym<long long (*)()>(fake, "cpmdc_fake_last_orbital_key");
+  auto generation =
+      sym<long long (*)()>(fake, "cpmdc_fake_last_orbital_generation");
+
+  const double pos[3] = {0.0, 0.0, 0.0};
+  const int z[1] = {8};
+  std::vector<double> forces(3);
+  double energy = 0.0;
+  auto evaluate = [&](long long key) {
+    REQUIRE(e.select_orbitals(pot, key) == 0);
+    REQUIRE(e.force(pot, 1, pos, z, forces.data(), &energy, nullptr,
+                    kBox.data(), nullptr, nullptr) == 0);
+    REQUIRE(last_key() == key);
+    return generation();
+  };
+
+  REQUIRE(evaluate(7) == 1);
+  REQUIRE(evaluate(19) == 1);
+  REQUIRE(evaluate(7) == 2);
+
+  dlclose(fake);
+  e.destroy(pot);
+}
+
+TEST_CASE("cpmd engine omits orbital selection when the engine lacks it",
+          "[engine][cpmd][abi]") {
+  Engine e;
+  REQUIRE(open_engine("CPMD", e));
+
+  struct EnvRestore {
+    const char *name;
+    std::string value;
+    bool had = false;
+    explicit EnvRestore(const char *n) : name(n) {
+      if (const char *v = std::getenv(n)) {
+        had = true;
+        value = v;
+      }
+      unsetenv(n);
+    }
+    ~EnvRestore() {
+      if (had) {
+        setenv(name, value.c_str(), 1);
+      } else {
+        unsetenv(name);
+      }
+    }
+  };
+  EnvRestore guard1("CPMDC_LIBRARY");
+  EnvRestore guard2("RGPOT_CPMDC_ENGINE");
+  EnvRestore guard3("RGPOT_CPMD_ENGINE");
+
+  capnp::MallocMessageBuilder msg;
+  auto p = msg.initRoot<::CPMDParams>();
+  p.setFunctional("BLYP");
+  p.setEnginePath("/nonexistent/libcpmdc.so");
+  RgpotEnginePot *pot = create(e, capnp::messageToFlatArray(msg));
+  REQUIRE(pot != nullptr);
+
+  RgpotEngineCaps caps{};
+  caps.size = sizeof(caps);
+  REQUIRE(e.caps(pot, &caps) == 0);
+  REQUIRE(caps.orbital_selection == 0);
+  REQUIRE(e.select_orbitals(pot, 7) == RGPOT_ENGINE_ERR_UNSUPPORTED);
+  REQUIRE(error_of(e, pot) == "backend has no orbital selection");
+  e.destroy(pot);
 }
 
 TEST_CASE("skala engine", "[engine][skala]") {
@@ -395,9 +1299,22 @@ TEST_CASE("skala engine", "[engine][skala]") {
   msg2.initRoot<::NWChemParams>();
   RgpotEnginePot *pot = create(e, capnp::messageToFlatArray(msg2));
   REQUIRE(pot != nullptr);
+  REQUIRE(e.set_charge_spin(pot, 0, 0) == 3);
+  REQUIRE(error_of(e, pot).find(">= 1") != std::string::npos);
   REQUIRE(e.set_charge_spin(pot, -1, 2) == 0);
   REQUIRE(e.set_num_threads(pot, 1, 1) == 3);
   e.destroy(pot);
+
+  for (const int bad : {0, -1}) {
+    INFO("multiplicity " << bad);
+    capnp::MallocMessageBuilder invalid;
+    auto params = invalid.initRoot<::NWChemParams>();
+    params.setMultiplicity(bad);
+    std::string error;
+    pot = create(e, capnp::messageToFlatArray(invalid), &error);
+    REQUIRE(pot == nullptr);
+    REQUIRE(error.find(">= 1") != std::string::npos);
+  }
 }
 
 TEST_CASE("xtb engine matches the generic table contract", "[engine][xtb]") {
@@ -425,6 +1342,18 @@ TEST_CASE("xtb engine matches the generic table contract", "[engine][xtb]") {
                   nullptr, nullptr) == 0);
   REQUIRE(energy < -100.0); // eV, GFN2 water is about -137 eV
   e.destroy(pot);
+
+  std::string error;
+  REQUIRE(create(e, xtb_params("nonesuch"), &error) == nullptr);
+  REQUIRE(error.find("unknown method 'nonesuch'") != std::string::npos);
+  RgpotEnginePot *gfn1 = create(e, xtb_params("gfn1"), &error);
+  INFO(error);
+  REQUIRE(gfn1 != nullptr);
+  double gfn1_energy = 0.0;
+  REQUIRE(e.force(gfn1, 3, pos, z, forces.data(), &gfn1_energy, nullptr,
+                  box.data(), nullptr, nullptr) == 0);
+  REQUIRE(gfn1_energy != energy);
+  e.destroy(gfn1);
 }
 
 TEST_CASE("metatomic engine keeps its own table and adds the generic one",
@@ -527,9 +1456,20 @@ TEST_CASE("metatomic charge and spin reach a model that reads them",
   }
   const std::string model = mta_model("MTA_CHARGE_SPIN_PT");
   std::string error;
+  for (const int bad : {0, -1}) {
+    INFO("spin " << bad);
+    RgpotEnginePot *invalid =
+        create(e, metatomic_params(model, 0, bad), &error);
+    REQUIRE(invalid == nullptr);
+    REQUIRE(error.find(">= 1") != std::string::npos);
+    REQUIRE(error.find(std::to_string(bad)) != std::string::npos);
+  }
   RgpotEnginePot *pot = create(e, metatomic_params(model), &error);
   INFO(error);
   REQUIRE(pot != nullptr);
+  CHECK(pair_energy(e, pot) == Catch::Approx(3.5));
+  CHECK(e.set_charge_spin(pot, 0, 0) == 3);
+  CHECK(error_of(e, pot).find(">= 1") != std::string::npos);
   CHECK(pair_energy(e, pot) == Catch::Approx(3.5));
 
   REQUIRE(e.set_charge_spin(pot, -1, 3) == 0);
@@ -563,6 +1503,69 @@ TEST_CASE("metatomic charge and spin reach a model that reads them",
   REQUIRE(e.set_charge_spin(pot, 1, 2) == 0);
   CHECK(pair_energy(e, pot) == Catch::Approx(14.5));
   e.destroy(pot);
+}
+
+TEST_CASE("metatomic result cache never serves across a charge or spin change",
+          "[engine][metatomic][charge][cache]") {
+  Engine e;
+  if (!open_engine("METATOMIC", e)) {
+    SKIP("no metatomic engine in this build");
+  }
+#ifndef RGPOT_HAS_CACHE
+  SKIP("this build has no result cache");
+#else
+  auto set_cache = sym<decltype(&rgpot_engine_set_cache)>(
+      e.handle, "rgpot_engine_set_cache");
+  auto cache_counts = sym<decltype(&rgpot_engine_cache_counts)>(
+      e.handle, "rgpot_engine_cache_counts");
+  const auto counts = [&](RgpotEnginePot *pot) {
+    uint64_t computed = 0;
+    uint64_t served = 0;
+    REQUIRE(cache_counts(pot, &computed, &served) == 0);
+    return std::pair{computed, served};
+  };
+  using Counts = std::pair<uint64_t, uint64_t>;
+
+  std::string error;
+  RgpotEnginePot *pot =
+      create(e, metatomic_params(mta_model("MTA_CHARGE_SPIN_PT")), &error);
+  INFO(error);
+  REQUIRE(pot != nullptr);
+  rgpot::tests::TestTempDir directory("rgpot-metatomic-cache");
+  const std::string db = (directory.path() / "results").string();
+  REQUIRE(set_cache(pot, db.c_str()) == 0);
+
+  CHECK(pair_energy(e, pot) == Catch::Approx(3.5));
+  CHECK(counts(pot) == Counts{1, 0});
+  CHECK(pair_energy(e, pot) == Catch::Approx(3.5));
+  CHECK(counts(pot) == Counts{1, 1});
+
+  // A stale hit would answer 3.5 here. The new charge and spin are a new key,
+  // so the kernel runs again.
+  REQUIRE(e.set_charge_spin(pot, -1, 3) == 0);
+  CHECK(pair_energy(e, pot) == Catch::Approx(-4.5));
+  CHECK(counts(pot) == Counts{2, 1});
+  CHECK(pair_energy(e, pot) == Catch::Approx(-4.5));
+  CHECK(counts(pot) == Counts{2, 2});
+  const auto batch = pair_batch_energies(e, pot);
+  CHECK(batch[0] == Catch::Approx(-4.5));
+  CHECK(batch[1] == Catch::Approx(-4.5));
+  CHECK(counts(pot).first == 2);
+
+  // Each of the charge and the spin changes the key on its own, and returning
+  // to the first values finds the first entry again.
+  REQUIRE(e.set_charge_spin(pot, -1, 1) == 0);
+  CHECK(pair_energy(e, pot) == Catch::Approx(-6.5));
+  CHECK(counts(pot).first == 3);
+  REQUIRE(e.set_charge_spin(pot, 0, 3) == 0);
+  CHECK(pair_energy(e, pot) == Catch::Approx(5.5));
+  CHECK(counts(pot).first == 4);
+  REQUIRE(e.set_charge_spin(pot, 0, 1) == 0);
+  const auto served = counts(pot).second;
+  CHECK(pair_energy(e, pot) == Catch::Approx(3.5));
+  CHECK(counts(pot) == Counts{4, served + 1});
+  e.destroy(pot);
+#endif
 }
 
 TEST_CASE("metatomic engine refuses a charge or spin its model does not read",

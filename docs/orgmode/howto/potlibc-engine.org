@@ -1,0 +1,158 @@
+#+COMMENT: Copyright 2023--present rgpot developers
+#+TITLE: Use POTLIB surfaces through the potlibc engine
+#+OPTIONS: toc:nil todo:nil num:nil author:nil title:nil
+#+STARTUP: content
+
+* Use POTLIB surfaces through the potlibc engine
+
+=libpotlibc_engine.so= is an optional engine plugin.
+It keeps potlibc behind the generic engine C ABI: applications load one shared
+library and pass one versioned create message.
+There is no potlibc potential type or potlibc feature in =librgpot= or
+=rgpot-core=.
+
+** Install potlibc
+
+Build and install potlibc first, at the revision the plugin tests run against.
+The reference energies in =engines/test_potlibc_engine.c= can change between
+potlibc revisions, so do not build the branch tip.
+Its [[https://omnipotentrpc.github.io/potlibc/][surface catalog]] lists the
+canonical surface ids and says which surfaces need an atom count. potlibc needs
+a Fortran compiler and a =lapack= pkg-config module.
+
+#+attr_rgpot: syntax
+#+begin_src bash
+git clone https://github.com/OmniPotentRPC/potlibc.git
+git -C potlibc checkout 85e9896be0da2b7f95d9a281a6f30c2c8ca76d8c
+meson setup potlibc/build potlibc --prefix="$HOME/.local" --libdir=lib
+meson compile -C potlibc/build
+meson install -C potlibc/build
+#+end_src
+
+=--libdir=lib= puts =potlibc.pc= in =$HOME/.local/lib/pkgconfig= on every host.
+Without it, Debian and Ubuntu install into a multiarch directory such as
+=lib/x86_64-linux-gnu=, and the search path below would miss the file.
+Make the prefix visible to =pkg-config= when it is not on the system search
+path.
+
+#+attr_rgpot: syntax
+#+begin_src bash
+export PKG_CONFIG_PATH="$HOME/.local/lib/pkgconfig:$PKG_CONFIG_PATH"
+#+end_src
+
+** Build the plugin
+
+=with_potlibc= is a Meson =feature= option and defaults to =disabled=.
+=enabled= requires the =potlibc= pkg-config dependency and builds
+=libpotlibc_engine.so=.
+
+#+attr_rgpot: syntax
+#+begin_src bash
+meson setup bbdir -Dwith_potlibc=enabled
+meson compile -C bbdir libpotlibc_engine.so
+meson test -C bbdir --print-errorlogs potlibc_engine engine_abi_stamps potlibc_engine_rust_loader
+#+end_src
+
+=potlibc_engine= drives the C entry points and the lock-failure build.
+=engine_abi_stamps= compares the plugin's ABI stamp with the header.
+=potlibc_engine_rust_loader= loads the plugin with =EnginePotential::load=,
+checks the =brh2leps= energy and forces, and drives the lock-failure build to
+confirm that =EngineError::Lock= latches the handle.
+
+The plugin is separate from =librgpot=.
+No potlibc symbols or headers enter the core library.
+
+** Create a surface
+
+=include/rgpot/potlibc_engine.h= declares =RgpotPotlibcConfigV2=, the message
+new callers write, and =RgpotPotlibcConfigV1=, the 144-byte message a client
+built against the original layout still sends.
+Set the version-2 magic, size and version, copy one canonical catalog id into
+=surface_id=, and set =atom_count= to zero for a fixed-size surface or to the
+exact count for a variable-size surface.
+=reserved= must be zero.
+Version 1 has no size field: =magic= is at offset 0, =version= at offset 4,
+=atom_count= at offset 8 and =surface_id= at offset 16.
+Because
+=RGPOT_POTLIBC_CONFIG_VERSION= now names version 2, a version-1 source recompiled against the current header must use =RGPOT_POTLIBC_CONFIG_VERSION_V1= (and =RGPOT_POTLIBC_CONFIG_V1_SIZE=); setting =RgpotPotlibcConfigV1.version= to =RGPOT_POTLIBC_CONFIG_VERSION=
+is refused.
+The plugin calls =potlibc_create= in the first case and =potlibc_create_sized=
+in the second; it does not retry with another constructor.
+
+#+attr_rgpot: compile flags=-ICppCore -Iinclude
+#+begin_src c
+#include <string.h>
+
+#include "rgpot/engine_c_abi.h"
+#include "rgpot/potlibc_engine.h"
+
+int main(void) {
+RgpotPotlibcConfigV2 cfg = {
+    .magic = RGPOT_POTLIBC_CONFIG_MAGIC,
+    .size = sizeof(RgpotPotlibcConfigV2),
+    .version = RGPOT_POTLIBC_CONFIG_VERSION,
+    .reserved = 0,
+    .atom_count = 0,
+};
+strcpy(cfg.surface_id, "brh2leps");
+
+char error[512];
+RgpotEnginePot *pot =
+    rgpot_engine_create(&cfg, sizeof cfg, error, sizeof error);
+
+rgpot_engine_destroy(pot);
+return pot == NULL;
+}
+#+end_src
+
+A version-2 message with =size < RGPOT_POTLIBC_CONFIG_MIN_SIZE= is refused as a
+typed size error.
+A larger version-2 message is accepted only when every unknown trailing byte up
+to =size= is zero.
+A version other than =RGPOT_POTLIBC_CONFIG_VERSION_V1= or
+=RGPOT_POTLIBC_CONFIG_VERSION= is refused with the plain error string
+=potlibc config version is unknown=.
+The 144-byte version-1 message is accepted unchanged.
+
+The engine ABI takes Angstrom and returns eV and eV/Angstrom.
+The plugin performs the conversion to potlibc's Bohr and Hartree units.
+When potlibc metadata gives atomic number 0 for an atom, that position is
+unspecified and the plugin accepts the caller's species.
+A nonzero catalog atomic number must match exactly.
+
+** Load it from Rust
+
+Enable the generic loader, not a potlibc-specific feature.
+
+# [[[cog import rgpot_version as v; cog.outl("#+attr_rgpot: syntax"); cog.outl(v.readme_org("engine"))]]]
+#+attr_rgpot: syntax
+#+begin_src toml
+[dependencies]
+rgpot-core = { version = "3.8.0", features = ["engine"] }
+#+end_src
+# [[[end]]]
+
+=rgpot_core::engine::PotlibcConfig= is the typed create message.
+It is
+=#[non_exhaustive]=: start from =PotlibcConfig::default()= or call =PotlibcConfig::new(surface_id, atom_count)=,
+which refuses an empty, over-long or NUL-containing surface id.
+=as_bytes= is the message to pass to =EnginePotential::load= with the path to =libpotlibc_engine.so=.
+
+#+attr_rgpot: fragment Rust excerpt; needs the rgpot-core crate and an installed potlibc
+#+begin_src rust
+let config = PotlibcConfig::default()
+    .with_surface_id("vbo-beta1")?
+    .with_atom_count(4);
+let mut engine =
+    unsafe { EnginePotential::load(path, config.as_bytes()) }?;
+#+end_src
+
+=EnginePotential::force= evaluates energy and forces.
+=EnginePotential::force_batch= evaluates systems of the surface's atom count in one =potlibc_evaluate=
+call; a failed batch writes nothing.
+=EnginePotential::hvp= uses =rgpot_engine_hvp= only when the surface advertises
+an analytic product, and =into_potential= exposes that same handle to in-process
+and RPC callers.
+
+The complete symbol contracts and units are in the
+[[file:../reference/engine_abi.org][engine ABI reference]].

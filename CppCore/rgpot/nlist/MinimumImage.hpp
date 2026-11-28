@@ -27,7 +27,7 @@ namespace rgpot::nlist {
 /// search would return the same bits.
 class MinimumImage {
 public:
-  MinimumImage() = default;
+  MinimumImage() noexcept = default;
   MinimumImage(const double *cell, const std::array<bool, 3> &periodic);
   void fold(double &dx, double &dy, double &dz) const;
   /// fold for a caller that keeps only images of squared length at most
@@ -41,6 +41,10 @@ public:
   /// images. A fold the bounds settle does not count. Tests read it to pin
   /// the paths that need no search.
   [[nodiscard]] static std::uint64_t searches() noexcept;
+  /// Inverse of the working cell basis, row-major.
+  [[nodiscard]] const std::array<double, 9> &inverse() const noexcept {
+    return inverse_;
+  }
 
 private:
   std::array<double, 9> cell_{};

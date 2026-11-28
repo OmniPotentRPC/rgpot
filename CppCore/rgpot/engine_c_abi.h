@@ -5,10 +5,11 @@
  * One symbol set for every heavy backend: an engine shared library
  * (libuma_engine.so, libmetatomic_engine.so, ...) exports these
  * functions, backend selection is which library the host dlopens, and
- * configuration travels as a Cap'n Proto flat-array message on the
- * shared Potentials.capnp wire (the engine names its root params
- * struct, e.g. UmaParams). Adding a backend therefore needs no new
- * host code and no new ABI header.
+ * configuration travels as a versioned binary message. The in-tree core
+ * engines use a Cap'n Proto flat-array message on the shared
+ * Potentials.capnp wire (the engine names its root params struct, e.g.
+ * UmaParams); a standalone backend may document its own magic structure.
+ * Adding a backend therefore needs no new host code or core ABI header.
  *
  * Units: positions Angstrom, energy eV, forces eV/Angstrom.
  *
@@ -27,7 +28,8 @@
  * - Codes the engines in this repository return: 1 invalid argument, 2 the
  *   evaluation or the setting failed (the reason is in
  *   rgpot_engine_last_error), 3 the backend does not support the operation,
- *   and for force the host transform's own nonzero code.
+ *   -2 acquiring an engine or handle lock failed (leaving the handle
+ *   unusable), and for force the host transform's own nonzero code.
  *
  * Thread safety of a handle. Any thread may call force and force_batch on any
  * handle. What happens inside depends on the backend's capabilities
@@ -37,14 +39,16 @@
  * the process across all handles of the library. A host that wants
  * parallelism from a backend that reports 1 or 2 creates one handle per
  * worker (1 only). rgpot_engine_set_num_threads,
- * rgpot_engine_set_charge_spin, rgpot_engine_set_callbacks,
- * rgpot_engine_hint and rgpot_engine_destroy must not run concurrently with
- * a call on the same handle. rgpot_engine_last_error and
+ * rgpot_engine_set_charge_spin, rgpot_engine_select_orbitals,
+ * rgpot_engine_set_callbacks, rgpot_engine_set_cache, rgpot_engine_hint
+ * and rgpot_engine_destroy must not run concurrently with a call on the
+ * same handle. rgpot_engine_last_error and
  * rgpot_engine_model_digest may run at any time.
  * - Capability discovery is by symbol presence: entry points marked
  *   optional are probed with dlsym. An absent symbol means the engine
- *   does not support the operation; a static (non-learning) engine
- *   simply omits the learning set.
+ *   does not support the operation, and rgpot_engine_hvp is supported only
+ *   when rgpot_engine_caps also reports analytic_hvp; a static
+ *   (non-learning) engine simply omits the learning set.
  * - Engines with internal mutable state (learning surrogates) carry a
  *   monotone model-state counter. Any refit, hyperparameter change,
  *   or observation incorporation increments it; host-visible caches
@@ -58,6 +62,7 @@
 #pragma once
 
 #include <stddef.h>
+#include <stdint.h>
 
 #ifdef __cplusplus
 extern "C" {
@@ -79,7 +84,10 @@ typedef struct RgpotEnginePot RgpotEnginePot;
  * Optional host-side transform applied by the engine to its scratch
  * copy of (positions, box) before evaluation. positions holds
  * 3*nAtoms doubles, box 9 doubles (row-major). Return 0 on success;
- * nonzero aborts the force call with that code.
+ * nonzero aborts the force call with that code. A batch engine may invoke the
+ * transform concurrently for different systems. Each invocation completes
+ * before the force or force_batch call returns; the engine must not retain the
+ * function pointer, user pointer, positions, or box.
  */
 typedef int (*rgpot_engine_coord_transform)(void *user, long nAtoms,
                                             double *positions, double *box);
@@ -95,19 +103,32 @@ typedef int (*rgpot_engine_coord_transform)(void *user, long nAtoms,
  * minor 0, layout 1.
  */
 #define RGPOT_ENGINE_ABI_VERSION 1
-#define RGPOT_ENGINE_ABI_MINOR 2
+#define RGPOT_ENGINE_ABI_MINOR 11
 #define RGPOT_ENGINE_ABI_LAYOUT_REVISION 1
+
+#define RGPOT_ENGINE_OK 0
+#define RGPOT_ENGINE_ERR_INVALID 1
+#define RGPOT_ENGINE_ERR_EVAL 2
+#define RGPOT_ENGINE_ERR_UNSUPPORTED 3
+/** Negative fatal code returned when acquiring an engine or handle lock fails. */
+#define RGPOT_ENGINE_ERR_LOCK (-2)
 
 RGPOT_ENGINE_API int rgpot_engine_abi_version(void);
 
+/**
+ * Nonzero when the engine runtime is available and can create instances; 0
+ * when unavailable. Every engine in this repository exports it and a host
+ * calls it before `rgpot_engine_create`. A host treats an engine that does not
+ * export it as available.
+ */
 RGPOT_ENGINE_API int rgpot_engine_available(void);
 
 /**
- * Create a potential from a Cap'n Proto flat-array message whose root
- * struct is the engine's params arm in Potentials.capnp (UmaParams for
- * the UMA engine). config points at config_len bytes (word-aligned
- * capnp framing as produced by capnp::messageToFlatArray). Returns
- * NULL on failure with a message in errbuf.
+ * Create a potential from the engine's versioned configuration message.
+ * In-tree core engines take a word-aligned Cap'n Proto flat array whose root
+ * is their params arm in Potentials.capnp. Standalone engines document their
+ * own message next to the library. Returns NULL on failure with a message in
+ * errbuf.
  */
 RGPOT_ENGINE_API RgpotEnginePot *rgpot_engine_create(const void *config,
                                                      size_t config_len,
@@ -161,6 +182,77 @@ RGPOT_ENGINE_API int rgpot_engine_force(
 /* ------------------------------------------------------------------ */
 /* Optional symbols: probe with dlsym; absence means unsupported.     */
 /* ------------------------------------------------------------------ */
+
+/** Attach a persistent result cache. Use a separate directory for each
+ * model unless the engine fingerprints its parameters, as the metatomic engine
+ * does, including the charge and spin. A successful attachment starts the
+ * counters at zero. The handle owns the cache. A null path detaches it and
+ * leaves the stored results on disk. A failure leaves the existing attachment
+ * intact. The cache has no size cap and never evicts; remove the directory to
+ * bound it. The path is UTF-8 on Windows. Requires exclusive use of pot.
+ * Returns 3 for a build without cache support or a composite handle whose
+ * per-term records the result cache cannot preserve. */
+RGPOT_ENGINE_API int rgpot_engine_set_cache(RgpotEnginePot *pot,
+                                            const char *path);
+
+/** Read kernel-computed and cache-served geometry results since attachment.
+ * Returns 3 when no cache is attached. For an exact interval, wait for all
+ * outstanding evaluations before sampling. */
+RGPOT_ENGINE_API int rgpot_engine_cache_counts(RgpotEnginePot *pot,
+                                               uint64_t *computed,
+                                               uint64_t *served);
+
+/**
+ * Analytic Hessian-vector product H(positions) * direction, in eV/Angstrom
+ * for a direction in Angstrom. direction and hv_out hold 3*nAtoms doubles
+ * and must not overlap. Returns RGPOT_ENGINE_OK (0) on success,
+ * RGPOT_ENGINE_ERR_INVALID (1) for invalid or overlapping arguments, and
+ * RGPOT_ENGINE_ERR_UNSUPPORTED (3) when the backend does not support
+ * analytic HVP.
+ */
+RGPOT_ENGINE_API int rgpot_engine_hvp(
+    RgpotEnginePot *pot, long nAtoms, const double *positions,
+    const int *atomicNrs, const double *direction, double *hv_out,
+    const double *box);
+
+/**
+ * Roundoff report of a derivative evaluation. `tracked` is nonzero when the
+ * engine counts its arithmetic: then `operations` times the machine epsilon
+ * times `scale` is the engine's first-order estimate of the roundoff of the
+ * returned derivatives, `scale` being in the units of the jet. It is an
+ * estimate from an operation count, not a rigorous bound. For a batch,
+ * `operations` is the sum over the systems and `scale` the largest. When
+ * `tracked` is 0 the other fields are 0.
+ */
+typedef struct {
+  int tracked;
+  long long operations;
+  double scale;
+} RgpotEngineDerivativeReport;
+
+/**
+ * Directional derivatives of the gradient to higher order, for nSystems
+ * systems sharing one composition (atomicNrs, nAtoms), in one call.
+ * positions and directions hold nSystems * 3 * nAtoms doubles, boxes
+ * nSystems * 9. jet_out holds order * nSystems * 3 * nAtoms doubles laid out
+ * [order][system][3 * nAtoms]: block k - 1 of system s is the k-th derivative
+ * with respect to t of the gradient of the energy at positions_s + t *
+ * directions_s, at t = 0, in eV/Angstrom for directions in Angstrom (each
+ * derivative of the gradient is a force; the Angstrom of the line parameter
+ * is absorbed by the direction). These are exact derivatives, not Taylor
+ * coefficients. Order 1 is the Hessian-vector product. The highest order the
+ * engine serves is RgpotEngineCaps.jet_order. report may be NULL.
+ * directions and jet_out must not overlap each other or any other input.
+ * Returns RGPOT_ENGINE_OK (0) on success, RGPOT_ENGINE_ERR_INVALID (1) for
+ * invalid or overlapping arguments or order < 1, RGPOT_ENGINE_ERR_UNSUPPORTED
+ * (3) when the backend serves no jet or order exceeds jet_order, and
+ * RGPOT_ENGINE_ERR_EVAL (2) when the evaluation fails.
+ * Nothing is written to jet_out or report unless the call succeeds.
+ */
+RGPOT_ENGINE_API int rgpot_engine_taylor_jet(
+    RgpotEnginePot *pot, long nSystems, long nAtoms, const double *positions,
+    const int *atomicNrs, const double *directions, long order,
+    double *jet_out, RgpotEngineDerivativeReport *report, const double *boxes);
 
 /**
  * Strided-uniform batched evaluation: nSystems systems sharing one
@@ -217,10 +309,26 @@ typedef struct {
 } RgpotEngineCallbacks;
 
 /**
- * Register host callbacks. The struct is copied; ctx must outlive the
- * potential or a subsequent call replacing it. Learning engines
- * require an oracle before the first evaluation and fail create-time
- * validation without one.
+ * Register host callbacks. A NULL callbacks pointer clears the registration.
+ *
+ * On success the struct is copied and the engine uses the new ctx from then
+ * on. It must not use a previously registered ctx after the call returns, so
+ * the host may free that ctx once a replacing or clearing call has returned
+ * zero. The new ctx must stay valid until a later successful call replaces or
+ * clears it, or until rgpot_engine_destroy returns.
+ *
+ * On nonzero return the previous registration remains in effect and the
+ * engine must not retain the supplied struct or its ctx, so the host may free
+ * that ctx. Engines built before this was stated, under the same 1.5 identity,
+ * may have kept it; a host that cannot tell must keep every ctx it supplied
+ * valid until rgpot_engine_destroy returns. EngineSession in rgpot-core does
+ * that for refused contexts.
+ *
+ * rgpot_engine_create takes no callbacks, so a host can register them only on
+ * a handle that create has already returned. A learning engine therefore
+ * creates without an oracle and requires one before its first evaluation: an
+ * evaluation that needs the oracle before one is registered fails with a
+ * nonzero code.
  */
 RGPOT_ENGINE_API int rgpot_engine_set_callbacks(
     RgpotEnginePot *pot, const RgpotEngineCallbacks *callbacks);
@@ -248,12 +356,12 @@ typedef struct {
 RGPOT_ENGINE_API RgpotEngineAbiStamp rgpot_engine_abi_stamp(void);
 
 /**
- * Nonzero when the loaded engine serves a host built against `stamp`: equal
- * major, equal layout revision, engine minor at least the host's. NULL
- * returns 0.
+ * Nonzero when this plugin serves the host described by `host_stamp`: equal
+ * major, equal layout revision, and a plugin minor no newer than the host's.
+ * NULL returns 0.
  */
 RGPOT_ENGINE_API int rgpot_engine_abi_compatible(
-    const RgpotEngineAbiStamp *stamp);
+    const RgpotEngineAbiStamp *host_stamp);
 
 /**
  * Concurrency and evaluation capabilities, the engine-side image of rgpot's
@@ -270,6 +378,10 @@ typedef struct {
   int periodic;            /**< periodic boundary conditions supported */
   int stress;              /**< cell stress is available */
   int group_collective;    /**< every rank of a group enters each call */
+  int orbital_selection;   /**< select_orbitals is supported */
+  int orbital_copy;        /**< copy_orbitals is supported */
+  int analytic_hvp;        /**< rgpot_engine_hvp is exact for this potential */
+  int jet_order;           /**< highest order of rgpot_engine_taylor_jet; 0 none */
 } RgpotEngineCaps;
 
 RGPOT_ENGINE_API int rgpot_engine_caps(const RgpotEnginePot *pot,
@@ -315,17 +427,47 @@ RGPOT_ENGINE_API int rgpot_engine_set_num_threads(RgpotEnginePot *pot,
                                                   int intra_op, int inter_op);
 
 /**
- * Change the total charge and spin multiplicity the next evaluations assume.
- * Returns 0 when the values reach the backend, 1 for a multiplicity below 1,
- * and 3 for a backend without a charge or spin or a value it cannot take; a
- * refused call changes nothing and leaves the reason in last_error. A UMA
- * package was exported for one charge and spin; a mismatch is reported by the
- * next force call. A Metatomic model reads those it declares in
+ * Change the total charge and spin the next evaluations assume. Returns 0 when
+ * the values reach the backend, 1 for a NULL pot or a negative spin, and 3 for
+ * a backend without a charge or spin or a value the backend or task cannot
+ * take (for example spin 0 on Metatomic or Skala, or spin > 100 on UMA); a
+ * refused call changes nothing and leaves the reason in last_error. A
+ * UMA package was exported for one charge and spin; a mismatch is reported by
+ * the next force call. A Metatomic model reads those it declares in
  * requested_inputs, and one it does not read must stay at charge 0 or
  * multiplicity 1.
  */
 RGPOT_ENGINE_API int rgpot_engine_set_charge_spin(RgpotEnginePot *pot,
                                                   int charge, int spin);
+
+/**
+ * Name the calculation the next force belongs to. A backend that keeps a
+ * converged wavefunction per key (a band image, a ring-polymer bead) parks
+ * the one it is leaving and restores the one stored under `key`. A key with
+ * nothing stored starts from the wavefunction already in hand.
+ * On CPMD backends, accepting a key seeds the next SCF from the session's
+ * current converged orbitals or from the orbitals stored for that key.
+ * Returns 0 on success (clearing last_error), 1 when pot is NULL (invalid
+ * argument, leaving last_error unchanged), 2 when the backend's
+ * orbital-selection hook fails with an exception, and 3 when the backend has
+ * no orbital selection or refuses key through Unsupported; codes 2 and 3
+ * record the reason in last_error. Must not run concurrently with a force
+ * on the same handle.
+ */
+RGPOT_ENGINE_API int rgpot_engine_select_orbitals(RgpotEnginePot *pot,
+                                                  long long key);
+
+/**
+ * Copy stored orbitals from one key to another.
+ * Returns 0 on success (clearing last_error), 1 when pot is NULL (invalid
+ * argument, leaving last_error unchanged), 2 when the backend's orbital-copy
+ * hook fails with an exception, and 3 when the backend has no orbital-copy
+ * primitive or refuses the copy through Unsupported; codes 2 and 3 record
+ * the reason in last_error.
+ */
+RGPOT_ENGINE_API int rgpot_engine_copy_orbitals(RgpotEnginePot *pot,
+                                                long long from_key,
+                                                long long to_key);
 
 /**
  * Neighbor-list declaration. An engine exporting this symbol expects
@@ -347,6 +489,58 @@ typedef struct {
 RGPOT_ENGINE_API long rgpot_engine_neighbor_options(
     const RgpotEnginePot *pot, RgpotEngineNeighborOptions *opts,
     long capacity);
+
+/**
+ * One term of a composite engine (a weighted sum of child potentials) as the
+ * last successful force call on the handle left it. energy and stress are the
+ * term's own values before its weight: eV and eV/Angstrom^3.
+ */
+typedef struct {
+  double weight;
+  double energy;
+  double stress[9];
+  int enabled;    /**< 0: switched off, never evaluated */
+  int evaluated;  /**< 0 for a disabled term and before the first call */
+  int has_stress; /**< stress holds the term's stress */
+} RgpotEngineComponent;
+
+/**
+ * Per-term record of the last successful force call. Writes up to capacity
+ * entries into out and returns the total count (call with capacity 0 to
+ * size); returns 0 for a backend that is not a sum and -1 for a NULL pot.
+ * forces, when not NULL, receives capacity blocks of 3*nAtoms doubles
+ * (nAtoms of the last call, eV/Angstrom), term-major, zero for a term that
+ * was not evaluated. With rgpot_engine_force_batch the record is the last
+ * system of the batch.
+ */
+RGPOT_ENGINE_API long rgpot_engine_last_components(
+    const RgpotEnginePot *pot, RgpotEngineComponent *out, double *forces,
+    long capacity);
+
+/**
+ * Name of term index of a composite engine. Copies at most `len - 1` bytes
+ * and NUL-terminates; returns the full name length, 0 for an index out of
+ * range or a backend that is not a sum.
+ */
+RGPOT_ENGINE_API size_t rgpot_engine_component_name(const RgpotEnginePot *pot,
+                                                    long index, char *buf,
+                                                    size_t len);
+
+#define RGPOT_ENGINE_UNLOAD_RESIDENT 0
+#define RGPOT_ENGINE_UNLOAD_SAFE 1
+
+/**
+ * Unload policy of the library, minor 7. A host keeps every engine library
+ * loaded for the life of the process unless this returns
+ * RGPOT_ENGINE_UNLOAD_SAFE and rgpot_engine_abi_stamp reports minor 7 or
+ * later. Only then may the host dlclose the library, and only after
+ * rgpot_engine_destroy has returned for every handle. Return
+ * RGPOT_ENGINE_UNLOAD_SAFE only when no thread, TLS destructor, atexit
+ * handler or callback of the library outlives its last handle and it links
+ * no runtime that keeps process state (OpenMP, CUDA, Torch, MPI, GROMACS,
+ * LAMMPS, OpenMM).
+ */
+RGPOT_ENGINE_API int rgpot_engine_unload_policy(void);
 
 #ifdef __cplusplus
 }

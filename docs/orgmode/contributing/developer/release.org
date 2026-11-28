@@ -13,9 +13,15 @@ Every other copy sits between cogapp markers in a file listed in
 =pixi.toml= (the workspace key only), =towncrier.toml=, =docs/source/conf.py=
 (Sphinx =version= and =release=), the =RGPOT_VERSION= macros of
 =rgpot-core/include/rgpot.h= and the dependency snippets of
-=rgpot-core/README.md= and =rgpot-core/README.org=.
+=rgpot-core/README.md=, =rgpot-core/README.org=,
+=docs/orgmode/howto/coupled-well-engine.org= and =docs/orgmode/howto/potlibc-engine.org=.
 =ci/version/rgpot_version.py= reads the version from =Cargo.toml= for those
 snippets.
+=CITATION.cff= keeps =version= and =date-released= between cogapp markers too.
+The date is the one in the =CHANGELOG.md= heading of the version.
+JSON has no comments, so =codemeta.json= and =.zenodo.json= carry no markers.
+=rgpot_version.py json= writes their version and date.
+=version-drift= checks both files.
 Regenerate the copies, or check them, with the cogapp tasks of the =version=
 pixi environment, which pins cogapp 3.6.0:
 
@@ -107,15 +113,52 @@ uvx towncrier create
 
 Types (see =towncrier.toml=): =breaking= (section Breaking, listed first),
 =security=, =removed=, =deprecated=, =added=, =dev=, =changed=, =fixed=, =misc=.
+=towncrier check= fails on a fragment of any other type, such as =style=.
+=scripts/check_news_fragments.py= does not check the type.
 Preview with =uvx towncrier build --draft= or =pixi r towncrier-draft=.
 
-The orchestrator =towncrier= job runs on every pull request:
-=potctl ci towncrier-check --compare-with <base sha>= runs =towncrier check=.
-Neither the job nor =towncrier.toml= filters by path, so the check fails on a
-pull request that adds no fragment, whatever paths it changes.
-=docs/newsfragments/README.md= says pure =docs= / =ci= / =chore= changes may
-omit a fragment; with the current job, such a pull request still needs one to
-pass.
+A fragment holds only the text of the entry.
+The template =ci/release-notes.md= writes the bullet and the heading, so:
+
+- Do not start a fragment with a list marker.
+  Continuation lines need no indent.
+- Do not put a copyright or SPDX line in a fragment.
+- Do not put a comment block (=<!-- ... -->=) in a fragment.
+
+The checker is =python scripts/check_news_fragments.py= (or
+=pixi r news-fragments-check=).
+It fails when a fragment starts with a dash or an asterisk and a space.
+Leading whitespace before that marker does not change this.
+It fails on a line starting with =copyright= or =(c)= and a space.
+It fails on a line starting with =©=, =spdx-=, =[//]:= or =<!--=.
+These prefixes match without regard to case.
+It fails on a fragment with no text.
+Add =--fix= to strip these from the files.
+The template strips the same lines and a leading marker from the notes.
+
+The =pull_request= trigger in =.github/workflows/ci-orchestrator.yml= reads:
+
+#+attr_rgpot: syntax excerpt of the orchestrator workflow trigger
+#+begin_src yaml
+pull_request:
+  branches: [main, develop]
+  paths-ignore:
+    - docs/**
+    - '**/*.md'
+    - newsfragments/**
+    - LICENSE
+#+end_src
+
+The workflow skips a pull request whose files all match these patterns.
+Such a pull request runs neither the =towncrier= job nor the =prek= job.
+The =prek= job runs the fragment checker.
+Any other pull request runs the =towncrier= job, so it needs a fragment.
+This covers code, build files and CI files such as the workflows.
+The job runs =potctl ci towncrier-check --compare-with <base sha>=.
+That command runs =towncrier check=, which fails without a new fragment.
+=towncrier check= passes without one when the pull request changes
+=CHANGELOG.md=.
+Use the =dev= type when library, CLI and crate behaviour stay the same.
 
 ** Commit check
 
@@ -164,10 +207,11 @@ The prepare check ignores that subject as well.
 
    - =cargo run -q -p potctl --bin potctl -- release sync {{version}}= writes
      =[workspace.package] version= in =Cargo.toml= and nothing else
-   - =pixi r -e version release-cog= regenerates the copies
-   - =cargo update --workspace --offline= rewrites the =Cargo.lock= entries
    - =uvx towncrier build --yes --version {{version}}= updates =CHANGELOG.md=
      and clears the fragments
+   - =pixi r -e version release-cog= regenerates the copies, and takes the
+     =date-released= of the citation files from the new =CHANGELOG.md= heading
+   - =cargo update --workspace --offline= rewrites the =Cargo.lock= entries
    - =cargo run -q -p potctl --bin potctl -- release assert --require-changelog {{version}}=
      is the gate
 

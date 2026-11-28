@@ -7,8 +7,16 @@
 #include <limits>
 #include <memory>
 #include <random>
+#include <type_traits>
 
+#include "rgpot/D2Pot/D2CpmdPot.hpp"
+#include "rgpot/D2Pot/D2Pot.hpp"
+#ifdef RGPOT_HAS_DFTD4
+#include "rgpot/D4Pot/D4Pot.hpp"
+#endif
+#include "TestTempDir.hpp"
 #include "rgpot/LennardJones/LJPot.hpp"
+#include "rgpot/Models/ModelPots.hpp"
 #include "rgpot/PotentialCache.hpp"
 
 #include <rocksdb/db.h>
@@ -46,7 +54,8 @@ TEST_CASE("Potential caching with rgpot", "[Potential]") {
     // Setup RocksDB Manually
     rocksdb::Options options;
     options.create_if_missing = true;
-    std::string db_path = "/tmp/rgpot_test_rocksdb_manual";
+    rgpot::tests::TestTempDir dir("rgpot-test-rocksdb-manual");
+    std::string db_path = (dir.path() / "cache-db").string();
     rocksdb::DestroyDB(db_path, options);
 #if RGPOT_ROCKSDB_UNIQUE_PTR_OPEN
     std::unique_ptr<rocksdb::DB> db;
@@ -79,7 +88,8 @@ TEST_CASE("Potential caching with rgpot", "[Potential]") {
   }
 
   SECTION("Managed DB Life-cycle (Path String)") {
-    std::string db_path = "/tmp/rgpot_test_rocksdb_managed";
+    rgpot::tests::TestTempDir dir("rgpot-test-rocksdb-managed");
+    std::string db_path = (dir.path() / "cache-db").string();
     // Ensure clean state
     rocksdb::Options opts;
     rocksdb::DestroyDB(db_path, opts);
@@ -106,7 +116,8 @@ TEST_CASE("Potential caching with rgpot", "[Potential]") {
   }
 
   SECTION("Persistence (Close and Reopen)") {
-    std::string db_path = "/tmp/rgpot_test_rocksdb_persist";
+    rgpot::tests::TestTempDir dir("rgpot-test-rocksdb-persist");
+    std::string db_path = (dir.path() / "cache-db").string();
     rocksdb::Options opts;
     rocksdb::DestroyDB(db_path, opts);
 
@@ -171,7 +182,8 @@ TEST_CASE("Cache keys separate parameter sets", "[Potential][cache]") {
 
   REQUIRE(potWide->paramsKey() != potNarrow->paramsKey());
 
-  std::string db_path = "/tmp/rgpot_test_rocksdb_params";
+  rgpot::tests::TestTempDir dir("rgpot-test-rocksdb-params");
+  std::string db_path = (dir.path() / "cache-db").string();
   rocksdb::Options opts;
   rocksdb::DestroyDB(db_path, opts);
   auto pcache = rgpot::cache::PotentialCache(db_path);
@@ -191,6 +203,60 @@ TEST_CASE("Cache keys separate parameter sets", "[Potential][cache]") {
   auto [eNarrow2, fNarrow2, vNarrow2] = (*potNarrow)(positions, types, box);
   REQUIRE(eWide2 == eWide);
   REQUIRE(eNarrow2 == eNarrow);
+}
+
+TEST_CASE("Cache test temp helper creates distinct directories",
+          "[Potential][cache][tempdir]") {
+  const rgpot::tests::TestTempDir first("rgpot-cache-unique");
+  const rgpot::tests::TestTempDir second("rgpot-cache-unique");
+  REQUIRE(first.path() != second.path());
+}
+
+TEST_CASE("Cache keys separate Muller-Brown parameter sets",
+          "[Potential][cache][muller]") {
+  rgpot::types::AtomMatrix positions(1, 3);
+  positions(0, 0) = 0.2;
+  positions(0, 1) = 0.3;
+  positions(0, 2) = 0.0;
+  std::vector<int> types{1};
+  std::array<std::array<double, 3>, 3> box{};
+
+  auto published = std::make_shared<rgpot::MullerBrownPot>();
+  rgpot::MullerBrownConfig scaled;
+  for (double &value : scaled.amplitude)
+    value *= 2.0;
+  auto other = std::make_shared<rgpot::MullerBrownPot>(scaled);
+  REQUIRE(published->paramsKey() != 0);
+  REQUIRE(published->paramsKey() != other->paramsKey());
+
+  auto [barePublished, barePublishedForce, barePublishedVariance] =
+      (*published)(positions, types, box);
+  auto [bareOther, bareOtherForce, bareOtherVariance] =
+      (*other)(positions, types, box);
+  REQUIRE(bareOther != barePublished);
+
+  rgpot::tests::TestTempDir dir("rgpot-test-rocksdb-muller");
+  const std::string db_path = (dir.path() / "cache-db").string();
+  rocksdb::Options opts;
+  rocksdb::DestroyDB(db_path, opts);
+  auto pcache = rgpot::cache::PotentialCache(db_path);
+  published->setCache(&pcache);
+  other->setCache(&pcache);
+
+  auto [cachedPublished, cachedPublishedForce, cachedPublishedVariance] =
+      (*published)(positions, types, box);
+  auto [cachedOther, cachedOtherForce, cachedOtherVariance] =
+      (*other)(positions, types, box);
+  REQUIRE(cachedPublished == barePublished);
+  REQUIRE(cachedOther == bareOther);
+  REQUIRE(cachedPublished != cachedOther);
+
+  auto [againPublished, againPublishedForce, againPublishedVariance] =
+      (*published)(positions, types, box);
+  auto [againOther, againOtherForce, againOtherVariance] =
+      (*other)(positions, types, box);
+  REQUIRE(againPublished == barePublished);
+  REQUIRE(againOther == bareOther);
 }
 
 namespace {
@@ -238,6 +304,115 @@ void checkResultMetadata(const rgpot::ForceInput &in,
   }
 }
 } // namespace
+
+namespace {
+class FingerprintedPotential : public rgpot::Potential<FingerprintedPotential> {
+public:
+  FingerprintedPotential(rgpot::PotType type, uint64_t fingerprint, double energy)
+      : Potential(type), fingerprint_(fingerprint), energy_(energy) {}
+
+  uint64_t paramsKey() const noexcept override { return fingerprint_; }
+
+  void forceImpl(const rgpot::ForceInput &, rgpot::ForceOut *out) const override {
+    out->energy = energy_;
+  }
+
+private:
+  uint64_t fingerprint_;
+  double energy_;
+};
+} // namespace
+
+TEST_CASE("Persistent cache keys distinguish ordered potential identities across callers",
+          "[Potential][cache][identity]") {
+  using rgpot::PotType;
+  FingerprintedPotential a(PotType::CuH2, static_cast<uint64_t>(PotType::LJ), 1.25);
+  FingerprintedPotential b(PotType::LJ, static_cast<uint64_t>(PotType::CuH2), 2.5);
+  FingerprintedPotential c(PotType::LJ, UINT64_C(0x1234567800000001), 3.75);
+  rgpot::types::AtomMatrix positions(1, 3);
+  positions(0, 0) = 0.125;
+  positions(0, 1) = 0.25;
+  positions(0, 2) = 0.5;
+  const std::vector<int> species{1};
+  const std::array<std::array<double, 3>, 3> box{{{6, 0, 0}, {0, 7, 0}, {0, 0, 8}}};
+  const auto path = resultCachePath();
+  {
+    rgpot::cache::PotentialCache cold(path);
+    rgpot::ForceInput input{1, positions.data(), species.data(), box.front().data()};
+    double forces[3] = {};
+    rgpot::ForceOut output{};
+    output.F = forces;
+    for (auto *pot : {&a, &b, &c}) {
+      pot->setCache(&cold);
+      pot->forceBatch({1, &input, &output});
+      pot->setCache(nullptr);
+    }
+    REQUIRE(cold.counts().computed == 3);
+    REQUIRE(cold.counts().served == 0);
+  }
+  {
+    rgpot::cache::PotentialCache warm(path);
+    using Case = std::pair<FingerprintedPotential *, double>;
+    for (const auto &[pot, energy] : {Case{&c, 3.75}, Case{&b, 2.5}, Case{&a, 1.25}}) {
+      pot->setCache(&warm);
+      const auto answer = (*pot)(positions, species, box);
+      REQUIRE(std::get<0>(answer) == energy);
+      pot->setCache(nullptr);
+    }
+    REQUIRE(warm.counts().computed == 0);
+    REQUIRE(warm.counts().served == 3);
+  }
+  REQUIRE(rocksdb::DestroyDB(path, rocksdb::Options()).ok());
+}
+
+static_assert(std::is_same_v<decltype(rgpot::cache::KeyHash::hash), uint64_t>,
+              "cache keys are 64 bits wide on every platform");
+
+TEST_CASE("Stored cache keys are a version byte and a little-endian 64-bit hash",
+          "[Potential][cache][key]") {
+  using rgpot::PotType;
+  FingerprintedPotential pot(PotType::LJ, UINT64_C(0x0123456789abcdef), 1.5);
+  rgpot::types::AtomMatrix positions(1, 3);
+  positions(0, 0) = 0.125;
+  positions(0, 1) = 0.25;
+  positions(0, 2) = 0.5;
+  const std::vector<int> species{1};
+  const std::array<std::array<double, 3>, 3> box{{{6, 0, 0}, {0, 7, 0}, {0, 0, 8}}};
+  const auto path = resultCachePath();
+  {
+    rgpot::cache::PotentialCache cache(path);
+    pot.setCache(&cache);
+    (void)pot(positions, species, box);
+    pot.setCache(nullptr);
+  }
+  const rgpot::ForceInput input{1, positions.data(), species.data(),
+                                box.front().data()};
+  const uint64_t hash =
+      rgpot::cache::result_key(input, PotType::LJ, pot.paramsKey()).hash;
+
+  rocksdb::DB *raw = nullptr;
+  REQUIRE(rocksdb::DB::OpenForReadOnly(rocksdb::Options(), path, &raw).ok());
+  std::unique_ptr<rocksdb::DB> db(raw);
+  std::unique_ptr<rocksdb::Iterator> entries(
+      db->NewIterator(rocksdb::ReadOptions()));
+  size_t count = 0;
+  for (entries->SeekToFirst(); entries->Valid(); entries->Next()) {
+    ++count;
+    const std::string key = entries->key().ToString();
+    REQUIRE(key.size() == 1 + sizeof(uint64_t));
+    REQUIRE(static_cast<unsigned char>(key[0]) == 2);
+    uint64_t stored = 0;
+    for (size_t i = 0; i < sizeof(uint64_t); ++i) {
+      stored |= static_cast<uint64_t>(static_cast<unsigned char>(key[1 + i]))
+                << (8 * i);
+    }
+    REQUIRE(stored == hash);
+  }
+  REQUIRE(count == 1);
+  entries.reset();
+  db.reset();
+  REQUIRE(rocksdb::DestroyDB(path, rocksdb::Options()).ok());
+}
 
 TEST_CASE("Cached force batches retain result metadata through misses and hits",
           "[Potential][cache][stress]") {
@@ -452,4 +627,78 @@ TEST_CASE("Cache counters split computed from served evaluations",
     pot.setCache(nullptr);
   }
   REQUIRE(rocksdb::DestroyDB(path, rocksdb::Options()).ok());
+}
+
+namespace {
+template <typename Pot> void checkCachedNullBox(Pot &pot) {
+  const double pos[] = {
+      0.00000000, 0.00000000,  0.11779000,  // O
+      0.00000000, 0.75545000,  -0.47116000, // H
+      0.00000000, -0.75545000, -0.47116000  // H
+  };
+  const int z[] = {8, 1, 1};
+  const double zero_box[9] = {};
+  const double cell[9] = {8.0, 0.0, 0.0, 0.0, 8.0, 0.0, 0.0, 0.0, 8.0};
+
+  auto eval = [&](const double *box) {
+    std::array<double, 9> f{};
+    const rgpot::ForceInput in{3, pos, z, box};
+    rgpot::ForceOut out{};
+    out.F = f.data();
+    pot.forceBatch(rgpot::ForceBatch{.nSystems = 1, .in = &in, .out = &out});
+    return std::make_tuple(out.energy, f, out.has_stress != 0);
+  };
+
+  const auto uncached = eval(nullptr);
+  REQUIRE_FALSE(std::get<2>(uncached));
+
+  const std::string path = resultCachePath();
+  {
+    rgpot::cache::PotentialCache cache(path);
+    pot.setCache(&cache);
+
+    const auto cold = eval(nullptr);
+    REQUIRE(cache.counts().computed == 1);
+    REQUIRE(cache.counts().served == 0);
+    REQUIRE(std::get<0>(cold) == std::get<0>(uncached));
+    REQUIRE(std::get<1>(cold) == std::get<1>(uncached));
+    REQUIRE_FALSE(std::get<2>(cold));
+
+    const auto warm = eval(nullptr);
+    REQUIRE(cache.counts().computed == 1);
+    REQUIRE(cache.counts().served == 1);
+    REQUIRE(std::get<0>(warm) == std::get<0>(uncached));
+    REQUIRE(std::get<1>(warm) == std::get<1>(uncached));
+    REQUIRE_FALSE(std::get<2>(warm));
+
+    // A null box is distinct in the key from any real 9-double box,
+    // including an all-zero box and a periodic cell.
+    const auto with_zero = eval(zero_box);
+    REQUIRE(cache.counts().computed == 2);
+    REQUIRE(cache.counts().served == 1);
+    REQUIRE(std::get<0>(with_zero) == std::get<0>(uncached));
+    REQUIRE(std::get<1>(with_zero) == std::get<1>(uncached));
+
+    (void)eval(cell);
+    REQUIRE(cache.counts().computed == 3);
+    REQUIRE(cache.counts().served == 1);
+
+    pot.setCache(nullptr);
+  }
+  REQUIRE(rocksdb::DestroyDB(path, rocksdb::Options()).ok());
+}
+} // namespace
+
+TEST_CASE("Molecular dispersion forceBatch caches a null box without colliding with a real box",
+          "[Potential][cache][d2][d2cpmd][d4]") {
+  rgpot::D2Pot d2;
+  checkCachedNullBox(d2);
+
+  rgpot::D2CpmdPot d2_cpmd;
+  checkCachedNullBox(d2_cpmd);
+
+#ifdef RGPOT_HAS_DFTD4
+  rgpot::D4Pot d4;
+  checkCachedNullBox(d4);
+#endif
 }

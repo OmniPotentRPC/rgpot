@@ -70,6 +70,8 @@ A non-empty path is a library that exports =rgpot_engine_create=,
 =rgpot_engine_destroy= and =rgpot_md_native_force= in nanometres and
 kJ/mol. The constructor dlopens it and passes it the stored values. Every call converts the geometry to nm and the energy and forces back to eV and eV/Angstrom.
 The in-tree =libnative_lj_engine.so= is such a library.
+On Windows the DLL must export
+=rgpot_md_native_force=, for instance with =RGPOT_ENGINE_API= from =rgpot/engine_c_abi.h=.
 
 A =u0=, =cutoff= or =psi= that is not positive and finite (NaN included) makes
 the C++ constructor throw =std::invalid_argument=.
@@ -89,8 +91,15 @@ process.
 It needs no GROMACS installation.
 The meson test =gromacs_unit_reference= compares the stored factors with
 =gromacs/math/units.h=.
-It is defined only when that header is found under the Python prefix, and meson
-prints nothing when it is not.
+It is defined when that header is found under the Python prefix and the include
+directory exists.
+When the Python-prefix header was not found, =engines/meson.build= probes
+=dependency('gromacs', required: false)=, not only when the prefix directory is
+missing.
+A missing directory does not fail configure.
+When GROMACS is absent, Meson logs =Run-time dependency gromacs found: NO=.
+=-Dwith_gromacs=enabled= is unchanged: a missing =gmx= or PLUMED module is still
+a configure error.
 
 #+attr_rgpot: run
 #+begin_src python

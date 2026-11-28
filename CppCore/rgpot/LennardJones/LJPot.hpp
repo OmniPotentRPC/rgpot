@@ -73,11 +73,21 @@ public:
     m_paramsKey = fp.h;
   }
 
+  ~LJPot() override;
+  LJPot(const LJPot &) = default;
+  LJPot &operator=(const LJPot &) = default;
+  LJPot(LJPot &&) noexcept = default;
+  LJPot &operator=(LJPot &&) noexcept = default;
+
   [[nodiscard]] const LJConfig &config() const noexcept { return m_config; }
 
   [[nodiscard]] PotCaps caps() const noexcept override {
-    // neighbours_ is scratch rewritten by every force call.
-    return {.reentrancy = Reentrancy::PerInstance, .stress = true};
+    return {.reentrancy = Reentrancy::SharedInstance,
+            .stress = true,
+            .analyticHvp = true,
+            .analyticHessian = true,
+            .adHessian = true,
+            .adHvp = true};
   }
 
   [[nodiscard]] uint64_t paramsKey() const noexcept override {
@@ -97,6 +107,45 @@ public:
    */
   void forceImpl(const ForceInput &in, ForceOut *out) const override;
 
+  /**
+   * @brief Analytic Hessian-vector product @f$H v@f$.
+   *
+   * The pairs, minimum image, shift or switch of @c forceImpl, each pair
+   * adding @f$K (v_i - v_j)@f$ to atom @c i and its negative to @c j, with
+   * @f$K = \phi'' \hat d \hat d^T + (\phi' / r)(I - \hat d \hat d^T)@f$.
+   * Two atoms on one point throw @c std::domain_error, as the energy does.
+   * @a v and @a hv hold @c 3*in.nAtoms doubles. The pairs come from the
+   * calling thread's kept neighbour list, as in @c forceImpl, so one
+   * instance may serve any number of threads.
+   */
+  void hessianVectorImpl(const ForceInput &in, const double *v,
+                         double *hv) const override;
+
+  /**
+   * @brief Dense analytic Hessian.
+   *
+   * The pairs and pair derivatives of @c hessianVectorImpl, each pair
+   * adding its block @f$K@f$ (PairHessian.hpp) to the diagonal blocks of
+   * its atoms and @f$-K@f$ to the two off-diagonal ones. @a h holds
+   * @f$(3N)^2@f$ doubles, row-major, and is written symmetric to the last
+   * bit. Coincident atoms throw @c std::domain_error.
+   */
+  void hessianImpl(const ForceInput &in, double *h) const override;
+
+  /**
+   * @brief Dense Hessian from dual numbers.
+   *
+   * The pairs of @c hessianImpl, with each block built from @f$g_s@f$ and
+   * @f$g_{ss}@f$ of @c lj::pairEnergy evaluated on @c ad::Dual2 at
+   * @f$s = r^2@f$, so the energy kernel is differentiated instead of its
+   * hand-written derivatives.
+   */
+  void hessianAdImpl(const ForceInput &in, double *h) const override;
+
+  /// @f$H v@f$ from the dual-number blocks of @c hessianAdImpl.
+  void hessianVectorAdImpl(const ForceInput &in, const double *v,
+                           double *hv) const override;
+
   /// forceImpl plus each pair energy and virial split half to each atom.
   void forcePerAtom(const ForceInput &in, ForceOut *out, const PerAtomOut &atoms) const;
 
@@ -109,15 +158,23 @@ public:
 
   void setNeighbourMode(nlist::Mode mode) noexcept { mode_ = mode; }
 
-  /// True when the last force call kept the Verlet list. The test is
-  /// half the skin, the same predicate as `nlist::Builder::update`.
-  [[nodiscard]] bool listReused() const noexcept { return neighbours_.reused(); }
+  /// Atoms from which a call adds its terms atom by atom in index order,
+  /// on any thread count: the least in kTeamFrom.
+  static constexpr std::size_t kTeamMinAtoms = 40;
+  /// Atoms from which a team of two threads opens, of three, and of four
+  /// or more: the smallest clusters from which each took at most nine
+  /// tenths of the one-thread time in thread_count_bench. A team evaluates
+  /// each pair twice, and no team of two did.
+  static constexpr TeamFrom kTeamFrom{kNoTeam, 768, kTeamMinAtoms};
 
-  /// Pair indices this potential kept. Zero in a streaming call: the
-  /// pair term runs inside the cell walk and no half-list is copied out.
-  [[nodiscard]] std::size_t retainedPairs() const noexcept {
-    return neighbours_.streaming() ? 0 : neighbours_.slots();
-  }
+  /// True when the last force call on this thread kept the Verlet list.
+  /// The test is half the skin, the same predicate as `nlist::Builder::update`.
+  [[nodiscard]] bool listReused() const noexcept;
+
+  /// Pair indices this potential kept on this thread. Zero in a streaming
+  /// call: the pair term runs inside the cell walk and no half-list is
+  /// copied out.
+  [[nodiscard]] std::size_t retainedPairs() const noexcept;
 
 private:
   /// Bump when the kernel numerics change, so stale cache entries die.
@@ -133,6 +190,8 @@ private:
   QuinticSwitch m_switch{}; //!< In use when m_config.switch_width != 0.
   uint64_t m_paramsKey{0};
   nlist::Mode mode_ = nlist::Mode::Auto;
+  /// Never updated. Its generation() names this object in the per-thread
+  /// lists the force calls keep, and is new on every copy and move.
   mutable nlist::Neighbours neighbours_;
 };
 
