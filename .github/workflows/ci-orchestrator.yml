@@ -106,6 +106,9 @@ jobs:
           cache: true
           cache-write: ${{ github.event_name == 'push' && github.ref_name == 'main' }}
           pixi-version: v0.70.2
+      - name: Check rgpot-core CppCore vendor sync
+        shell: pixi run bash -e {0}
+        run: scripts/check_rgpot_core_cppcore_sync.sh
       - name: Install prek
         run: |
           if ! command -v prek >/dev/null 2>&1; then

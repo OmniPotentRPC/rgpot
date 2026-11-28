@@ -1380,13 +1380,25 @@ if get_option('with_rust_core')
                 dl_dep,
                 meson.get_compiler('c').find_library('m', required: false),
             ],
-            link_language: 'c',
+            # rgpot-core's archive contains the packaged C++ EAM bridge.
+            link_language: 'cpp',
             build_by_default: true,
         )
         test(
             'EAMTableCAbiTest',
             _eam_table_capi,
             args: [meson.current_source_dir() / 'CppCore/tests/data/eam_table'],
+            depends: rgpot_rust_target,
+            timeout: 30,
+        )
+        test(
+            'EAMTableBridgeOomTest',
+            executable(
+                'eam_table_bridge_oom_test',
+                'rgpot-core/tests/c/eam_table_bridge_oom.cpp',
+                dependencies: [rgpot_rust_lib, fastnlist_dep, thread_dep, dl_dep],
+                build_by_default: true,
+            ),
             depends: rgpot_rust_target,
             timeout: 30,
         )

@@ -51,6 +51,10 @@ use std::path::Path;
 use crate::potential::PotentialImpl;
 use crate::status::rgpot_status_t;
 use crate::tensor::create_owned_f64_tensor;
+#[cfg(test)]
+use std::collections::HashMap;
+#[cfg(test)]
+use std::sync::{Mutex, OnceLock};
 
 /// Format code of the C ABI: choose from the suffix of the file name.
 /// `.eam.alloy` and `.setfl` are setfl, `.eam.fs` is Finnis-Sinclair and
@@ -236,6 +240,25 @@ impl EamTable {
         &self.z
     }
 
+    /// The grid and the arrays laid end to end, in the order of the C++
+    /// `EAMTable`. A funcfl table keeps its `rhomax`, which sits one
+    /// spacing past its last point and so has no place in a setfl or
+    /// Finnis-Sinclair file.
+    pub(crate) fn flat(&self) -> FlatEamTable {
+        FlatEamTable {
+            nrho: self.nrho,
+            drho: self.drho,
+            nr: self.nr,
+            dr: self.dr,
+            cutoff: self.cutoff,
+            rhomax: self.rhomax,
+            z: self.z.clone(),
+            frho: self.frho.concat(),
+            rhor: self.rhor.concat(),
+            z2r: self.z2r.concat(),
+        }
+    }
+
     fn parse(text: &str, layout: Layout) -> Result<Self, EamTableError> {
         let mut input = Scanner::new(text);
         if layout == Layout::Funcfl {
@@ -316,6 +339,20 @@ impl EamTable {
             z2r,
         })
     }
+}
+
+/// [`EamTable::flat`].
+pub(crate) struct FlatEamTable {
+    pub(crate) nrho: usize,
+    pub(crate) drho: f64,
+    pub(crate) nr: usize,
+    pub(crate) dr: f64,
+    pub(crate) cutoff: f64,
+    pub(crate) rhomax: f64,
+    pub(crate) z: Vec<i32>,
+    pub(crate) frho: Vec<f64>,
+    pub(crate) rhor: Vec<f64>,
+    pub(crate) z2r: Vec<f64>,
 }
 
 struct Grid {
@@ -817,6 +854,13 @@ unsafe fn drop_boxed<T>(user_data: *mut c_void) {
 /// Frees the potential of [`EamTablePotential::into_potential`] and of
 /// `rgpot_potential_new_eam_table`.
 pub(crate) unsafe extern "C" fn drop_eam_table(user_data: *mut c_void) {
+    #[cfg(test)]
+    if !user_data.is_null() {
+        let seen = DROP_SEEN.get_or_init(|| Mutex::new(HashMap::new()));
+        let key = user_data as usize;
+        let mut map = seen.lock().expect("drop map lock");
+        *map.entry(key).or_insert(0) += 1;
+    }
     unsafe { drop_boxed::<EamTablePotential>(user_data) };
 }
 
@@ -875,8 +919,14 @@ pub(crate) unsafe extern "C" fn eam_table_callback(
 }
 
 #[cfg(test)]
+static DROP_SEEN: OnceLock<Mutex<HashMap<usize, usize>>> = OnceLock::new();
+
+#[cfg(test)]
 mod tests {
     use super::*;
+    use crate::c_api::potential::rgpot_potential_calculate;
+    use crate::c_api::types::{rgpot_force_input_create, rgpot_force_input_free};
+    use crate::types::{rgpot_force_input_t, rgpot_force_out_t};
 
     /// Two-element eam/fs table of constants: F_A = -rho, F_B = -2 rho, no
     /// pair term, rho_AA = 1, rho_BA = 3, rho_AB = 5, rho_BB = 7, with
@@ -1032,5 +1082,71 @@ mod tests {
         let pairs = pot.pairs(&across, &cell).unwrap();
         assert_eq!(pairs.len(), 1);
         assert!((pairs[0].r - 1.0).abs() < f64::EPSILON * 16.0);
+    }
+
+    #[test]
+    fn minimal_funcfl_drops_the_last_point_and_keeps_rhomax() {
+        let text = concat!(
+            "minimal funcfl\n",
+            "29 63.546 3.615 fcc\n",
+            "5 0.5 5 0.25 1.0\n",
+            "0.0 1.0 2.0 3.0 4.0\n",
+            "1.0 1.0 1.0 1.0 1.0\n",
+            "0.0 0.0 0.0 0.0 0.0\n",
+        );
+        let table = EamTable::from_text(text, EamTableFormat::Funcfl).unwrap();
+        assert_eq!(table.nrho, 4);
+        assert_eq!(table.nr, 4);
+        assert_eq!(table.rhomax, 2.0);
+        assert_eq!(table.frho[0], [0.0, 1.0, 2.0, 3.0]);
+        assert_eq!(table.rhor[0].len(), 4);
+        assert_eq!(table.z2r[0].len(), 4);
+
+        let flat = table.flat();
+        assert_eq!((flat.nrho, flat.nr), (4, 4));
+        assert_eq!(flat.rhomax, 2.0);
+        assert_eq!(flat.frho, table.frho[0]);
+        assert_eq!(flat.rhor, table.rhor[0]);
+        assert_eq!(flat.z2r, table.z2r[0]);
+    }
+
+    fn handle_drop_count(ptr: *mut c_void) -> usize {
+        let seen = DROP_SEEN.get_or_init(|| Mutex::new(HashMap::new()));
+        seen.lock()
+            .expect("drop map lock")
+            .get(&(ptr as usize))
+            .copied()
+            .unwrap_or(0)
+    }
+
+    #[test]
+    fn into_potential_frees_user_data_once() {
+        let table = EamTable::from_text(&two_element_fs(), EamTableFormat::FinnisSinclair).unwrap();
+        let potential = EamTablePotential::new(table, false)
+            .unwrap()
+            .into_potential();
+        let user_data = potential.as_handle().pot_user_data;
+        let drops_before = handle_drop_count(user_data);
+
+        let mut pos = [0.0, 0.0, 0.0, 2.0, 0.0, 0.0];
+        let mut z = [13_i32, 28_i32];
+        let mut cell = [0.0_f64; 9];
+        let mut input: rgpot_force_input_t = unsafe {
+            rgpot_force_input_create(2, pos.as_mut_ptr(), z.as_mut_ptr(), cell.as_mut_ptr())
+        };
+        let mut output = rgpot_force_out_t {
+            forces: std::ptr::null_mut(),
+            energy: 0.0,
+            variance: 0.0,
+        };
+        let status =
+            unsafe { rgpot_potential_calculate(potential.as_handle(), &input, &mut output) };
+        assert_eq!(status, rgpot_status_t::RGPOT_SUCCESS);
+        unsafe {
+            crate::tensor::rgpot_tensor_free(output.forces);
+            rgpot_force_input_free(&mut input);
+        }
+        drop(potential);
+        assert_eq!(handle_drop_count(user_data), drops_before + 1);
     }
 }

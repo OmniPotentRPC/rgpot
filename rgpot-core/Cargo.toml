@@ -10,7 +10,19 @@ documentation = "https://rgpot.rgoswami.me"
 readme = "README.md"
 keywords = ["potential-energy", "rpc", "molecular-dynamics", "dlpack", "ffi"]
 categories = ["science", "api-bindings"]
-exclude = ["Cargo.lock"]
+include = [
+  "Cargo.toml",
+  "README.md",
+  "build.rs",
+  "cbindgen.toml",
+  "cpp/**/*",
+  "cppcore-staging/**/*",
+  "include/**/*",
+  "schema/**/*",
+  "src/**/*",
+  "tests/**/*",
+  "version_macros.rs",
+]
 
 [lib]
 name = "rgpot_core"
@@ -73,6 +85,7 @@ required-features = ["schema"]
 [build-dependencies]
 cbindgen = { version = "0.27", optional = true }
 capnpc = { version = "0.20", optional = true }
+cc = "1.2"
 
 [package.metadata.docs.rs]
 rustdoc-args = ["--cfg", "docsrs"]

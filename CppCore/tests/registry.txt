@@ -419,6 +419,7 @@ PotentialHessianTest | tests core rust_core | unit potential_hessian_test Potent
 abi_core_symbols | rust_core linux | custom | @rust_core
 rgpot_so_exports | so_exports | custom | @rust_core
 EAMTableCAbiTest | tests rust_core | custom | @rust_core
+EAMTableBridgeOomTest | tests rust_core | custom | @rust_core
 EAMTableHandleTest | tests core rust_core | unit eam_table_handle_test EAMTableHandleTest.cc | @rust_core
 EngineTableTest | tests core rpc posix | custom workdir=. | @engine_plugins
 PotentialFactoryTest | tests core rpc posix | custom suite=factory workdir=. | @engine_plugins

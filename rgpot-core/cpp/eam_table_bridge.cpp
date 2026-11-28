@@ -1,0 +1,188 @@
+// MIT License
+// Copyright 2023--present rgpot developers
+
+#include "rgpot/EAMTable/EAMTablePot.hpp"
+
+#include <atomic>
+#include <cmath>
+#include <cstddef>
+#include <cstdint>
+#include <fstream>
+#include <stdexcept>
+#include <string>
+
+namespace {
+
+enum : int32_t { kSuccess = 0, kInvalidParameter = 1, kInternalError = 2 };
+enum : int32_t { kAuto = 0, kFuncfl = 1, kSetfl = 2, kFinnisSinclair = 3 };
+
+constexpr const char *kErrorLost =
+    "EAM table: out of memory while recording the error";
+
+// Error paths run inside catch handlers of extern "C" functions, so they
+// must not throw: a failed copy leaves the static message instead.
+thread_local std::string g_last_error;
+thread_local const char *g_last_error_static = nullptr;
+std::atomic<std::int64_t> g_drop_count{0};
+
+void set_error(const char *text) noexcept {
+  try {
+    g_last_error.assign(text);
+    g_last_error_static = nullptr;
+  } catch (...) {
+    g_last_error_static = kErrorLost;
+  }
+}
+
+rgpot::EAMTableFormat parse_format(int32_t format, const std::string &path) {
+  if (format == kFuncfl) {
+    return rgpot::EAMTableFormat::Funcfl;
+  }
+  if (format == kSetfl) {
+    return rgpot::EAMTableFormat::Setfl;
+  }
+  if (format == kFinnisSinclair) {
+    return rgpot::EAMTableFormat::FinnisSinclair;
+  }
+  if (format != kAuto) {
+    throw std::invalid_argument("EAM table: unknown format code");
+  }
+  if (path.ends_with(".eam")) {
+    return rgpot::EAMTableFormat::Funcfl;
+  }
+  if (path.ends_with(".eam.alloy") || path.ends_with(".setfl")) {
+    return rgpot::EAMTableFormat::Setfl;
+  }
+  if (path.ends_with(".eam.fs")) {
+    return rgpot::EAMTableFormat::FinnisSinclair;
+  }
+  throw std::invalid_argument(
+      "EAM table: cannot tell table format from file suffix");
+}
+
+std::vector<std::vector<double>> rows(const double *data, std::size_t count,
+                                      std::size_t len) {
+  std::vector<std::vector<double>> out;
+  out.reserve(count);
+  for (std::size_t k = 0; k < count; ++k) {
+    out.emplace_back(data + k * len, data + (k + 1) * len);
+  }
+  return out;
+}
+
+} // namespace
+
+extern "C" {
+
+const char *eam_bridge_cpp_last_error() noexcept {
+  return g_last_error_static != nullptr ? g_last_error_static
+                                        : g_last_error.c_str();
+}
+
+void *eam_bridge_cpp_new_from_file(const char *path, int32_t format,
+                                   bool periodic, double skin) noexcept {
+  try {
+    if (path == nullptr) {
+      throw std::invalid_argument("EAM table: path is NULL");
+    }
+    std::ifstream in(path);
+    if (!in) {
+      throw std::invalid_argument(std::string("EAM table: cannot open ") +
+                                  path);
+    }
+    const auto parsed = parse_format(format, path);
+    const auto table = rgpot::read_eam_table(in, parsed);
+    return new rgpot::EAMTablePot(table, periodic, false, skin);
+  } catch (const std::exception &e) {
+    set_error(e.what());
+    return nullptr;
+  } catch (...) {
+    set_error("EAM table: unknown exception while constructing EAMTablePot");
+    return nullptr;
+  }
+}
+
+void *eam_bridge_cpp_new_from_table(std::size_t n_elements, const int32_t *z,
+                                    int32_t nrho, double drho, int32_t nr,
+                                    double dr, double cutoff, double rhomax,
+                                    const double *frho, const double *rhor,
+                                    const double *z2r, bool periodic,
+                                    double skin) noexcept {
+  try {
+    if (z == nullptr || frho == nullptr || rhor == nullptr || z2r == nullptr) {
+      throw std::invalid_argument("EAM table: null table array");
+    }
+    if (n_elements == 0 || nrho < 1 || nr < 1) {
+      throw std::invalid_argument("EAM table: empty table");
+    }
+    if (!(rhomax > 0.0) || !std::isfinite(rhomax)) {
+      throw std::invalid_argument(
+          "EAM table: rhomax must be finite and positive");
+    }
+    const auto lrho = static_cast<std::size_t>(nrho);
+    const auto lr = static_cast<std::size_t>(nr);
+    rgpot::EAMTable table;
+    table.nrho = nrho;
+    table.drho = drho;
+    table.nr = nr;
+    table.dr = dr;
+    table.cutoff = cutoff;
+    table.rhomax = rhomax;
+    table.z.assign(z, z + n_elements);
+    table.frho = rows(frho, n_elements, lrho);
+    table.rhor = rows(rhor, n_elements * n_elements, lr);
+    table.z2r = rows(z2r, n_elements * (n_elements + 1) / 2, lr);
+    return new rgpot::EAMTablePot(table, periodic, false, skin);
+  } catch (const std::exception &e) {
+    set_error(e.what());
+    return nullptr;
+  } catch (...) {
+    set_error("EAM table: unknown exception while constructing EAMTablePot");
+    return nullptr;
+  }
+}
+
+void eam_bridge_cpp_free(void *handle) noexcept {
+  if (handle != nullptr) {
+    delete static_cast<rgpot::EAMTablePot *>(handle);
+    g_drop_count.fetch_add(1, std::memory_order_relaxed);
+  }
+}
+
+int32_t eam_bridge_cpp_force(void *handle, std::size_t n_atoms,
+                             const double *positions,
+                             const int32_t *atomic_numbers, const double *cell,
+                             double *forces, double *energy) noexcept {
+  try {
+    if (handle == nullptr) {
+      throw std::invalid_argument("EAM table: null potential handle");
+    }
+    if (positions == nullptr || atomic_numbers == nullptr || cell == nullptr ||
+        forces == nullptr || energy == nullptr) {
+      throw std::invalid_argument("EAM table: null force argument");
+    }
+    rgpot::ForceInput in{n_atoms, positions,
+                         reinterpret_cast<const int *>(atomic_numbers), cell};
+    rgpot::ForceOut out{
+        forces, 0.0, 0.0, {0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0}, 0};
+    static_cast<rgpot::EAMTablePot *>(handle)->forceImpl(in, &out);
+    *energy = out.energy;
+    return kSuccess;
+  } catch (const std::exception &e) {
+    set_error(e.what());
+    return kInvalidParameter;
+  } catch (...) {
+    set_error("EAM table: unknown exception while evaluating EAMTablePot");
+    return kInternalError;
+  }
+}
+
+int64_t eam_bridge_cpp_drop_count() noexcept {
+  return g_drop_count.load(std::memory_order_relaxed);
+}
+
+void eam_bridge_cpp_reset_drop_count() noexcept {
+  g_drop_count.store(0, std::memory_order_relaxed);
+}
+
+} // extern "C"

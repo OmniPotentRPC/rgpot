@@ -754,12 +754,16 @@ if(RGPOT_WITH_MDI)
     COMMENT "Building rgpot-core with cargo (features: ${_rgpot_cargo_feature_list})"
     USES_TERMINAL)
   add_library(rgpot_rust_core STATIC IMPORTED GLOBAL)
+  set(_rgpot_rust_core_link_libs "Threads::Threads;${CMAKE_DL_LIBS}")
+  if(UNIX AND NOT APPLE)
+    list(APPEND _rgpot_rust_core_link_libs stdc++)
+  endif()
   set_target_properties(
     rgpot_rust_core
     PROPERTIES IMPORTED_LOCATION "${_rgpot_rust_built}"
                INTERFACE_INCLUDE_DIRECTORIES
                "${CMAKE_CURRENT_SOURCE_DIR}/rgpot-core/include"
-               INTERFACE_LINK_LIBRARIES "Threads::Threads;${CMAKE_DL_LIBS}")
+               INTERFACE_LINK_LIBRARIES "${_rgpot_rust_core_link_libs}")
   add_dependencies(rgpot_rust_core rgpot_rust_core_build)
 
   if(RGPOT_RPC_CLIENT_ONLY OR WIN32)

@@ -1,6 +1,4 @@
 use std::env;
-
-#[cfg(any(feature = "gen-header", feature = "schema"))]
 use std::path::PathBuf;
 
 #[cfg(feature = "gen-header")]
@@ -127,6 +125,17 @@ fn source_revision(crate_dir: &str) -> String {
         .unwrap_or_default()
 }
 
+fn cppcore_root(crate_dir: &str) -> PathBuf {
+    if let Ok(path) = env::var("RGPOT_CPPCORE_ROOT") {
+        return PathBuf::from(path);
+    }
+    let monorepo = PathBuf::from(crate_dir).join("../CppCore");
+    if monorepo.join("rgpot").is_dir() {
+        return monorepo;
+    }
+    PathBuf::from(crate_dir).join("cppcore-staging")
+}
+
 fn main() {
     #[allow(unused_variables)]
     let crate_dir = env::var("CARGO_MANIFEST_DIR").unwrap();
@@ -136,6 +145,8 @@ fn main() {
     println!("cargo::rerun-if-changed=src/engine.rs");
     println!("cargo::rerun-if-changed=cbindgen.toml");
     println!("cargo::rerun-if-changed=../CppCore/rgpot/engine_c_abi.h");
+    println!("cargo::rerun-if-changed=cpp/eam_table_bridge.cpp");
+    println!("cargo::rerun-if-env-changed=RGPOT_CPPCORE_ROOT");
     println!(
         "cargo::rustc-env=RGPOT_SOURCE_REVISION={}",
         source_revision(&crate_dir)
@@ -143,6 +154,76 @@ fn main() {
     if let Ok(target) = env::var("TARGET") {
         println!("cargo::rustc-env=RGPOT_BUILD_TARGET={target}");
     }
+
+    let cppcore = cppcore_root(&crate_dir);
+    println!("cargo::rerun-if-changed={}", cppcore.display());
+    cc::Build::new()
+        .cpp(true)
+        .std("c++20")
+        // The bridge archive links statically, so RGPOT_API must not
+        // expand to dllimport on Windows.
+        .define("RGPOT_STATIC", None)
+        // Isolate the packaged CppCore symbols from a CppCore library linked
+        // by an embedding application, and avoid the rgpot_ C ABI prefix so
+        // symbol-export baselines only count public C ABI entry points.
+        .define("rgpot", "eam_bridge_cpp")
+        .define("rgpot_nlist_abi_version", "eam_bridge_nlist_abi_version")
+        .define("rgpot_nlist_strerror", "eam_bridge_nlist_strerror")
+        .define("rgpot_nlist_request_init", "eam_bridge_nlist_request_init")
+        .define("rgpot_nlist_build", "eam_bridge_nlist_build")
+        .define("rgpot_nlist_walk_open", "eam_bridge_nlist_walk_open")
+        .define("rgpot_nlist_walk_pull", "eam_bridge_nlist_walk_pull")
+        .define("rgpot_nlist_walk_close", "eam_bridge_nlist_walk_close")
+        .define(
+            "rgpot_nlist_build_systems",
+            "eam_bridge_nlist_build_systems",
+        )
+        .define("rgpot_nlist_builder_open", "eam_bridge_nlist_builder_open")
+        .define(
+            "rgpot_nlist_builder_update",
+            "eam_bridge_nlist_builder_update",
+        )
+        .define(
+            "rgpot_nlist_builder_close",
+            "eam_bridge_nlist_builder_close",
+        )
+        .define("rgpot_nlist_fortran_open", "eam_bridge_nlist_fortran_open")
+        .define(
+            "rgpot_nlist_fortran_close",
+            "eam_bridge_nlist_fortran_close",
+        )
+        .define(
+            "rgpot_nlist_fortran_build",
+            "eam_bridge_nlist_fortran_build",
+        )
+        .flag_if_supported("-fexceptions")
+        .flag_if_supported("-ffp-contract=off")
+        .flag_if_supported("/fp:precise")
+        .include(&cppcore)
+        .include(cppcore.parent().unwrap().join("include"))
+        .file("cpp/eam_table_bridge.cpp")
+        .file(cppcore.join("rgpot").join("PotHelpers.cc"))
+        .file(cppcore.join("rgpot").join("simd").join("exact_fma_hw.cc"))
+        .file(cppcore.join("rgpot").join("simd").join("exp.cc"))
+        .file(cppcore.join("rgpot").join("nlist").join("MinimumImage.cpp"))
+        .file(cppcore.join("rgpot").join("Slices.cc"))
+        .file(cppcore.join("rgpot").join("nlist").join("HalfShell.cc"))
+        .file(cppcore.join("rgpot").join("nlist").join("HalfShellWalk.cc"))
+        .file(cppcore.join("rgpot").join("nlist").join("NeighbourList.cc"))
+        .file(cppcore.join("rgpot").join("nlist").join("Neighbours.cc"))
+        .file(
+            cppcore
+                .join("rgpot")
+                .join("EAMTable")
+                .join("EAMTablePot.cc"),
+        )
+        .file(
+            cppcore
+                .join("rgpot")
+                .join("EAMTable")
+                .join("EAMTableImages.cc"),
+        )
+        .compile("rgpot_eam_table_bridge");
 
     // eindir-core is a normal Cargo dependency now; its capi #[no_mangle] symbols
     // resolve through the shared crate, so no prebuilt static lib link is needed.

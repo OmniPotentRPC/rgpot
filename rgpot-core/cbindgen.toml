@@ -30,7 +30,20 @@ documentation_style = "doxy"
 include = ["rgpot_hvp_scheme_t", "HessianVectorCallback", "rgpot_hessian_scheme_t", "HessianCallback", "rgpot_taylor_jet_fn", "rgpot_interval_t"]
 # The MD session unit factors serve the Rust draw; the C++ engines take
 # theirs from rgpot/ExternalPot/md_units.hpp, and no C call uses them.
-exclude = ["BOHR_TO_ANGSTROM", "EV_TO_HARTREE", "KJ_PER_EV", "NM_PER_ANGSTROM", "AMU_A2_PS2_PER_EV"]
+exclude = [
+  "BOHR_TO_ANGSTROM",
+  "EV_TO_HARTREE",
+  "KJ_PER_EV",
+  "NM_PER_ANGSTROM",
+  "AMU_A2_PS2_PER_EV",
+  "eam_bridge_cpp_new_from_file",
+  "eam_bridge_cpp_new_from_table",
+  "eam_bridge_cpp_free",
+  "eam_bridge_cpp_force",
+  "eam_bridge_cpp_last_error",
+  "eam_bridge_cpp_drop_count",
+  "eam_bridge_cpp_reset_drop_count",
+]
 
 [export.rename]
 
