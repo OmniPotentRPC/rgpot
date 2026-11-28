@@ -1,0 +1,128 @@
+# Publish the documentation as Markdown on the orphan branch context7-docs,
+# for Context7, which does not read Org. scripts/org_to_md.sh exports every
+# tracked .org file with the Emacs that the docs feature in pixi.toml pins;
+# readme_src.org becomes README.md and every other X.org becomes X.md in the
+# same directory. Tracked .md and .rst files without an .org source are copied
+# unchanged, except towncrier fragments, the release-notes template and
+# vendored third-party trees. The branch holds that tree and context7.json as
+# one parentless commit, replaced on each push to develop.
+
+name: Context7 docs
+
+on:
+  push:
+    branches: [develop]
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+jobs:
+  context7-docs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    name: Publish context7-docs
+    steps:
+      # The publish step pushes with the credentials this checkout persists.
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: prefix-dev/setup-pixi@ad1da6449d9e506fd127fd67ab2d054a769f6a94 # v0.11.2
+        with:
+          pixi-version: v0.70.2
+          run-install: false
+          cache: false
+
+      - name: Install Emacs at the docs pin
+        run: |
+          set -euo pipefail
+          spec=$(python3 -c 'import tomllib; print(tomllib.load(open("pixi.toml", "rb"))["feature"]["docs"]["dependencies"]["emacs"])')
+          pixi global install "emacs${spec}"
+          emacs --batch --eval '(princ (format "Emacs %s, Org %s\n" emacs-version (org-version)))'
+
+      - name: Export the docs
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/context7-docs"
+          rm -rf "$out"
+          mkdir -p "$out"
+          # Org names heading anchors with `random`; a fixed seed keeps them,
+          # and so the published tree, the same from run to run.
+          mkdir -p "$RUNNER_TEMP/emacs-site"
+          echo '(random "context7-docs")' > "$RUNNER_TEMP/emacs-site/site-start.el"
+          export EMACSLOADPATH="$RUNNER_TEMP/emacs-site:"
+          mapfile -d '' -t orgs < <(git ls-files -z -- '*.org')
+          for org in "${orgs[@]}"; do
+            if [ "$org" = readme_src.org ]; then md=README.md; else md="${org%.org}.md"; fi
+            rm -f "$md"
+            bash scripts/org_to_md.sh "$org" "$md"
+            if [ ! -f "$md" ]; then
+              echo "::error file=${org}::export wrote no ${md}"
+              exit 1
+            fi
+            # A page that only holds #+begin_export rst blocks exports blank.
+            if ! grep -q '[^[:space:]]' "$md"; then
+              echo "::warning file=${org}::no Markdown content, ${md} left out"
+              continue
+            fi
+            install -D -m 0644 "$md" "$out/$md"
+          done
+          mapfile -d '' -t authored < <(git ls-files -z -- '*.md' '*.rst' \
+            ':(exclude)docs/newsfragments/+*' \
+            ':(exclude)ci/release-notes.md' \
+            ':(exclude)third_party/**' \
+            ':(exclude)subprojects/**')
+          for f in "${authored[@]}"; do
+            if [ ! -e "$out/$f" ]; then
+              install -D -m 0644 "$f" "$out/$f"
+            fi
+          done
+          echo "${#orgs[@]} Org files, $(find "$out" -type f | wc -l) files in the tree"
+
+      - name: Write context7.json
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          REPO_NAME: ${{ github.event.repository.name }}
+          REPO_DESCRIPTION: ${{ github.event.repository.description }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags --depth=1 origin "refs/heads/${DEFAULT_BRANCH}"
+          prev='{}'
+          if git cat-file -e FETCH_HEAD:context7.json 2>/dev/null; then
+            prev=$(git show FETCH_HEAD:context7.json)
+          fi
+          jq -n --argjson prev "$prev" --arg title "$REPO_NAME" --arg description "$REPO_DESCRIPTION" '
+            {projectTitle: ($prev.projectTitle // $title),
+             description: ($prev.description // $description)}
+            + (if ($prev.rules // []) == [] then {} else {rules: $prev.rules} end)
+            | if (.description | length) < 10
+              then error("context7.json needs a description of at least 10 characters")
+              else . end
+          ' > "$RUNNER_TEMP/context7-docs/context7.json"
+          cat "$RUNNER_TEMP/context7-docs/context7.json"
+
+      - name: Publish the context7-docs branch
+        env:
+          GIT_AUTHOR_NAME: github-actions[bot]
+          GIT_AUTHOR_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+          GIT_COMMITTER_NAME: github-actions[bot]
+          GIT_COMMITTER_EMAIL: 41898282+github-actions[bot]@users.noreply.github.com
+        run: |
+          set -euo pipefail
+          export GIT_INDEX_FILE="$RUNNER_TEMP/context7-docs.index"
+          rm -f "$GIT_INDEX_FILE"
+          git --work-tree="$RUNNER_TEMP/context7-docs" add -A -- "$RUNNER_TEMP/context7-docs"
+          tree=$(git write-tree)
+          if git ls-remote --exit-code --heads origin context7-docs >/dev/null; then
+            git fetch --no-tags --depth=1 origin refs/heads/context7-docs
+            if [ "$(git rev-parse 'FETCH_HEAD^{tree}')" = "$tree" ]; then
+              echo "context7-docs already holds tree $tree"
+              exit 0
+            fi
+          fi
+          commit=$(git commit-tree "$tree" -m "docs: export the docs of ${GITHUB_SHA}")
+          git push --force origin "${commit}:refs/heads/context7-docs"
+          git ls-tree -r --name-only "$commit"
