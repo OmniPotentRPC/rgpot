@@ -79,6 +79,18 @@ TEST_CASE("resetting a vesin neighbour list with zero pairs", "[vesin][nlist]") 
     vesin_free(&neighbors);
   }
 
+  SECTION("a full brute force list from an empty one") {
+    // Both directions of the one pair, written into a list with no storage.
+    VesinNeighborList neighbors;
+    auto options = options_for(VesinBruteForce, 0.0);
+    options.full = true;
+    build(close, options, neighbors);
+    REQUIRE(neighbors.length == 2);
+    REQUIRE(neighbors.pairs[0][0] == neighbors.pairs[1][1]);
+    REQUIRE(neighbors.pairs[0][1] == neighbors.pairs[1][0]);
+    vesin_free(&neighbors);
+  }
+
   SECTION("skin filter recompute") {
     VesinNeighborList neighbors;
     const auto options = options_for(VesinCellList, 1.0);

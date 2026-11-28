@@ -1,0 +1,1 @@
+The brute-force neighbour list no longer hangs when asked for a full list. An empty list grew to one row on every attempt, and a full list writes two rows per pair, so the first pair never fitted. Stillinger-Weber and Tersoff request full lists; they reached this on systems small enough for the brute-force path.
